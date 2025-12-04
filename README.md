@@ -6,6 +6,8 @@
 
 A Model Context Protocol (MCP) server for Microsoft Fabric. Exposes Fabric operations (workspaces, notebooks, SQL, Livy, pipelines, jobs) as MCP tools that AI agents can invoke.
 
+> ⚠️ **Warning**: This package is intended for **development environments only** and should not be used in production. It includes tools that can perform destructive operations (e.g., `delete_notebook`, `delete_item`) and execute arbitrary code via Livy Spark sessions. Always review AI-generated tool calls before execution.
+
 ## Quick Start
 
 The fastest way to use this MCP server is with `uvx`:
