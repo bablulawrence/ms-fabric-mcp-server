@@ -1,0 +1,1 @@
+"""Fabric module tests."""
