@@ -136,13 +136,13 @@ The server provides **25 core tools**, with **3 additional SQL tools** when inst
 
 | Tool Group | Count | Tools |
 |------------|-------|-------|
-| **Workspace** | 2 | `list_workspaces`, `get_workspace` |
-| **Item** | 2 | `list_items`, `get_item` |
-| **Notebook** | 6 | `list_notebooks`, `get_notebook_content`, `create_notebook`, `update_notebook`, `delete_notebook`, `run_notebook` |
-| **Job** | 4 | `get_item_job_instance`, `run_item_job`, `cancel_item_job`, `get_item_job_output` |
-| **Livy** | 8 | `create_livy_session`, `get_livy_session`, `list_livy_sessions`, `delete_livy_session`, `submit_livy_statement`, `get_livy_statement`, `list_livy_statements`, `cancel_livy_statement` |
-| **Pipeline** | 3 | `list_pipelines`, `run_pipeline`, `get_pipeline_run` |
-| **SQL** *(optional)* | 3 | `execute_sql_query`, `list_sql_warehouses`, `get_sql_warehouse` |
+| **Workspace** | 2 | `list_workspaces`, `create_workspace` |
+| **Item** | 2 | `list_items`, `delete_item` |
+| **Notebook** | 6 | `import_notebook_to_fabric`, `get_notebook_content`, `attach_lakehouse_to_notebook`, `get_notebook_execution_details`, `list_notebook_executions`, `get_notebook_driver_logs` |
+| **Job** | 4 | `run_on_demand_job`, `get_job_status`, `get_job_status_by_url`, `get_operation_result` |
+| **Livy** | 8 | `livy_create_session`, `livy_list_sessions`, `livy_get_session_status`, `livy_close_session`, `livy_run_statement`, `livy_get_statement_status`, `livy_cancel_statement`, `livy_get_session_log` |
+| **Pipeline** | 3 | `create_blank_pipeline`, `add_copy_activity_to_pipeline`, `add_activity_to_pipeline` |
+| **SQL** *(optional)* | 3 | `get_sql_endpoint`, `execute_sql_query`, `execute_sql_statement` |
 
 ### SQL Tools (Optional)
 
