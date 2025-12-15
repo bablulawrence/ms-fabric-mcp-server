@@ -25,7 +25,13 @@ Example:
     ```
 """
 
-__version__ = "0.6.0"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("ms-fabric-mcp-server")
+except PackageNotFoundError:
+    # Package is not installed (development mode)
+    __version__ = "0.0.0.dev"
 
 # Main exports
 from .server import create_fabric_server
