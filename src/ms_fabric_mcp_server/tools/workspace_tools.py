@@ -50,10 +50,18 @@ def register_workspace_tools(mcp: "FastMCP", workspace_service: FabricWorkspaceS
         
         Returns a list of all workspaces the authenticated user has access to,
         including workspace ID, name, description, type, state, and capacity ID.
+
+        Parameters:
+            None
         
         Returns:
             Dictionary with status, workspace_count, and list of workspaces.
             Each workspace contains: id, display_name, description, type, state, capacity_id.
+
+        Example:
+            ```python
+            result = list_workspaces()
+            ```
         """
         log_tool_invocation("list_workspaces")
         logger.info("Listing all workspaces")

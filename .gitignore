@@ -20,3 +20,4 @@ venv/
 .vscode/
 .github/
 asa-lib
+/dist
