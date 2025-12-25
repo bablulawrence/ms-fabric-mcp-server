@@ -231,6 +231,7 @@ This document is the **source of truth** for the testing effort. It captures all
 ### Phase 1: Notebook Service
 - Added LRO in-progress polling coverage (`Running`/202 paths) in `test_get_notebook_content_lro_in_progress`.
 - Added coverage for LRO success/failure/timeout/missing-location, raw-definition fallback, and driver log edge cases.
+- Added safe `Retry-After` parsing coverage for non-integer values in LRO polling.
 
 ### Phase 2: Livy Service
 - Implemented full CRUD + wait behavior tests (session/statement) with payload verification and error mapping.
@@ -238,10 +239,14 @@ This document is the **source of truth** for the testing effort. It captures all
 ### Phase 3: SQL Service
 - Added success-path close behavior tests for `execute_sql_query` and `execute_sql_statement`.
 - Disabled OpenTelemetry instrumentation in the SQL test fixture to avoid mock connection attribute issues.
+- Fixed token scope to `https://database.windows.net/.default` and asserted in tests.
 
 ### Phase 4: Job Service
 - Added early-exit coverage when polling receives a `status="error"` result.
 - Updated service implementation to use timezone-aware UTC timestamps in wait loops to remove `datetime.utcnow()` deprecation warnings.
+- Added URL structure validation for `get_job_status_by_url` to avoid parsing unrelated responses.
+- Added coverage for terminal job statuses without `end_time_utc`.
+- Added error handling when `run_on_demand_job` returns no `Location` header.
 
 ### Phase 5: Item Service
 - Added coverage for `get_item_definition` re-raising `FabricAPIError`.
