@@ -285,6 +285,45 @@ class TestFabricNotebookService:
             with pytest.raises(FabricError):
                 notebook_service.get_notebook_content("Workspace", "Notebook")
 
+    def test_get_notebook_content_lro_retry_after_non_integer(
+        self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
+    ):
+        """LRO handles non-integer Retry-After headers."""
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-123"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="nb-123",
+            display_name="Notebook",
+            type="Notebook",
+            workspace_id="ws-123",
+        )
+
+        notebook_content = {"cells": [{"cell_type": "markdown", "source": ["hi"]}]}
+        definition_response = {
+            "definition": {
+                "parts": [
+                    {
+                        "path": "notebook.ipynb",
+                        "payload": _encode_ipynb(notebook_content),
+                        "payloadType": "InlineBase64",
+                    }
+                ]
+            }
+        }
+
+        initial = _make_response(
+            202,
+            headers={"Location": "https://poll", "Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"},
+        )
+        poll = _make_response(200, {"status": "Succeeded"})
+        result_resp = _make_response(200, definition_response)
+        mock_fabric_client.make_api_request.side_effect = [initial, poll, result_resp]
+
+        with patch("time.sleep", return_value=None) as sleep_mock:
+            result = notebook_service.get_notebook_content("Workspace", "Notebook")
+
+        assert result == notebook_content
+        sleep_mock.assert_called_once_with(5)
+
     def test_get_notebook_content_lro_in_progress(self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client):
         """LRO continues polling on non-terminal status."""
         mock_workspace_service.resolve_workspace_id.return_value = "ws-123"
@@ -574,6 +613,48 @@ class TestFabricNotebookService:
             )
 
         assert result.status == "success"
+
+    def test_attach_lakehouse_to_notebook_lro_retry_after_non_integer(
+        self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
+    ):
+        """Attach lakehouse LRO handles non-integer Retry-After."""
+        mock_workspace_service.resolve_workspace_id.side_effect = ["workspace-123", "workspace-123"]
+
+        notebook = FabricItem(id="nb-1", display_name="Notebook", type="Notebook", workspace_id="workspace-123")
+        lakehouse = FabricItem(id="lh-1", display_name="Lakehouse", type="Lakehouse", workspace_id="workspace-123")
+        mock_item_service.get_item_by_name.side_effect = [notebook, lakehouse]
+
+        notebook_payload = {"cells": [], "metadata": {}}
+        definition_response = {
+            "definition": {
+                "parts": [
+                    {
+                        "path": "notebook.ipynb",
+                        "payload": _encode_ipynb(notebook_payload),
+                        "payloadType": "InlineBase64",
+                    }
+                ]
+            }
+        }
+
+        initial = _make_response(
+            202,
+            headers={"Location": "https://poll", "Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"},
+        )
+        poll = _make_response(200, {"status": "Succeeded"})
+        result_resp = _make_response(200, definition_response)
+        update_def = MockResponseFactory.success({})
+        mock_fabric_client.make_api_request.side_effect = [initial, poll, result_resp, update_def]
+
+        with patch("time.sleep", return_value=None) as sleep_mock:
+            result = notebook_service.attach_lakehouse_to_notebook(
+                workspace_name="Workspace",
+                notebook_name="Notebook",
+                lakehouse_name="Lakehouse",
+            )
+
+        assert result.status == "success"
+        sleep_mock.assert_called_once_with(5)
 
     def test_attach_lakehouse_to_notebook_missing_lakehouse(
         self, notebook_service, mock_item_service, mock_workspace_service

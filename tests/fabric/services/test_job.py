@@ -175,12 +175,27 @@ class TestFabricJobService:
         ],
     )
     def test_get_job_status_by_url_invalid(self, job_service, mock_fabric_client, location_url):
-        """Invalid URLs return error results when API fails."""
-        mock_fabric_client.make_api_request.side_effect = FabricAPIError(404, "missing")
-
+        """Invalid URLs return error results without calling API."""
         result = job_service.get_job_status_by_url(location_url)
 
         assert result.status == "error"
+        assert "Invalid job status URL" in result.message
+        mock_fabric_client.make_api_request.assert_not_called()
+
+    def test_run_on_demand_job_missing_location(self, job_service, mock_fabric_client):
+        """Missing Location header returns error result."""
+        response = _make_response(202, json_data={}, headers={})
+        mock_fabric_client.make_api_request.return_value = response
+
+        result = job_service.run_on_demand_job(
+            workspace_name="Workspace",
+            item_name="Notebook",
+            item_type="Notebook",
+            job_type="RunNotebook",
+        )
+
+        assert result.status == "error"
+        assert "Location" in result.message
 
     def test_wait_for_job_completion_success(self, job_service):
         """Wait for completion stops on terminal status."""
@@ -345,6 +360,54 @@ class TestFabricJobService:
         assert result.job is not None
         assert result.job.status == "Completed"
 
+    def test_wait_for_job_completion_terminal_without_end_time(self, job_service):
+        """Terminal status returns even without end_time_utc."""
+        completed = JobStatusResult(
+            status="success",
+            job=FabricJob(
+                job_instance_id="job-1",
+                item_id="item-123",
+                job_type="RunNotebook",
+                status="Completed",
+                end_time_utc=None,
+            ),
+        )
+        job_service.get_job_status = Mock(return_value=completed)
+
+        result = job_service.wait_for_job_completion(
+            workspace_name="Workspace",
+            item_name="Notebook",
+            item_type="Notebook",
+            job_instance_id="job-1",
+            poll_interval=0,
+            timeout_minutes=1,
+        )
+
+        assert result.job is not None
+        assert result.job.status == "Completed"
+
+    def test_wait_for_job_completion_by_url_terminal_without_end_time(self, job_service):
+        """Terminal status by URL returns even without end_time_utc."""
+        completed = JobStatusResult(
+            status="success",
+            job=FabricJob(
+                job_instance_id="job-1",
+                item_id="item-123",
+                job_type="RunNotebook",
+                status="Completed",
+                end_time_utc=None,
+            ),
+        )
+        job_service.get_job_status_by_url = Mock(return_value=completed)
+
+        result = job_service.wait_for_job_completion_by_url(
+            location_url="https://api.fabric.microsoft.com/v1/...",
+            poll_interval=0,
+            timeout_minutes=1,
+        )
+
+        assert result.job is not None
+        assert result.job.status == "Completed"
     def test_wait_for_job_completion_by_url_timeout(self, job_service):
         """Timeout path returns final status with timeout message."""
         final = JobStatusResult(

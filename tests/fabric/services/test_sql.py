@@ -126,6 +126,7 @@ class TestFabricSQLService:
 
         token_bytes = service._get_token_bytes()
 
+        azure_cred_instance.get_token.assert_called_once_with("https://database.windows.net/.default")
         length = struct.unpack("<i", token_bytes[:4])[0]
         assert length == len(token_bytes[4:])
 
