@@ -1,6 +1,6 @@
 [project]
 name = "ms-fabric-mcp-server"
-version = "0.6.4"
+version = "0.6.5"
 description = "Model Context Protocol (MCP) server for Microsoft Fabric - exposes Fabric operations as MCP tools for AI agents"
 readme = "README.md"
 requires-python = ">=3.11"
