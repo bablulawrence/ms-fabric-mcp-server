@@ -3,6 +3,7 @@
 [![PyPI version](https://badge.fury.io/py/ms-fabric-mcp-server.svg)](https://pypi.org/project/ms-fabric-mcp-server/)
 [![Python](https://img.shields.io/pypi/pyversions/ms-fabric-mcp-server.svg)](https://pypi.org/project/ms-fabric-mcp-server/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://github.com/bablulawrence/ms-fabric-mcp-server/actions/workflows/tests.yml/badge.svg)](https://github.com/bablulawrence/ms-fabric-mcp-server/actions/workflows/tests.yml)
 
 A Model Context Protocol (MCP) server for Microsoft Fabric. Exposes Fabric operations (workspaces, notebooks, SQL, Livy, pipelines, jobs) as MCP tools that AI agents can invoke.
 

@@ -254,7 +254,7 @@ class FabricSQLService:
         """
         try:
             credential = AzureCliCredential()
-            token = credential.get_token("https://database.windows.net//.default")
+            token = credential.get_token("https://database.windows.net/.default")
             
             # ODBC token must be a Windows-style byte string, padded with zero bytes
             token_bytes = bytes(token.token, "UTF-8")

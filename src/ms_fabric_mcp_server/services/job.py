@@ -5,7 +5,7 @@
 import base64
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
@@ -138,6 +138,12 @@ class FabricJobService:
                     retry_after = int(response.headers["Retry-After"])
                 except (ValueError, TypeError):
                     retry_after = None
+
+            if not location_url:
+                return RunJobResult(
+                    status="error",
+                    message="No Location header returned from job creation"
+                )
             
             # Extract job instance ID from location URL
             job_instance_id = None
@@ -280,11 +286,24 @@ class FabricJobService:
         try:
             # Extract the relative path from the URL
             parsed_url = urlparse(location_url)
-            relative_path = parsed_url.path.lstrip("/")
+            relative_path = (parsed_url.path or location_url).lstrip("/")
             
             # Remove API version prefix if present
             if relative_path.startswith("v1/"):
                 relative_path = relative_path[3:]
+
+            parts = [part for part in relative_path.split("/") if part]
+            if (
+                len(parts) != 7
+                or parts[0] != "workspaces"
+                or parts[2] != "items"
+                or parts[4] != "jobs"
+                or parts[5] != "instances"
+            ):
+                return JobStatusResult(
+                    status="error",
+                    message="Invalid job status URL"
+                )
             
             response = self.client.make_api_request("GET", relative_path)
             job_data = response.json()
@@ -363,9 +382,9 @@ class FabricJobService:
             f"(timeout: {timeout_minutes} min)"
         )
         
-        deadline = datetime.utcnow() + timedelta(minutes=timeout_minutes)
+        deadline = datetime.now(timezone.utc) + timedelta(minutes=timeout_minutes)
         
-        while datetime.utcnow() < deadline:
+        while datetime.now(timezone.utc) < deadline:
             result = self.get_job_status(
                 workspace_name, item_name, item_type, job_instance_id
             )
@@ -374,9 +393,8 @@ class FabricJobService:
                 return result
             
             if result.job and result.job.is_terminal_state():
-                if result.job.end_time_utc:  # Ensure job has finished
-                    logger.info(f"Job completed with status: {result.job.status}")
-                    return result
+                logger.info(f"Job completed with status: {result.job.status}")
+                return result
             
             logger.debug(
                 f"Job status: {result.job.status if result.job else 'Unknown'}, "
@@ -432,18 +450,17 @@ class FabricJobService:
             f"Waiting for job to complete using URL (timeout: {timeout_minutes} min)"
         )
         
-        deadline = datetime.utcnow() + timedelta(minutes=timeout_minutes)
+        deadline = datetime.now(timezone.utc) + timedelta(minutes=timeout_minutes)
         
-        while datetime.utcnow() < deadline:
+        while datetime.now(timezone.utc) < deadline:
             result = self.get_job_status_by_url(location_url)
             
             if result.status == "error":
                 return result
             
             if result.job and result.job.is_terminal_state():
-                if result.job.end_time_utc:  # Ensure job has finished
-                    logger.info(f"Job completed with status: {result.job.status}")
-                    return result
+                logger.info(f"Job completed with status: {result.job.status}")
+                return result
             
             logger.debug(
                 f"Job status: {result.job.status if result.job else 'Unknown'}, "

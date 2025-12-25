@@ -182,6 +182,15 @@ class FabricNotebookService:
             definition["description"] = description
         
         return definition
+
+    @staticmethod
+    def _parse_retry_after(headers: Dict[str, Any], default: int = 5) -> int:
+        """Safely parse Retry-After header with fallback default."""
+        value = headers.get("Retry-After", default)
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
     
     def import_notebook(
         self,
@@ -314,7 +323,7 @@ class FabricNotebookService:
         # Handle 202 Accepted (long-running operation)
         if response.status_code == 202:
             location = response.headers.get("Location")
-            retry_after = int(response.headers.get("Retry-After", 5))
+            retry_after = self._parse_retry_after(response.headers, 5)
             
             if location:
                 max_retries = 30
@@ -341,10 +350,10 @@ class FabricNotebookService:
                             error_msg = op_result.get("error", {}).get("message", "Unknown error")
                             raise FabricError(f"Operation failed: {error_msg}")
                         else:
-                            retry_after = int(poll_response.headers.get("Retry-After", 5))
+                            retry_after = self._parse_retry_after(poll_response.headers, 5)
                             continue
                     elif poll_response.status_code == 202:
-                        retry_after = int(poll_response.headers.get("Retry-After", 5))
+                        retry_after = self._parse_retry_after(poll_response.headers, 5)
                         continue
                     else:
                         raise FabricAPIError(
@@ -711,7 +720,7 @@ class FabricNotebookService:
             if response.status_code == 202:
                 # Poll for completion using the Location header
                 location = response.headers.get("Location")
-                retry_after = int(response.headers.get("Retry-After", 5))
+                retry_after = self._parse_retry_after(response.headers, 5)
                 
                 if location:
                     max_retries = 30
@@ -740,10 +749,10 @@ class FabricNotebookService:
                                 raise FabricError(f"Operation failed: {error_msg}")
                             else:
                                 # Still in progress
-                                retry_after = int(poll_response.headers.get("Retry-After", 5))
+                                retry_after = self._parse_retry_after(poll_response.headers, 5)
                                 continue
                         elif poll_response.status_code == 202:
-                            retry_after = int(poll_response.headers.get("Retry-After", 5))
+                            retry_after = self._parse_retry_after(poll_response.headers, 5)
                             continue
                         else:
                             raise FabricAPIError(
