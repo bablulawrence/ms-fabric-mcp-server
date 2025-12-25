@@ -1,5 +1,6 @@
 """Unit tests for FabricLivyService."""
 
+import itertools
 import json
 from unittest.mock import Mock, patch
 
@@ -264,7 +265,7 @@ class TestFabricLivyService:
         """Timeout raises FabricLivyTimeoutError."""
         livy_service.get_session_status = Mock()
 
-        with patch("time.time", side_effect=[0, 10]):
+        with patch("time.time", side_effect=itertools.chain([0], itertools.repeat(10))):
             with pytest.raises(FabricLivyTimeoutError):
                 livy_service.wait_for_session("ws-1", "lh-1", "1", timeout_seconds=1)
 
@@ -301,6 +302,6 @@ class TestFabricLivyService:
         """Timeout raises FabricLivyTimeoutError."""
         livy_service.get_statement_status = Mock()
 
-        with patch("time.time", side_effect=[0, 10]):
+        with patch("time.time", side_effect=itertools.chain([0], itertools.repeat(10))):
             with pytest.raises(FabricLivyTimeoutError):
                 livy_service.wait_for_statement("ws-1", "lh-1", "1", "1", timeout_seconds=1)
