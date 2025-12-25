@@ -1,0 +1,58 @@
+name: Publish to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify tag matches pyproject version
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          import tomllib
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          if tag.startswith("v"):
+              tag = tag[1:]
+
+          with open("pyproject.toml", "rb") as handle:
+              version = tomllib.load(handle)["project"]["version"]
+
+          if tag != version:
+              print(f"Tag version {tag} does not match pyproject version {version}.")
+              sys.exit(1)
+
+          print(f"Tag version {tag} matches pyproject version {version}.")
+          PY
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          cache: true
+          cache-dependency-glob: "**/uv.lock"
+
+      - name: Build package
+        run: |
+          uv pip install --upgrade build
+          uv run python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
