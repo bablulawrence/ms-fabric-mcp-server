@@ -217,14 +217,37 @@ This document is the **source of truth** for the testing effort. It captures all
 ## Status Tracker
 | Task | Status |
 | --- | --- |
-| Phase 1: Notebook tests | Not started |
-| Phase 2: Livy tests | Not started |
-| Phase 2: SQL tests | Not started |
-| Phase 3: Job tests | Not started |
-| Phase 3: Item tests | Not started |
+| Phase 1: Notebook tests | Completed |
+| Phase 2: Livy tests | Completed |
+| Phase 2: SQL tests | Completed |
+| Phase 3: Job tests | Completed |
+| Phase 3: Item tests | Completed |
 | Phase 4: Pipeline tests (extend) | Not started |
 | Phase 4: Workspace tests | Not started |
 | Phase 5: Coverage enforcement (75%) | Not started |
+
+## Implementation Updates (Phase 1–3)
+### Notebook Service (Phase 1)
+- Added LRO in-progress polling coverage (`Running`/202 paths) in `test_get_notebook_content_lro_in_progress`.
+- Added coverage for LRO success/failure/timeout/missing-location, raw-definition fallback, and driver log edge cases.
+
+### Livy Service (Phase 2)
+- Implemented full CRUD + wait behavior tests (session/statement) with payload verification and error mapping.
+
+### SQL Service (Phase 2)
+- Added success-path close behavior tests for `execute_sql_query` and `execute_sql_statement`.
+- Disabled OpenTelemetry instrumentation in the SQL test fixture to avoid mock connection attribute issues.
+
+### Job Service (Phase 3)
+- Added early-exit coverage when polling receives a `status="error"` result.
+- Updated service implementation to use timezone-aware UTC timestamps in wait loops to remove `datetime.utcnow()` deprecation warnings.
+
+### Item Service (Phase 3)
+- Added coverage for `get_item_definition` re-raising `FabricAPIError`.
+- Added 202-accepted branch when response has no `id` (returns placeholder item).
+
+### Test Harness
+- Updated `tests/conftest.py` to prepend local `src/` to `sys.path` so tests execute against the working tree instead of any installed package.
 
 ## Notes for the Next Session
 - Use `tests/fixtures/mocks.py` for common shapes; add helpers only if repetition appears.

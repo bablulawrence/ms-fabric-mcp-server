@@ -5,7 +5,7 @@
 import base64
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
@@ -363,9 +363,9 @@ class FabricJobService:
             f"(timeout: {timeout_minutes} min)"
         )
         
-        deadline = datetime.utcnow() + timedelta(minutes=timeout_minutes)
+        deadline = datetime.now(timezone.utc) + timedelta(minutes=timeout_minutes)
         
-        while datetime.utcnow() < deadline:
+        while datetime.now(timezone.utc) < deadline:
             result = self.get_job_status(
                 workspace_name, item_name, item_type, job_instance_id
             )
@@ -432,9 +432,9 @@ class FabricJobService:
             f"Waiting for job to complete using URL (timeout: {timeout_minutes} min)"
         )
         
-        deadline = datetime.utcnow() + timedelta(minutes=timeout_minutes)
+        deadline = datetime.now(timezone.utc) + timedelta(minutes=timeout_minutes)
         
-        while datetime.utcnow() < deadline:
+        while datetime.now(timezone.utc) < deadline:
             result = self.get_job_status_by_url(location_url)
             
             if result.status == "error":
