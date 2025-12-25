@@ -18,7 +18,6 @@ venv/
 .specstory/
 .DS_Store
 .vscode/
-.github/
 .worktrees/ 
 asa-lib
 /dist
