@@ -224,6 +224,8 @@ class TestFabricLivyService:
         result = livy_service.cancel_statement("ws-1", "lh-1", "1", "1")
 
         assert result["msg"] == "canceled"
+        call_kwargs = mock_fabric_client.make_api_request.call_args.kwargs
+        assert call_kwargs["payload"] == {}
 
     def test_cancel_statement_api_error(self, livy_service, mock_fabric_client):
         """API errors raise FabricLivyStatementError."""
@@ -241,9 +243,10 @@ class TestFabricLivyService:
 
         assert result["state"] == "idle"
 
-    def test_wait_for_session_error_state_with_logs(self, livy_service):
-        """Error session raises FabricLivySessionError with log details."""
-        livy_service.get_session_status = Mock(return_value={"state": "error", "log": ["a", "b"]})
+    @pytest.mark.parametrize("state", ["error", "dead", "killed"])
+    def test_wait_for_session_error_state_with_logs(self, livy_service, state):
+        """Error states raise FabricLivySessionError with log details."""
+        livy_service.get_session_status = Mock(return_value={"state": state, "log": ["a", "b"]})
 
         with patch("time.sleep", return_value=None):
             with pytest.raises(FabricLivySessionError):
@@ -278,6 +281,16 @@ class TestFabricLivyService:
         """Error statement raises FabricLivyStatementError."""
         livy_service.get_statement_status = Mock(
             return_value={"state": "error", "output": {"evalue": "boom"}}
+        )
+
+        with patch("time.sleep", return_value=None):
+            with pytest.raises(FabricLivyStatementError):
+                livy_service.wait_for_statement("ws-1", "lh-1", "1", "1", timeout_seconds=2)
+
+    def test_wait_for_statement_cancelled_state(self, livy_service):
+        """Cancelled statement raises FabricLivyStatementError."""
+        livy_service.get_statement_status = Mock(
+            return_value={"state": "cancelled", "output": {"evalue": "cancelled"}}
         )
 
         with patch("time.sleep", return_value=None):

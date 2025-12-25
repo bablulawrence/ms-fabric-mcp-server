@@ -697,7 +697,7 @@ class FabricLivyService:
             response = self.client.make_api_request(
                 method="POST",
                 endpoint=endpoint,
-                json_data={},
+                payload={},
                 timeout=30
             )
             
