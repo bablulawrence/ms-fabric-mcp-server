@@ -170,6 +170,8 @@ class TestFabricJobService:
             "not-a-url",
             "https://api.fabric.microsoft.com/v1",
             "https://api.fabric.microsoft.com/",
+            "https://api.fabric.microsoft.com/v1/workspaces/ws/items/item/jobs/instances",
+            "https://api.fabric.microsoft.com/v1/workspaces/ws",
         ],
     )
     def test_get_job_status_by_url_invalid(self, job_service, mock_fabric_client, location_url):
@@ -215,6 +217,31 @@ class TestFabricJobService:
 
         assert result.job is not None
         assert result.job.status == "Completed"
+
+    def test_wait_for_job_completion_by_url_failed(self, job_service):
+        """Failed job by URL returns terminal status with failure reason."""
+        failed = JobStatusResult(
+            status="success",
+            job=FabricJob(
+                job_instance_id="job-1",
+                item_id="item-123",
+                job_type="RunNotebook",
+                status="Failed",
+                end_time_utc="2025-01-01T00:05:00Z",
+                failure_reason={"message": "boom"},
+            ),
+        )
+        job_service.get_job_status_by_url = Mock(return_value=failed)
+
+        result = job_service.wait_for_job_completion_by_url(
+            location_url="https://api.fabric.microsoft.com/v1/...",
+            poll_interval=0,
+            timeout_minutes=1,
+        )
+
+        assert result.job is not None
+        assert result.job.is_failed()
+        assert result.job.failure_reason == {"message": "boom"}
 
     def test_wait_for_job_completion_failed(self, job_service):
         """Failed job returns terminal status with failure reason."""

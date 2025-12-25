@@ -443,7 +443,7 @@ class FabricPipelineService:
         if source_type.endswith("Source"):
             return source_type.replace("Source", "Table")
         
-        # Fallback: return as-is
+        # Fallback: return as-is to allow newer/unknown source types
         return source_type
     
     def _encode_definition(self, definition: Dict[str, Any]) -> str:

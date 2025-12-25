@@ -48,6 +48,23 @@ class TestFabricItemService:
             "GET", "workspaces/ws-1/items?type=Notebook"
         )
 
+    def test_list_items_without_type(self, item_service, mock_fabric_client):
+        """List items without type omits query filter."""
+        items_data = FabricDataFactory.item_list(1, "Notebook")
+        mock_fabric_client.make_api_request.return_value = MockResponseFactory.success(items_data)
+
+        items = item_service.list_items("ws-1")
+
+        assert len(items) == 1
+        mock_fabric_client.make_api_request.assert_called_once_with(
+            "GET", "workspaces/ws-1/items"
+        )
+
+    def test_list_items_invalid_type(self, item_service):
+        """Invalid type filter raises validation error."""
+        with pytest.raises(FabricValidationError):
+            item_service.list_items("ws-1", "NotAType")
+
     def test_get_item_by_name_success(self, item_service, mock_fabric_client):
         """Get item by name returns matching item."""
         items_data = FabricDataFactory.item_list(2, "Notebook")
@@ -83,6 +100,13 @@ class TestFabricItemService:
         with pytest.raises(FabricItemNotFoundError):
             item_service.get_item_by_id("ws-1", "missing")
 
+    def test_get_item_by_id_unexpected_error(self, item_service, mock_fabric_client):
+        """Unexpected errors raise FabricError."""
+        mock_fabric_client.make_api_request.side_effect = RuntimeError("boom")
+
+        with pytest.raises(FabricError):
+            item_service.get_item_by_id("ws-1", "item-1")
+
     def test_get_item_definition_success(self, item_service, mock_fabric_client):
         """Definition response is returned."""
         definition = {"definition": {"parts": []}}
@@ -110,6 +134,11 @@ class TestFabricItemService:
         """Missing required fields raise validation error."""
         with pytest.raises(FabricValidationError):
             item_service.create_item("ws-1", {"type": "Notebook"})
+
+    def test_create_item_validation_missing_type(self, item_service):
+        """Missing type raises validation error."""
+        with pytest.raises(FabricValidationError):
+            item_service.create_item("ws-1", {"displayName": "Item"})
 
     def test_create_item_success_201(self, item_service, mock_fabric_client):
         """Create item maps 201 response."""
@@ -177,6 +206,25 @@ class TestFabricItemService:
 
         assert item.id == "item-1"
         assert item.display_name == item_data["displayName"]
+        mock_fabric_client.make_api_request.assert_called_once_with(
+            "PATCH",
+            "workspaces/ws-1/items/item-1",
+            payload={"displayName": "Updated"},
+        )
+
+    def test_update_item_api_error(self, item_service, mock_fabric_client):
+        """API errors propagate."""
+        mock_fabric_client.make_api_request.side_effect = FabricAPIError(500, "boom")
+
+        with pytest.raises(FabricAPIError):
+            item_service.update_item("ws-1", "item-1", {"displayName": "Updated"})
+
+    def test_update_item_unexpected_error(self, item_service, mock_fabric_client):
+        """Unexpected errors raise FabricError."""
+        mock_fabric_client.make_api_request.side_effect = RuntimeError("boom")
+
+        with pytest.raises(FabricError):
+            item_service.update_item("ws-1", "item-1", {"displayName": "Updated"})
 
     def test_delete_item_success(self, item_service, mock_fabric_client):
         """Delete item calls endpoint."""
@@ -187,6 +235,20 @@ class TestFabricItemService:
         mock_fabric_client.make_api_request.assert_called_once_with(
             "DELETE", "workspaces/ws-1/items/item-1"
         )
+
+    def test_delete_item_api_error(self, item_service, mock_fabric_client):
+        """API errors propagate."""
+        mock_fabric_client.make_api_request.side_effect = FabricAPIError(500, "boom")
+
+        with pytest.raises(FabricAPIError):
+            item_service.delete_item("ws-1", "item-1")
+
+    def test_delete_item_unexpected_error(self, item_service, mock_fabric_client):
+        """Unexpected errors raise FabricError."""
+        mock_fabric_client.make_api_request.side_effect = RuntimeError("boom")
+
+        with pytest.raises(FabricError):
+            item_service.delete_item("ws-1", "item-1")
 
     def test_create_lakehouse_success(self, item_service, mock_fabric_client):
         """create_lakehouse maps response to FabricLakehouse."""
