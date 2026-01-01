@@ -94,7 +94,7 @@ async def test_livy_session_logs(call_tool, lakehouse_id, workspace_id):
             message = (log_result.get("message") or "").lower()
             if "notfound" in message or "not found" in message:
                 pytest.skip("Livy logs not available for this session")
-        assert isinstance(log_result.get("log"), list)
+        assert isinstance(log_result.get("log_content"), str)
 
     finally:
         if session_id:

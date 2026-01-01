@@ -401,18 +401,17 @@ class FabricLivyService:
         start: int = 0,
         size: int = 500
     ) -> Dict[str, Any]:
-        """Fetch incremental Livy driver logs for a session.
+        """Fetch Livy session logs via Spark monitoring APIs.
         
         Args:
             workspace_id: Fabric workspace ID
             lakehouse_id: Fabric lakehouse ID
             session_id: Livy session ID
-            start: Starting log line index (default: 0)
-            size: Number of log lines to retrieve (default: 500)
+            start: Byte offset for partial log download (default: 0)
+            size: Number of bytes to retrieve when partial download is enabled (default: 500)
             
         Returns:
-            Log data with pagination info: 
-            {"id": <int>, "from": <int>, "size": <int>, "log": ["line1", ...]}
+            Dictionary with log content and metadata.
             
         Raises:
             FabricLivySessionError: If log retrieval fails
@@ -441,12 +440,15 @@ class FabricLivyService:
             f"Getting logs for Livy session {session_id} (start={start}, size={size})"
         )
         
-        # Build endpoint URL
+        # Build endpoint URL using Spark monitoring API for Livy logs
         endpoint = (
             f"workspaces/{workspace_id}/lakehouses/{lakehouse_id}/"
-            f"livyapi/versions/2023-12-01/sessions/{session_id}/log"
-            f"?from={start}&size={size}"
+            f"livySessions/{session_id}/applications/none/logs?type=livy"
         )
+        if size and size > 0:
+            endpoint += f"&isDownload=true&isPartial=true&offset={start}&size={size}"
+        else:
+            endpoint += "&isDownload=true"
         
         try:
             response = self.client.make_api_request(
@@ -455,9 +457,17 @@ class FabricLivyService:
                 timeout=30
             )
             
-            log_data = response.json()
-            logger.debug(f"Retrieved {len(log_data.get('log', []))} log lines")
-            return log_data
+            log_content = response.text
+            log_size = len(response.content or b"")
+            logger.debug(f"Retrieved {log_size} bytes of log content")
+            return {
+                "status": "success",
+                "log_content": log_content,
+                "log_size_bytes": log_size,
+                "offset": start,
+                "size": size,
+                "content_type": response.headers.get("Content-Type"),
+            }
             
         except FabricAPIError as exc:
             logger.error(f"API error getting session logs: {exc}")

@@ -15,11 +15,14 @@ from ms_fabric_mcp_server.client.exceptions import (
 )
 
 
-def _make_response(status_code=200, json_data=None):
+def _make_response(status_code=200, json_data=None, text_data: str | None = None):
     response = Mock()
     response.status_code = status_code
     response.ok = 200 <= status_code < 300
     response.json.return_value = json_data or {}
+    response.text = text_data or ""
+    response.content = (text_data or "").encode("utf-8")
+    response.headers = {}
     return response
 
 
@@ -138,12 +141,13 @@ class TestFabricLivyService:
 
     def test_get_session_log_success(self, livy_service, mock_fabric_client):
         """Get session log returns log payload."""
-        response = _make_response(200, {"log": ["a", "b"], "size": 2})
+        response = _make_response(200, text_data="a\nb")
         mock_fabric_client.make_api_request.return_value = response
 
         result = livy_service.get_session_log("ws-1", "lh-1", "1", start=0, size=2)
 
-        assert result["log"] == ["a", "b"]
+        assert result["status"] == "success"
+        assert result["log_content"] == "a\nb"
 
     def test_get_session_log_api_error(self, livy_service, mock_fabric_client):
         """API errors raise FabricLivySessionError."""
