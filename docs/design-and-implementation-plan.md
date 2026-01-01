@@ -164,7 +164,7 @@ dev = [
 
 | Tool Group | Tools | Count |
 |------------|-------|-------|
-| **Workspace** | `list_workspaces`, `create_workspace` | 2 |
+| **Workspace** | `list_workspaces` | 1 |
 | **Item** | `list_items`, `delete_item` | 2 |
 | **Notebook** | `import_notebook_to_fabric`, `get_notebook_content`, `attach_lakehouse_to_notebook`, `get_notebook_execution_details`, `list_notebook_executions`, `get_notebook_driver_logs` | 6 |
 | **Job** | `run_on_demand_job`, `get_job_status`, `get_job_status_by_url`, `get_operation_result` | 4 |

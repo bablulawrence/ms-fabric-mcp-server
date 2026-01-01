@@ -25,17 +25,6 @@ class TestWorkspaceTools:
         
         # Verify tool was registered
         assert mock_fastmcp.tool.called
-    
-    def test_create_workspace_tool(self, mock_fastmcp):
-        """Test create_workspace tool."""
-        from ms_fabric_mcp_server.tools.workspace_tools import register_workspace_tools
-        
-        workspace_service = ServiceMockFactory.workspace_service()
-        workspace_service.create_workspace.return_value = FabricDataFactory.workspace(name="New Workspace")
-        
-        register_workspace_tools(mock_fastmcp, workspace_service)
-        
-        assert mock_fastmcp.tool.called
 
 
 @pytest.mark.unit

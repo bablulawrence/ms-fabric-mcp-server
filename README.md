@@ -133,11 +133,11 @@ Copy `.env.example` to `.env` and customize as needed.
 
 ## Available Tools
 
-The server provides **25 core tools**, with **3 additional SQL tools** when installed with `[sql]` extras (28 total).
+The server provides **24 core tools**, with **3 additional SQL tools** when installed with `[sql]` extras (27 total).
 
 | Tool Group | Count | Tools |
 |------------|-------|-------|
-| **Workspace** | 2 | `list_workspaces`, `create_workspace` |
+| **Workspace** | 1 | `list_workspaces` |
 | **Item** | 2 | `list_items`, `delete_item` |
 | **Notebook** | 6 | `import_notebook_to_fabric`, `get_notebook_content`, `attach_lakehouse_to_notebook`, `get_notebook_execution_details`, `list_notebook_executions`, `get_notebook_driver_logs` |
 | **Job** | 4 | `run_on_demand_job`, `get_job_status`, `get_job_status_by_url`, `get_operation_result` |
@@ -160,7 +160,7 @@ sudo apt-get update
 sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
 ```
 
-If `pyodbc` is not available, the server starts with 25 tools (SQL tools disabled).
+If `pyodbc` is not available, the server starts with 24 tools (SQL tools disabled).
 
 ## Development
 

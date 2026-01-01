@@ -5,7 +5,7 @@
 ### Section 1: Goals, Scope, and Constraints
 We are designing a live integration test suite for ms-fabric-mcp-server that exercises each MCP tool end-to-end against real Fabric resources. The tests are opt-in: they run only when the `integration` marker is selected and `FABRIC_INTEGRATION_TESTS=1` is set. We keep integration tests under `tests/` with `@pytest.mark.integration` (no separate test suite). Tests invoke tool functions directly via a FastMCP instance rather than running a stdio server process, which keeps coverage of the tool/service stack while minimizing flakiness.
 
-Key resources are pre-provisioned and supplied via env vars: the target workspace (`FABRIC_TEST_WORKSPACE_NAME`), lakehouse (`FABRIC_TEST_LAKEHOUSE_NAME`), and optional pipeline copy inputs (`FABRIC_TEST_SOURCE_CONNECTION_ID`, `FABRIC_TEST_SOURCE_TYPE`, `FABRIC_TEST_SOURCE_SCHEMA`, `FABRIC_TEST_SOURCE_TABLE`, `FABRIC_TEST_DEST_CONNECTION_ID`). The destination table name defaults to the source table name, with an optional override via `FABRIC_TEST_DEST_TABLE_NAME`. Tests create and delete their own items (notebooks/pipelines) inside that workspace using MCP tools where possible, falling back to services only when a tool does not exist. There is no temp workspace. The `create_workspace` tool is not tested because it is slated for removal.
+Key resources are pre-provisioned and supplied via env vars: the target workspace (`FABRIC_TEST_WORKSPACE_NAME`), lakehouse (`FABRIC_TEST_LAKEHOUSE_NAME`), and optional pipeline copy inputs (`FABRIC_TEST_SOURCE_CONNECTION_ID`, `FABRIC_TEST_SOURCE_TYPE`, `FABRIC_TEST_SOURCE_SCHEMA`, `FABRIC_TEST_SOURCE_TABLE`, `FABRIC_TEST_DEST_CONNECTION_ID`). The destination table name defaults to the source table name, with an optional override via `FABRIC_TEST_DEST_TABLE_NAME`. Tests create and delete their own items (notebooks/pipelines) inside that workspace using MCP tools where possible, falling back to services only when a tool does not exist. There is no temp workspace. The `create_workspace` tool has been removed and is not part of the integration test coverage.
 
 SQL tools use the lakehouse SQL endpoint. `execute_sql_query` runs a harmless query; `execute_sql_statement` is called with a non‑DML statement and should return an error response (per preference to avoid DML). SQL tests are included only if optional dependencies (pyodbc + driver) are present.
 
@@ -58,7 +58,6 @@ README will include a concise “Integration tests” section with prerequisites
 - Tests are opt‑in: run only when `FABRIC_INTEGRATION_TESTS=1` and `-m integration`.
 - No workspace creation/deletion; only test‑created items are deleted.
 - Pre‑provisioned workspace and lakehouse are required via env vars.
-- `create_workspace` tool is excluded from testing.
 
 Tool coverage:
 - Workspace: `list_workspaces` returns success and includes configured workspace name.
