@@ -433,6 +433,7 @@ class FabricPipelineService:
             "SqlServerSource": "SqlServerTable",
             "MySqlSource": "MySqlTable",
             "OracleSource": "OracleTable",
+            "LakehouseTableSource": "LakehouseTable",
         }
         
         # Try to get the dataset type from mapping, or derive it
