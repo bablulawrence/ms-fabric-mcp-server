@@ -207,9 +207,15 @@ class JobStatusResult(FabricOperationResult):
         status: Operation status
         message: Result message
         job: Job details and current status
+        job_instance_id: ID of the job instance when available
+        location_url: Location URL to poll for job status
+        retry_after: Suggested retry interval in seconds
     """
     
     job: Optional[FabricJob] = Field(default=None, description="Job details and current status")
+    job_instance_id: Optional[str] = Field(default=None, description="ID of the job instance")
+    location_url: Optional[str] = Field(default=None, description="Location URL to poll for job status")
+    retry_after: Optional[int] = Field(default=None, description="Suggested retry interval in seconds")
     
     model_config = ConfigDict(from_attributes=True)
 

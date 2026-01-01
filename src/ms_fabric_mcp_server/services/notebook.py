@@ -608,29 +608,36 @@ class FabricNotebookService:
             )
             
             # Convert JobStatusResult to ExecuteNotebookResult for backward compatibility
-            if job_result.status == "success" and job_result.job:
+            if job_result.status == "success":
+                if job_result.job:
+                    return ExecuteNotebookResult(
+                        status="success",
+                        job_instance_id=job_result.job.job_instance_id,
+                        item_id=job_result.job.item_id,
+                        job_type=job_result.job.job_type,
+                        invoke_type=job_result.job.invoke_type,
+                        job_status=job_result.job.status,
+                        root_activity_id=job_result.job.root_activity_id,
+                        start_time_utc=job_result.job.start_time_utc,
+                        end_time_utc=job_result.job.end_time_utc,
+                        failure_reason=job_result.job.failure_reason,
+                        message=job_result.message,
+                        # Legacy fields for backward compatibility
+                        final_state=job_result.job.status,
+                        started_utc=job_result.job.start_time_utc,
+                        finished_utc=job_result.job.end_time_utc
+                    )
+
                 return ExecuteNotebookResult(
                     status="success",
-                    job_instance_id=job_result.job.job_instance_id,
-                    item_id=job_result.job.item_id,
-                    job_type=job_result.job.job_type,
-                    invoke_type=job_result.job.invoke_type,
-                    job_status=job_result.job.status,
-                    root_activity_id=job_result.job.root_activity_id,
-                    start_time_utc=job_result.job.start_time_utc,
-                    end_time_utc=job_result.job.end_time_utc,
-                    failure_reason=job_result.job.failure_reason,
-                    message=job_result.message,
-                    # Legacy fields for backward compatibility
-                    final_state=job_result.job.status,
-                    started_utc=job_result.job.start_time_utc,
-                    finished_utc=job_result.job.end_time_utc
+                    job_instance_id=job_result.job_instance_id,
+                    message=job_result.message
                 )
-            else:
-                return ExecuteNotebookResult(
-                    status="error",
-                    message=job_result.message or "Unknown error occurred"
-                )
+
+            return ExecuteNotebookResult(
+                status="error",
+                message=job_result.message or "Unknown error occurred"
+            )
             
         except Exception as exc:
             logger.error(f"Unexpected error during notebook execution: {exc}")

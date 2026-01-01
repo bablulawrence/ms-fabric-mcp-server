@@ -7,7 +7,7 @@ import pytest
 from ms_fabric_mcp_server.client.exceptions import FabricAPIError, FabricItemNotFoundError
 from ms_fabric_mcp_server.models.item import FabricItem
 from ms_fabric_mcp_server.models.job import FabricJob
-from ms_fabric_mcp_server.models.results import JobStatusResult
+from ms_fabric_mcp_server.models.results import JobStatusResult, RunJobResult
 
 
 def _make_response(status_code=200, json_data=None, headers=None):
@@ -52,7 +52,10 @@ class TestFabricJobService:
     def test_run_on_demand_job_success(self, job_service, mock_fabric_client):
         """Run on-demand job parses headers and job ID."""
         headers = {
-            "Location": "https://api.fabric.microsoft.com/v1/workspaces/ws-123/items/item-123/jobs/instances/job-999",
+            "Location": (
+                "https://api.fabric.microsoft.com/v1/workspaces/ws-123/items/item-123/"
+                "jobs/instances/job-999?api-version=2023-11-01"
+            ),
             "Retry-After": "15",
         }
         response = _make_response(202, json_data={}, headers=headers)
@@ -196,6 +199,28 @@ class TestFabricJobService:
 
         assert result.status == "error"
         assert "Location" in result.message
+
+    def test_run_notebook_job_no_wait_returns_job_id(self, job_service):
+        """run_notebook_job(wait=False) surfaces job instance metadata."""
+        run_result = RunJobResult(
+            status="success",
+            job_instance_id="job-123",
+            location_url="https://api.fabric.microsoft.com/v1/workspaces/ws/items/item/jobs/instances/job-123",
+            retry_after=10,
+            message="ok",
+        )
+
+        with patch.object(job_service, "run_on_demand_job", return_value=run_result):
+            result = job_service.run_notebook_job(
+                workspace_name="Workspace",
+                notebook_name="Notebook",
+                wait=False,
+            )
+
+        assert result.status == "success"
+        assert result.job_instance_id == "job-123"
+        assert result.location_url == run_result.location_url
+        assert result.retry_after == 10
 
     def test_wait_for_job_completion_success(self, job_service):
         """Wait for completion stops on terminal status."""
