@@ -3,7 +3,7 @@
 import pytest
 
 from ms_fabric_mcp_server.client import FabricConfig, FabricClient
-from ms_fabric_mcp_server.services import FabricItemService, FabricWorkspaceService
+from ms_fabric_mcp_server.services import FabricWorkspaceService
 from tests.conftest import unique_name
 
 
@@ -45,12 +45,44 @@ async def test_get_operation_result_from_async_call(
         config = FabricConfig.from_environment()
         client = FabricClient(config)
         workspace_service = FabricWorkspaceService(client)
-        item_service = FabricItemService(client)
-
         workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+
+        async def _wait_for_operation(operation_id: str, timeout_seconds: int = 300):
+            async def _check():
+                try:
+                    status_response = client.make_api_request("GET", f"operations/{operation_id}")
+                    status_payload = status_response.json()
+                except Exception:
+                    return None
+                status_value = str(status_payload.get("status", "")).lower()
+                if status_value in {"succeeded", "failed", "canceled", "cancelled"}:
+                    return status_payload
+                return None
+
+            return await poll_until(_check, timeout_seconds=timeout_seconds, interval_seconds=10)
+
         async def _get_definition():
             try:
-                return item_service.get_item_definition(workspace_id, pipeline_id)
+                response = client.make_api_request(
+                    "POST",
+                    f"workspaces/{workspace_id}/items/{pipeline_id}/getDefinition",
+                )
+                if response.status_code == 202:
+                    operation_id = response.headers.get("x-ms-operation-id")
+                    if not operation_id:
+                        return None
+                    status_payload = await _wait_for_operation(operation_id, timeout_seconds=300)
+                    if not status_payload:
+                        return None
+                    status_value = str(status_payload.get("status", "")).lower()
+                    if status_value != "succeeded":
+                        raise AssertionError(f"getDefinition operation failed: {status_payload}")
+                    result_response = client.make_api_request(
+                        "GET",
+                        f"operations/{operation_id}/result",
+                    )
+                    return result_response.json()
+                return response.json()
             except Exception:
                 return None
 
@@ -68,6 +100,13 @@ async def test_get_operation_result_from_async_call(
         operation_id = response.headers.get("x-ms-operation-id")
         if not operation_id:
             pytest.skip("No x-ms-operation-id header returned (synchronous completion)")
+
+        if response.status_code == 202:
+            status_payload = await _wait_for_operation(operation_id, timeout_seconds=300)
+            if not status_payload:
+                pytest.skip("Operation did not complete within timeout")
+            status_value = str(status_payload.get("status", "")).lower()
+            assert status_value == "succeeded", f"Operation failed: {status_payload}"
 
         op_result = await call_tool("get_operation_result", operation_id=operation_id)
         assert op_result["status"] == "success"

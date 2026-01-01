@@ -56,6 +56,10 @@ async def test_notebook_tool_flow(
         assert job_instance_id
         assert location_url
 
+        def _is_transient_job_error(result: dict) -> bool:
+            message = (result.get("message") or "").lower()
+            return any(token in message for token in ("not found", "404", "does not exist", "not yet"))
+
         async def _wait_for_job():
             status_result = await call_tool(
                 "get_job_status",
@@ -65,6 +69,8 @@ async def test_notebook_tool_flow(
                 job_instance_id=job_instance_id,
             )
             if status_result.get("status") != "success":
+                if _is_transient_job_error(status_result):
+                    return None
                 return status_result
             job = status_result.get("job", {})
             if job.get("is_terminal"):

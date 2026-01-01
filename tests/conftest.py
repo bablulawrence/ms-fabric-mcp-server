@@ -326,7 +326,7 @@ def poll_until():
     return _poll_until
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def mcp_server():
     """Create a real FastMCP server with Fabric tools registered."""
     from fastmcp import FastMCP
@@ -337,7 +337,7 @@ def mcp_server():
     return mcp
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 async def tool_registry(mcp_server):
     """Return the registered tool mapping once per session."""
     return await mcp_server.get_tools()
