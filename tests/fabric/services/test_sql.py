@@ -19,13 +19,13 @@ def sql_module():
 
 @pytest.fixture
 def sql_service(mock_fabric_client, sql_module, monkeypatch):
-    """Create SQL service with patched pyodbc and AzureCliCredential."""
+    """Create SQL service with patched pyodbc and DefaultAzureCredential."""
     monkeypatch.setattr(sql_module, "PYODBC_AVAILABLE", True)
     monkeypatch.setattr(sql_module, "OTEL_AVAILABLE", False)
     pyodbc_mock = Mock()
     monkeypatch.setattr(sql_module, "pyodbc", pyodbc_mock)
     azure_cred_mock = Mock()
-    monkeypatch.setattr(sql_module, "AzureCliCredential", azure_cred_mock)
+    monkeypatch.setattr(sql_module, "DefaultAzureCredential", azure_cred_mock)
 
     workspace_service = Mock()
     item_service = Mock()

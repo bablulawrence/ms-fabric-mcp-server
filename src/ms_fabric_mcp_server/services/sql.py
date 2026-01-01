@@ -8,12 +8,12 @@ from itertools import chain, repeat
 from typing import Any, Dict, List, Optional
 
 try:
-    from azure.identity import AzureCliCredential
+    from azure.identity import DefaultAzureCredential
     import pyodbc
     PYODBC_AVAILABLE = True
 except ImportError:
     PYODBC_AVAILABLE = False
-    AzureCliCredential = None
+    DefaultAzureCredential = None
     pyodbc = None
 
 from ..client.exceptions import FabricConnectionError, FabricError, FabricItemNotFoundError
@@ -253,7 +253,7 @@ class FabricSQLService:
             FabricConnectionError: If authentication fails
         """
         try:
-            credential = AzureCliCredential()
+            credential = DefaultAzureCredential()
             token = credential.get_token("https://database.windows.net/.default")
             
             # ODBC token must be a Windows-style byte string, padded with zero bytes

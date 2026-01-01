@@ -108,7 +108,7 @@ This document is the **source of truth** for the testing effort. It captures all
 
 **Important constraints**
 - `pyodbc` is optional; tests must work even if it is not installed.
-- Patch `pyodbc` and `AzureCliCredential` where needed.
+- Patch `pyodbc` and `DefaultAzureCredential` where needed.
 
 **Tests**
 - `__init__`
@@ -119,7 +119,7 @@ This document is the **source of truth** for the testing effort. It captures all
   - Invalid `item_type` → `ValueError`.
   - Missing connection string → `FabricError`.
 - `_get_token_bytes`
-  - Success: returns bytes with length prefix (mock AzureCliCredential token).
+  - Success: returns bytes with length prefix (mock DefaultAzureCredential token).
   - Failure: raises `FabricConnectionError`.
 - `connect`
   - Appends `,1433` when port is absent.
