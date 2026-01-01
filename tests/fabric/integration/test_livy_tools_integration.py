@@ -56,6 +56,32 @@ async def test_livy_session_lifecycle(call_tool, lakehouse_id, workspace_id):
         )
         assert statement_status.get("state") == "available"
 
+    finally:
+        if session_id:
+            await call_tool(
+                "livy_close_session",
+                workspace_id=workspace_id,
+                lakehouse_id=lakehouse_id,
+                session_id=session_id,
+            )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_livy_session_logs(call_tool, lakehouse_id, workspace_id):
+    session_id = None
+
+    try:
+        create_result = await call_tool(
+            "livy_create_session",
+            workspace_id=workspace_id,
+            lakehouse_id=lakehouse_id,
+            with_wait=True,
+        )
+        assert create_result.get("status") != "error"
+        session_id = str(create_result.get("id"))
+        assert session_id is not None
+
         log_result = await call_tool(
             "livy_get_session_log",
             workspace_id=workspace_id,
