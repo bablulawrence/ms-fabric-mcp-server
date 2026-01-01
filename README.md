@@ -188,6 +188,11 @@ mypy src
 
 Integration tests run against live Fabric resources and are opt-in.
 
+To get started locally, copy the example env file:
+```bash
+cp .env.integration.example .env.integration
+```
+
 Required environment variables:
 - `FABRIC_INTEGRATION_TESTS=1`
 - `FABRIC_TEST_WORKSPACE_NAME`
