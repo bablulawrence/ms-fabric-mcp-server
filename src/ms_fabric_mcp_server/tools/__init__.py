@@ -40,7 +40,7 @@ def register_fabric_tools(mcp: "FastMCP"):
     It initializes the service hierarchy and registers all tool categories.
     
     Tool Categories:
-    - Workspace tools (2): list_workspaces, create_workspace
+    - Workspace tools (1): list_workspaces
     - Item tools (2): list_items, delete_item
     - Notebook tools (6): import_notebook_to_fabric, get_notebook_content, attach_lakehouse_to_notebook, get_notebook_execution_details, list_notebook_executions, get_notebook_driver_logs
     - Job tools (4): run_on_demand_job, get_job_status, get_job_status_by_url, get_operation_result
@@ -107,7 +107,7 @@ def register_fabric_tools(mcp: "FastMCP"):
     register_livy_tools(mcp, livy_service)
     register_pipeline_tools(mcp, pipeline_service, workspace_service, item_service)
     
-    tool_count = 28 if sql_service else 25  # 3 SQL tools
+    tool_count = 27 if sql_service else 24  # 3 SQL tools
     logger.info(f"All Fabric tools registered successfully ({tool_count} tools)")
 
 

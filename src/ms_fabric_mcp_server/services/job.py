@@ -149,7 +149,9 @@ class FabricJobService:
             job_instance_id = None
             if location_url:
                 try:
-                    job_instance_id = location_url.rstrip("/").split("/")[-1]
+                    parsed_url = urlparse(location_url)
+                    path = parsed_url.path.rstrip("/")
+                    job_instance_id = path.split("/")[-1] if path else None
                 except (IndexError, AttributeError):
                     logger.warning(
                         f"Could not extract job instance ID from location: {location_url}"
@@ -616,9 +618,15 @@ class FabricJobService:
         
         if not wait:
             # Return immediate status
+            message = "Notebook job started."
+            if run_result.job_instance_id:
+                message = f"Notebook job started. Job ID: {run_result.job_instance_id}"
             return JobStatusResult(
                 status="success",
-                message=f"Notebook job started. Job ID: {run_result.job_instance_id}"
+                message=message,
+                job_instance_id=run_result.job_instance_id,
+                location_url=run_result.location_url,
+                retry_after=run_result.retry_after,
             )
         
         # Wait for completion

@@ -1,8 +1,12 @@
 """Pytest configuration and shared fixtures for ms-fabric-mcp-server tests."""
 
-import sys
-import pytest
+import asyncio
 import os
+import sys
+import time
+import uuid
+import pytest
+import pytest_asyncio
 from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
 from typing import Dict, Any
@@ -19,8 +23,10 @@ if str(SRC_PATH) not in sys.path:
 # ============================================================================
 
 @pytest.fixture(autouse=True)
-def mock_environment(monkeypatch):
+def mock_environment(monkeypatch, request):
     """Set up test environment variables for all tests."""
+    if request.node.get_closest_marker("integration"):
+        return
     # Clear any existing environment that might interfere
     env_vars_to_clear = [
         "APPLICATIONINSIGHTS_CONNECTION_STRING",
@@ -260,3 +266,200 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "unit: Unit tests (fast, no external dependencies)")
     config.addinivalue_line("markers", "integration: Integration tests (require live services)")
     config.addinivalue_line("markers", "slow: Slow running tests")
+
+
+# ============================================================================
+# Integration Test Fixtures
+# ============================================================================
+
+@pytest.fixture(autouse=True)
+def integration_enabled(request):
+    """Gate integration tests behind marker and env var."""
+    if not request.node.get_closest_marker("integration"):
+        return
+
+    if os.getenv("FABRIC_INTEGRATION_TESTS") != "1":
+        pytest.skip("Integration tests require FABRIC_INTEGRATION_TESTS=1")
+
+
+def get_env_or_skip(name: str, allow_empty: bool = False) -> str:
+    """Return env var value or skip with a clear message."""
+    value = os.getenv(name)
+    if value is None or (not allow_empty and not value.strip()):
+        pytest.skip(f"Missing required environment variable: {name}")
+    return value
+
+
+def get_env_optional(name: str) -> str | None:
+    """Return env var value or None if missing."""
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return None
+    return value
+
+
+def unique_name(prefix: str) -> str:
+    """Generate a unique name for live test items."""
+    timestamp = time.strftime("%Y%m%d%H%M%S", time.gmtime())
+    suffix = uuid.uuid4().hex[:8]
+    return f"{prefix}_{timestamp}_{suffix}"
+
+
+async def _poll_until(check_fn, timeout_seconds: int = 300, interval_seconds: int = 10):
+    """Poll until check_fn returns a truthy value or timeout expires."""
+    deadline = time.monotonic() + timeout_seconds
+    last_result = None
+    while time.monotonic() < deadline:
+        last_result = await check_fn()
+        if last_result:
+            return last_result
+        await asyncio.sleep(interval_seconds)
+    return last_result
+
+
+@pytest.fixture
+def poll_until():
+    """Fixture wrapper for poll_until helper."""
+    return _poll_until
+
+
+@pytest.fixture(scope="session")
+def mcp_server():
+    """Create a real FastMCP server with Fabric tools registered."""
+    from fastmcp import FastMCP
+    from ms_fabric_mcp_server import register_fabric_tools
+
+    mcp = FastMCP("integration-tests")
+    register_fabric_tools(mcp)
+    return mcp
+
+
+@pytest_asyncio.fixture(scope="session")
+async def tool_registry(mcp_server):
+    """Return the registered tool mapping once per session."""
+    return await mcp_server.get_tools()
+
+
+@pytest.fixture
+def call_tool(tool_registry):
+    """Invoke a tool by name and return structured content."""
+    async def _call(tool_name: str, **kwargs):
+        tool = tool_registry.get(tool_name)
+        if tool is None:
+            raise AssertionError(f"Tool not registered: {tool_name}")
+        result = await tool.run(kwargs)
+        structured = result.structured_content
+        if structured is None:
+            raise AssertionError(f"Tool returned no structured content: {tool_name}")
+        return structured
+
+    return _call
+
+
+@pytest.fixture
+def workspace_name():
+    """Configured workspace display name."""
+    return get_env_or_skip("FABRIC_TEST_WORKSPACE_NAME")
+
+
+@pytest.fixture
+def lakehouse_name():
+    """Configured lakehouse display name."""
+    return get_env_or_skip("FABRIC_TEST_LAKEHOUSE_NAME")
+
+
+@pytest.fixture
+def sql_database():
+    """Configured SQL database name."""
+    return get_env_or_skip("FABRIC_TEST_SQL_DATABASE")
+
+
+@pytest.fixture
+def notebook_fixture_path() -> Path:
+    """Path to the minimal notebook fixture."""
+    return PROJECT_ROOT / "tests" / "fixtures" / "minimal_notebook.ipynb"
+
+
+@pytest_asyncio.fixture
+async def workspace_id(call_tool, workspace_name):
+    """Resolve workspace ID from display name."""
+    result = await call_tool("list_workspaces")
+    if result.get("status") != "success":
+        raise AssertionError(f"Failed to list workspaces: {result}")
+    for workspace in result.get("workspaces", []):
+        if workspace.get("display_name") == workspace_name:
+            return workspace.get("id")
+    pytest.skip(f"Workspace not found: {workspace_name}")
+
+
+@pytest_asyncio.fixture
+async def lakehouse_id(call_tool, workspace_name, lakehouse_name):
+    """Resolve lakehouse ID from display name."""
+    result = await call_tool("list_items", workspace_name=workspace_name, item_type="Lakehouse")
+    if result.get("status") != "success":
+        raise AssertionError(f"Failed to list lakehouses: {result}")
+    for item in result.get("items", []):
+        if item.get("display_name") == lakehouse_name:
+            return item.get("id")
+    pytest.skip(f"Lakehouse not found: {lakehouse_name}")
+
+
+@pytest.fixture
+def pipeline_copy_inputs():
+    """Optional pipeline copy inputs from env vars."""
+    source_connection_id = get_env_optional("FABRIC_TEST_SOURCE_CONNECTION_ID")
+    source_type = get_env_optional("FABRIC_TEST_SOURCE_TYPE")
+    source_schema = get_env_optional("FABRIC_TEST_SOURCE_SCHEMA")
+    source_table = get_env_optional("FABRIC_TEST_SOURCE_TABLE")
+    dest_connection_id = get_env_optional("FABRIC_TEST_DEST_CONNECTION_ID")
+    dest_table = get_env_optional("FABRIC_TEST_DEST_TABLE_NAME") or source_table
+
+    if not all([
+        source_connection_id,
+        source_type,
+        source_schema,
+        source_table,
+        dest_connection_id,
+        dest_table,
+    ]):
+        return None
+
+    return {
+        "source_connection_id": source_connection_id,
+        "source_type": source_type,
+        "source_schema": source_schema,
+        "source_table": source_table,
+        "destination_connection_id": dest_connection_id,
+        "destination_table": dest_table,
+    }
+
+
+@pytest.fixture
+def sql_dependencies_available(tool_registry):
+    """Skip SQL tests if dependencies or tools are unavailable."""
+    pyodbc = pytest.importorskip("pyodbc")
+    drivers = [driver.lower() for driver in pyodbc.drivers()]
+    if not any("odbc driver" in driver and "sql server" in driver for driver in drivers):
+        pytest.skip("SQL tests require a SQL Server ODBC driver")
+    if "get_sql_endpoint" not in tool_registry:
+        pytest.skip("SQL tools are not registered (pyodbc missing?)")
+    return True
+
+
+@pytest.fixture
+def delete_item_if_exists(call_tool, workspace_name):
+    """Delete an item and ignore not-found errors."""
+    async def _delete(item_display_name: str, item_type: str):
+        result = await call_tool(
+            "delete_item",
+            workspace_name=workspace_name,
+            item_display_name=item_display_name,
+            item_type=item_type,
+        )
+        if result.get("status") == "error":
+            message = (result.get("message") or "").lower()
+            if "not found" not in message:
+                raise AssertionError(f"Failed to delete {item_type} '{item_display_name}': {result}")
+        return result
+
+    return _delete

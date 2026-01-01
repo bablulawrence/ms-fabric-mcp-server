@@ -510,7 +510,8 @@ def register_livy_tools(mcp: "FastMCP", livy_service: FabricLivyService):
             size: Number of log lines to retrieve (default: 500).
             
         Returns:
-            Dictionary with log data: {"id": <int>, "from": <int>, "size": <int>, "log": ["line1", ...]}.
+            Dictionary with log content and metadata:
+            {"status": "success", "log_content": "<text>", "log_size_bytes": <int>, "offset": <int>, "size": <int>}.
             
         Example:
             ```python
@@ -544,7 +545,8 @@ def register_livy_tools(mcp: "FastMCP", livy_service: FabricLivyService):
                 size=size
             )
             
-            log_count = len(result.get("log", []))
+            log_content = result.get("log_content", "")
+            log_count = len(log_content.splitlines()) if log_content else 0
             logger.debug(f"Retrieved {log_count} log lines for session {session_id}")
             return result
             

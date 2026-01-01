@@ -1,0 +1,46 @@
+name: Integration Tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: Integration
+    env:
+      FABRIC_INTEGRATION_TESTS: "1"
+      FABRIC_TEST_WORKSPACE_NAME: ${{ secrets.FABRIC_TEST_WORKSPACE_NAME }}
+      FABRIC_TEST_LAKEHOUSE_NAME: ${{ secrets.FABRIC_TEST_LAKEHOUSE_NAME }}
+      FABRIC_TEST_SQL_DATABASE: ${{ secrets.FABRIC_TEST_SQL_DATABASE }}
+      FABRIC_TEST_SOURCE_CONNECTION_ID: ${{ secrets.FABRIC_TEST_SOURCE_CONNECTION_ID }}
+      FABRIC_TEST_SOURCE_TYPE: ${{ secrets.FABRIC_TEST_SOURCE_TYPE }}
+      FABRIC_TEST_SOURCE_SCHEMA: ${{ secrets.FABRIC_TEST_SOURCE_SCHEMA }}
+      FABRIC_TEST_SOURCE_TABLE: ${{ secrets.FABRIC_TEST_SOURCE_TABLE }}
+      FABRIC_TEST_DEST_CONNECTION_ID: ${{ secrets.FABRIC_TEST_DEST_CONNECTION_ID }}
+      FABRIC_TEST_DEST_TABLE_NAME: ${{ secrets.FABRIC_TEST_DEST_TABLE_NAME }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install ODBC driver
+        run: |
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,sql,telemetry]"
+
+      - name: Run integration tests
+        run: |
+          pytest -m integration

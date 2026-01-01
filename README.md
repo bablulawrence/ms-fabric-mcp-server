@@ -133,11 +133,11 @@ Copy `.env.example` to `.env` and customize as needed.
 
 ## Available Tools
 
-The server provides **25 core tools**, with **3 additional SQL tools** when installed with `[sql]` extras (28 total).
+The server provides **24 core tools**, with **3 additional SQL tools** when installed with `[sql]` extras (27 total).
 
 | Tool Group | Count | Tools |
 |------------|-------|-------|
-| **Workspace** | 2 | `list_workspaces`, `create_workspace` |
+| **Workspace** | 1 | `list_workspaces` |
 | **Item** | 2 | `list_items`, `delete_item` |
 | **Notebook** | 6 | `import_notebook_to_fabric`, `get_notebook_content`, `attach_lakehouse_to_notebook`, `get_notebook_execution_details`, `list_notebook_executions`, `get_notebook_driver_logs` |
 | **Job** | 4 | `run_on_demand_job`, `get_job_status`, `get_job_status_by_url`, `get_operation_result` |
@@ -160,7 +160,7 @@ sudo apt-get update
 sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
 ```
 
-If `pyodbc` is not available, the server starts with 25 tools (SQL tools disabled).
+If `pyodbc` is not available, the server starts with 24 tools (SQL tools disabled).
 
 ## Development
 
@@ -183,6 +183,35 @@ isort src tests
 # Type checking
 mypy src
 ```
+
+### Integration tests
+
+Integration tests run against live Fabric resources and are opt-in.
+
+Required environment variables:
+- `FABRIC_INTEGRATION_TESTS=1`
+- `FABRIC_TEST_WORKSPACE_NAME`
+- `FABRIC_TEST_LAKEHOUSE_NAME`
+- `FABRIC_TEST_SQL_DATABASE`
+
+Optional pipeline copy inputs:
+- `FABRIC_TEST_SOURCE_CONNECTION_ID`
+- `FABRIC_TEST_SOURCE_TYPE`
+- `FABRIC_TEST_SOURCE_SCHEMA`
+- `FABRIC_TEST_SOURCE_TABLE`
+- `FABRIC_TEST_DEST_CONNECTION_ID`
+- `FABRIC_TEST_DEST_TABLE_NAME` (optional override; defaults to source table name)
+
+Run integration tests:
+
+```bash
+FABRIC_INTEGRATION_TESTS=1 pytest
+```
+
+Notes:
+- SQL tests require `pyodbc` and a SQL Server ODBC driver.
+- Tests may skip when optional dependencies or environment variables are missing.
+- These tests use live Fabric resources and may incur costs or side effects.
 
 ## License
 

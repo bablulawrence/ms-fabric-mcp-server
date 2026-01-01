@@ -222,6 +222,18 @@ class TestFabricSQLService:
         assert result["affected_rows"] == 3
         connection.commit.assert_called_once()
 
+    def test_execute_statement_rejects_non_dml(self, sql_service):
+        """execute_statement returns error for non-DML statements."""
+        service, *_ = sql_service
+        connection = Mock()
+        connection.cursor.return_value = Mock()
+        service._connection = connection
+
+        result = service.execute_statement("SELECT 1")
+
+        assert result["status"] == "error"
+        assert result["affected_rows"] == 0
+
     def test_execute_statement_failure(self, sql_service):
         """execute_statement rolls back on error."""
         service, *_ = sql_service

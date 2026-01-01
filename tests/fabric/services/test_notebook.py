@@ -509,6 +509,17 @@ class TestFabricNotebookService:
         assert result.status == "error"
         assert result.message == "boom"
 
+    def test_execute_notebook_wait_false_success(self, notebook_service):
+        """Execute notebook succeeds when wait=False returns job metadata."""
+        job_result = JobStatusResult(status="success", job_instance_id="job-2", message="started")
+
+        with patch("ms_fabric_mcp_server.services.job.FabricJobService") as mock_job_service:
+            mock_job_service.return_value.run_notebook_job.return_value = job_result
+            result = notebook_service.execute_notebook("Workspace", "Notebook", wait=False)
+
+        assert result.status == "success"
+        assert result.job_instance_id == "job-2"
+
     def test_execute_notebook_unexpected_error(self, notebook_service):
         """Execute notebook wraps unexpected exceptions."""
         with patch("ms_fabric_mcp_server.services.job.FabricJobService") as mock_job_service:

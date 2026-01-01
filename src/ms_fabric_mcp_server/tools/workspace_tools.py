@@ -1,12 +1,12 @@
 # ABOUTME: Workspace management MCP tools for Microsoft Fabric.
-# ABOUTME: Provides list_workspaces and create_workspace tools.
+# ABOUTME: Provides list_workspaces tool.
 """Workspace management MCP tools.
 
 This module provides MCP tools for Microsoft Fabric workspace operations including
-listing and creating workspaces.
+listing workspaces.
 """
 
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 import logging
 
 if TYPE_CHECKING:
@@ -23,7 +23,6 @@ def register_workspace_tools(mcp: "FastMCP", workspace_service: FabricWorkspaceS
     
     This function registers workspace-related tools:
     - list_workspaces: List all accessible workspaces
-    - create_workspace: Create a new workspace
     
     Args:
         mcp: FastMCP server instance to register tools on.
@@ -87,60 +86,4 @@ def register_workspace_tools(mcp: "FastMCP", workspace_service: FabricWorkspaceS
         logger.info(f"Found {len(workspaces)} workspaces")
         return result
 
-    @mcp.tool(title="Create Workspace")
-    @handle_tool_errors
-    def create_workspace(
-        display_name: str,
-        description: Optional[str] = None,
-        capacity_id: Optional[str] = None
-    ) -> dict:
-        """Create a new workspace in Microsoft Fabric.
-        
-        Creates a new Fabric workspace with the specified name and optional description
-        and capacity assignment. The workspace will be created in the default region
-        unless a capacity ID is specified.
-        
-        Parameters:
-            display_name: Name for the new workspace (required).
-            description: Optional description for the workspace.
-            capacity_id: Optional capacity ID to assign to the workspace.
-            
-        Returns:
-            Dictionary with status, created workspace details, and success message.
-            
-        Example:
-            ```python
-            result = create_workspace(
-                display_name="My Data Workspace",
-                description="Workspace for data analysis projects",
-                capacity_id="12345678-1234-1234-1234-123456789abc"
-            )
-            ```
-        """
-        log_tool_invocation("create_workspace", display_name=display_name, 
-                          description=description, capacity_id=capacity_id)
-        logger.info(f"Creating workspace '{display_name}'")
-        
-        workspace = workspace_service.create_workspace(
-            display_name=display_name,
-            description=description,
-            capacity_id=capacity_id
-        )
-        
-        result = {
-            "status": "success",
-            "workspace": {
-                "id": workspace.id,
-                "display_name": workspace.display_name,
-                "description": workspace.description,
-                "type": workspace.type,
-                "state": workspace.state,
-                "capacity_id": workspace.capacity_id,
-            },
-            "message": f"Workspace '{display_name}' created successfully"
-        }
-        
-        logger.info(f"Successfully created workspace '{display_name}' with ID: {workspace.id}")
-        return result
-
-    logger.info("Workspace tools registered successfully (2 tools)")
+    logger.info("Workspace tools registered successfully (1 tool)")

@@ -21,3 +21,4 @@ venv/
 .worktrees/ 
 asa-lib
 /dist
+.env.integration

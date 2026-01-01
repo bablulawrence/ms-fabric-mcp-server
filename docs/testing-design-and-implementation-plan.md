@@ -196,7 +196,6 @@ This document is the **source of truth** for the testing effort. It captures all
 - `list_workspaces` maps JSON into `FabricWorkspace` objects.
 - `get_workspace_by_name` returns match; raises not found.
 - `resolve_workspace_id` accepts ID or name and returns ID.
-- `create_workspace` success + error mapping.
 - `delete_workspace` (if present in service) uses correct endpoint and error mapping.
 
 ## Coverage Enforcement Configuration
@@ -259,7 +258,7 @@ This document is the **source of truth** for the testing effort. It captures all
 - **Behavior decision**: `_get_source_dataset_type` remains permissive for unknown types (passthrough), while still mapping known types and deriving `Source` → `Table`.
 
 ### Phase 7: Workspace Service
-- Added coverage for API errors in `list_workspaces` and `create_workspace`.
+- Added coverage for API errors in `list_workspaces`.
 - Added `get_workspace_by_id` success/not-found coverage.
 - Verified `resolve_workspace_id` with ID vs name.
 - Added `delete_workspace` success/error coverage.
