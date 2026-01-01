@@ -414,6 +414,17 @@ class FabricSQLService:
             raise FabricConnectionError(
                 "Not connected to SQL endpoint. Call connect() first."
             )
+
+        if not self._is_dml_statement(statement):
+            message = (
+                "Only DML statements (INSERT, UPDATE, DELETE, MERGE) are supported."
+            )
+            logger.warning(message)
+            return {
+                "status": "error",
+                "affected_rows": 0,
+                "message": message,
+            }
         
         try:
             logger.info(f"Executing statement: {statement[:100]}...")
@@ -444,6 +455,16 @@ class FabricSQLService:
                 "affected_rows": 0,
                 "message": f"Statement execution failed: {exc}"
             }
+
+    @staticmethod
+    def _is_dml_statement(statement: str) -> bool:
+        """Return True if the statement starts with a DML keyword."""
+        if not statement:
+            return False
+        first_token = statement.lstrip().split(None, 1)
+        if not first_token:
+            return False
+        return first_token[0].upper() in {"INSERT", "UPDATE", "DELETE", "MERGE"}
     
     def execute_sql_query(
         self,

@@ -184,6 +184,35 @@ isort src tests
 mypy src
 ```
 
+### Integration tests
+
+Integration tests run against live Fabric resources and are opt-in.
+
+Required environment variables:
+- `FABRIC_INTEGRATION_TESTS=1`
+- `FABRIC_TEST_WORKSPACE_NAME`
+- `FABRIC_TEST_LAKEHOUSE_NAME`
+- `FABRIC_TEST_SQL_DATABASE`
+
+Optional pipeline copy inputs:
+- `FABRIC_TEST_SOURCE_CONNECTION_ID`
+- `FABRIC_TEST_SOURCE_TYPE`
+- `FABRIC_TEST_SOURCE_SCHEMA`
+- `FABRIC_TEST_SOURCE_TABLE`
+- `FABRIC_TEST_DEST_CONNECTION_ID`
+- `FABRIC_TEST_DEST_TABLE_NAME` (optional override; defaults to source table name)
+
+Run integration tests:
+
+```bash
+FABRIC_INTEGRATION_TESTS=1 pytest -m integration
+```
+
+Notes:
+- SQL tests require `pyodbc` and a SQL Server ODBC driver.
+- Tests may skip when optional dependencies or environment variables are missing.
+- These tests use live Fabric resources and may incur costs or side effects.
+
 ## License
 
 MIT
