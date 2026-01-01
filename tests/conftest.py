@@ -6,6 +6,7 @@ import sys
 import time
 import uuid
 import pytest
+import pytest_asyncio
 from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
 from typing import Dict, Any
@@ -337,7 +338,7 @@ def mcp_server():
     return mcp
 
 
-@pytest.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session")
 async def tool_registry(mcp_server):
     """Return the registered tool mapping once per session."""
     return await mcp_server.get_tools()
@@ -383,7 +384,7 @@ def notebook_fixture_path() -> Path:
     return PROJECT_ROOT / "tests" / "fixtures" / "minimal_notebook.ipynb"
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def workspace_id(call_tool, workspace_name):
     """Resolve workspace ID from display name."""
     result = await call_tool("list_workspaces")
@@ -395,7 +396,7 @@ async def workspace_id(call_tool, workspace_name):
     pytest.skip(f"Workspace not found: {workspace_name}")
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def lakehouse_id(call_tool, workspace_name, lakehouse_name):
     """Resolve lakehouse ID from display name."""
     result = await call_tool("list_items", workspace_name=workspace_name, item_type="Lakehouse")
