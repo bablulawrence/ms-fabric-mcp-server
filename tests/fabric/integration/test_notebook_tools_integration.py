@@ -28,11 +28,21 @@ async def test_notebook_tool_flow(
         )
         assert import_result["status"] == "success"
 
-        content_result = await call_tool(
-            "get_notebook_content",
-            workspace_name=workspace_name,
-            notebook_display_name=notebook_name,
-        )
+        async def _get_content():
+            result = await call_tool(
+                "get_notebook_content",
+                workspace_name=workspace_name,
+                notebook_display_name=notebook_name,
+            )
+            if result.get("status") == "success":
+                return result
+            message = (result.get("message") or "").lower()
+            if "not found" in message or "notfound" in message:
+                return None
+            return result
+
+        content_result = await poll_until(_get_content, timeout_seconds=300, interval_seconds=10)
+        assert content_result is not None
         assert content_result["status"] == "success"
 
         attach_result = await call_tool(
