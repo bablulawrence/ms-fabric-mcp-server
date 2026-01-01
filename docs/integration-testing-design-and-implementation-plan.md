@@ -40,7 +40,7 @@ Optional pipeline copy variables:
 - `FABRIC_TEST_DEST_CONNECTION_ID`
 - `FABRIC_TEST_DEST_TABLE_NAME` (optional override; defaults to source table name)
 
-Tests skip per‑feature when required env vars or dependencies are missing, rather than failing the entire suite. README documentation will explain prerequisites, env vars, and how to run the suite safely (`pytest -m integration`).
+Tests skip per‑feature when required env vars or dependencies are missing, rather than failing the entire suite. README documentation will explain prerequisites, env vars, and how to run the suite safely (`FABRIC_INTEGRATION_TESTS=1 pytest`).
 
 ### Section 5: Implementation Plan Preview
 1) Add integration scaffolding and env gating in `tests/conftest.py` plus helper functions/classes for gating, env var retrieval, tool invocation, and name generation.
@@ -49,13 +49,13 @@ Tests skip per‑feature when required env vars or dependencies are missing, rat
 4) Update `README.md` with integration test instructions, env vars, and skip behavior.
 
 ### Section 6: Documentation and Test Running
-README will include a concise “Integration tests” section with prerequisites (Fabric access + auth), required env vars, optional SQL dependencies, how to run (`pytest -m integration`), and skip behavior. It will also highlight that tests use live Fabric resources and may incur costs or side effects.
+README will include a concise “Integration tests” section with prerequisites (Fabric access + auth), required env vars, optional SQL dependencies, how to run (`FABRIC_INTEGRATION_TESTS=1 pytest`), and skip behavior. It will also highlight that tests use live Fabric resources and may incur costs or side effects.
 
 ## Specification
 
 ### Spec Section 1: Functional Requirements
 - Integration tests must exercise MCP tools end‑to‑end against live Fabric, without mocks.
-- Tests are opt‑in: run only when `FABRIC_INTEGRATION_TESTS=1` and `-m integration`.
+- Tests are opt‑in: run only when `FABRIC_INTEGRATION_TESTS=1`.
 - No workspace creation/deletion; only test‑created items are deleted.
 - Pre‑provisioned workspace and lakehouse are required via env vars.
 
@@ -141,9 +141,7 @@ Operation result:
 1) Update `tests/conftest.py` with integration scaffolding:
    - Add an autouse fixture (e.g., `integration_enabled`) that:
      - checks the test has the `integration` marker, and
-     - verifies `request.config.option.markexpr` includes `integration`,
-     - skips with a clear message if `-m integration` is not in use.
-   - Enforce `FABRIC_INTEGRATION_TESTS=1` in the same fixture; skip if missing or not `1`.
+     - enforces `FABRIC_INTEGRATION_TESTS=1`; skip if missing or not `1`.
    - Add env var helpers:
      - `get_env_or_skip(name, *, allow_empty=False)` returns the env var or skips if missing.
      - `get_env_optional(name)` returns the env var or `None` if missing.
@@ -235,5 +233,5 @@ Operation result:
    - Cleanup: delete the pipeline via `delete_item` in `finally`.
 
 10) Update `README.md`:
-   - Add “Integration tests” section with prerequisites, required env vars, optional pipeline/SQL vars, and run instructions (`pytest -m integration`).
+   - Add “Integration tests” section with prerequisites, required env vars, optional pipeline/SQL vars, and run instructions (`FABRIC_INTEGRATION_TESTS=1 pytest`).
    - Note skip behavior and that tests use live Fabric resources.

@@ -274,13 +274,9 @@ def pytest_configure(config):
 
 @pytest.fixture(autouse=True)
 def integration_enabled(request):
-    """Gate integration tests behind marker, -m integration, and env var."""
+    """Gate integration tests behind marker and env var."""
     if not request.node.get_closest_marker("integration"):
         return
-
-    markexpr = request.config.option.markexpr or ""
-    if "integration" not in markexpr:
-        pytest.skip("Integration tests require -m integration")
 
     if os.getenv("FABRIC_INTEGRATION_TESTS") != "1":
         pytest.skip("Integration tests require FABRIC_INTEGRATION_TESTS=1")

@@ -205,7 +205,7 @@ Optional pipeline copy inputs:
 Run integration tests:
 
 ```bash
-FABRIC_INTEGRATION_TESTS=1 pytest -m integration
+FABRIC_INTEGRATION_TESTS=1 pytest
 ```
 
 Notes:
