@@ -340,6 +340,22 @@ async def tool_registry(mcp_server):
     return await mcp_server.get_tools()
 
 
+@pytest.fixture(scope="session")
+def call_tool_session(tool_registry):
+    """Session-scoped tool invoker for shared integration setup."""
+    async def _call(tool_name: str, **kwargs):
+        tool = tool_registry.get(tool_name)
+        if tool is None:
+            raise AssertionError(f"Tool not registered: {tool_name}")
+        result = await tool.run(kwargs)
+        structured = result.structured_content
+        if structured is None:
+            raise AssertionError(f"Tool returned no structured content: {tool_name}")
+        return structured
+
+    return _call
+
+
 @pytest.fixture
 def call_tool(tool_registry):
     """Invoke a tool by name and return structured content."""
@@ -354,6 +370,18 @@ def call_tool(tool_registry):
         return structured
 
     return _call
+
+
+@pytest.fixture(scope="session")
+def workspace_name_session():
+    """Configured workspace display name (session scope)."""
+    return get_env_or_skip("FABRIC_TEST_WORKSPACE_NAME")
+
+
+@pytest.fixture(scope="session")
+def lakehouse_name_session():
+    """Configured lakehouse display name (session scope)."""
+    return get_env_or_skip("FABRIC_TEST_LAKEHOUSE_NAME")
 
 
 @pytest.fixture
@@ -463,3 +491,107 @@ def delete_item_if_exists(call_tool, workspace_name):
         return result
 
     return _delete
+
+
+@pytest_asyncio.fixture(scope="session")
+async def executed_notebook_context(
+    call_tool_session,
+    workspace_name_session,
+    lakehouse_name_session,
+):
+    """Provision and execute a notebook once for integration tests."""
+    notebook_name = unique_name("e2e_notebook_shared")
+    job_instance_id = None
+    location_url = None
+
+    async def _get_content():
+        result = await call_tool_session(
+            "get_notebook_content",
+            workspace_name=workspace_name_session,
+            notebook_display_name=notebook_name,
+        )
+        if result.get("status") == "success":
+            return result
+        message = (result.get("message") or "").lower()
+        if "not found" in message or "notfound" in message:
+            return None
+        return result
+
+    def _is_transient_job_error(result: dict) -> bool:
+        message = (result.get("message") or "").lower()
+        return any(token in message for token in ("not found", "404", "does not exist", "not yet"))
+
+    async def _wait_for_job():
+        status_result = await call_tool_session(
+            "get_job_status",
+            workspace_name=workspace_name_session,
+            item_name=notebook_name,
+            item_type="Notebook",
+            job_instance_id=job_instance_id,
+        )
+        if status_result.get("status") != "success":
+            if _is_transient_job_error(status_result):
+                return None
+            return status_result
+        job = status_result.get("job", {})
+        if job.get("is_terminal"):
+            return status_result
+        return None
+
+    try:
+        import_result = await call_tool_session(
+            "import_notebook_to_fabric",
+            workspace_name=workspace_name_session,
+            notebook_display_name=notebook_name,
+            local_notebook_path=str(PROJECT_ROOT / "tests" / "fixtures" / "minimal_notebook.ipynb"),
+        )
+        assert import_result["status"] == "success"
+
+        content_result = await _poll_until(_get_content, timeout_seconds=300, interval_seconds=10)
+        assert content_result is not None
+        assert content_result["status"] == "success"
+
+        attach_result = await call_tool_session(
+            "attach_lakehouse_to_notebook",
+            workspace_name=workspace_name_session,
+            notebook_name=notebook_name,
+            lakehouse_name=lakehouse_name_session,
+        )
+        assert attach_result["status"] == "success"
+
+        run_result = await call_tool_session(
+            "run_on_demand_job",
+            workspace_name=workspace_name_session,
+            item_name=notebook_name,
+            item_type="Notebook",
+            job_type="RunNotebook",
+        )
+        assert run_result["status"] == "success"
+        job_instance_id = run_result.get("job_instance_id")
+        location_url = run_result.get("location_url")
+        assert job_instance_id
+        assert location_url
+
+        status_result = await _poll_until(_wait_for_job, timeout_seconds=1800, interval_seconds=15)
+        assert status_result is not None
+        assert status_result["status"] == "success"
+        job = status_result.get("job", {})
+        assert job.get("is_terminal")
+        assert job.get("is_successful"), f"Job failed: {job.get('failure_reason')}"
+
+        yield {
+            "notebook_name": notebook_name,
+            "job_instance_id": job_instance_id,
+            "location_url": location_url,
+        }
+    finally:
+        result = await call_tool_session(
+            "delete_item",
+            workspace_name=workspace_name_session,
+            item_display_name=notebook_name,
+            item_type="Notebook",
+        )
+        if result.get("status") == "error":
+            message = (result.get("message") or "").lower()
+            if "not found" not in message:
+                raise AssertionError(f"Failed to delete Notebook '{notebook_name}': {result}")
