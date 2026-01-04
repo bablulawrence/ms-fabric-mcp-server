@@ -15,12 +15,12 @@
   - `create_semantic_model`
   - `add_table_to_semantic_model`
   - `add_relationship_to_semantic_model` (uses `fromCardinality`/`toCardinality` + `crossFilteringBehavior` + `isActive`)
+  - `get_semantic_model_details` (metadata-only)
+  - `get_semantic_model_definition` (definition parts, LRO-aware)
   - Semantic model models/service/tool registration
   - Unit + integration tests for semantic model tools
   - LRO handling updates for create/update definitions
 - Planned (not implemented yet):
-  - `get_semantic_model_details` (metadata only)
-  - `get_semantic_model_definition` (definition parts, LRO-aware)
   - Optional: schema summary extraction (tables/columns/relationships/measures)
 
 ## Scope (What’s Included)

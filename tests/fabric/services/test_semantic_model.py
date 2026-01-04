@@ -201,3 +201,67 @@ class TestFabricSemanticModelService:
                 cross_filter_direction="oneDirection",
                 is_active=True,
             )
+
+    def test_get_semantic_model_details_by_name(
+        self, semantic_model_service, mock_workspace_service, mock_item_service
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="sm-1",
+            display_name="Model",
+            type="SemanticModel",
+            workspace_id="ws-1",
+        )
+
+        result = semantic_model_service.get_semantic_model_details(
+            workspace_name="Workspace",
+            semantic_model_name="Model",
+        )
+
+        assert result.id == "sm-1"
+        mock_item_service.get_item_by_name.assert_called_once_with(
+            "ws-1", "Model", "SemanticModel"
+        )
+
+    def test_get_semantic_model_definition_by_name(
+        self, semantic_model_service, mock_workspace_service, mock_item_service
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="sm-1",
+            display_name="Model",
+            type="SemanticModel",
+            workspace_id="ws-1",
+        )
+        definition = {"definition": {"parts": []}}
+        mock_item_service.get_item_definition.return_value = definition
+
+        semantic_model, result = semantic_model_service.get_semantic_model_definition(
+            workspace_name="Workspace",
+            semantic_model_name="Model",
+            format="TMSL",
+        )
+
+        assert semantic_model.id == "sm-1"
+        assert result == definition
+        mock_item_service.get_item_definition.assert_called_once_with(
+            "ws-1", "sm-1", format="TMSL"
+        )
+
+    def test_get_semantic_model_definition_invalid_format(
+        self, semantic_model_service, mock_workspace_service, mock_item_service
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="sm-1",
+            display_name="Model",
+            type="SemanticModel",
+            workspace_id="ws-1",
+        )
+
+        with pytest.raises(FabricValidationError):
+            semantic_model_service.get_semantic_model_definition(
+                workspace_name="Workspace",
+                semantic_model_name="Model",
+                format="invalid",
+            )

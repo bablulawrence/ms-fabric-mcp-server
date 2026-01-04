@@ -7,7 +7,7 @@ import json
 import logging
 import uuid
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ms_fabric_mcp_server.client.exceptions import (
     FabricAPIError,
@@ -275,6 +275,38 @@ class FabricSemanticModelService:
         self._update_definition(workspace_id, semantic_model_id, definition, bim)
         return SemanticModelReference(workspace_id, semantic_model_id)
 
+    def get_semantic_model_details(
+        self,
+        workspace_name: str,
+        semantic_model_name: Optional[str] = None,
+        semantic_model_id: Optional[str] = None,
+    ):
+        """Get semantic model metadata by name or ID."""
+        workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
+        semantic_model = self._resolve_semantic_model(
+            workspace_id, semantic_model_name, semantic_model_id
+        )
+        return semantic_model
+
+    def get_semantic_model_definition(
+        self,
+        workspace_name: str,
+        semantic_model_name: Optional[str] = None,
+        semantic_model_id: Optional[str] = None,
+        format: str = "TMSL",
+    ) -> tuple[Any, Dict[str, Any]]:
+        """Get the semantic model definition in the requested format."""
+        workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
+        semantic_model = self._resolve_semantic_model(
+            workspace_id, semantic_model_name, semantic_model_id
+        )
+        normalized_format = format.upper() if format else "TMSL"
+        self._validate_definition_format(normalized_format)
+        definition = self.item_service.get_item_definition(
+            workspace_id, semantic_model.id, format=normalized_format
+        )
+        return semantic_model, definition
+
     def _validate_relationship_params(
         self, cardinality: str, cross_filter_direction: str
     ) -> None:
@@ -295,7 +327,7 @@ class FabricSemanticModelService:
                 f"Invalid cross_filter_direction. Supported values: {', '.join(sorted(valid_cross_filter))}",
             )
 
-    def _map_cardinality(self, cardinality: str) -> tuple[str, str]:
+    def _map_cardinality(self, cardinality: str) -> Tuple[str, str]:
         mapping = {
             "manyToOne": ("many", "one"),
             "oneToMany": ("one", "many"),
@@ -303,6 +335,44 @@ class FabricSemanticModelService:
             "manyToMany": ("many", "many"),
         }
         return mapping[cardinality]
+
+    def _resolve_semantic_model(
+        self,
+        workspace_id: str,
+        semantic_model_name: Optional[str],
+        semantic_model_id: Optional[str],
+    ):
+        if semantic_model_id:
+            semantic_model = self.item_service.get_item_by_id(
+                workspace_id, semantic_model_id
+            )
+            if semantic_model.type != "SemanticModel":
+                raise FabricValidationError(
+                    "semantic_model_id",
+                    semantic_model_id,
+                    f"Item type '{semantic_model.type}' is not SemanticModel",
+                )
+            return semantic_model
+
+        if not semantic_model_name or not semantic_model_name.strip():
+            raise FabricValidationError(
+                "semantic_model_name",
+                semantic_model_name or "",
+                "Semantic model name cannot be empty",
+            )
+
+        return self.item_service.get_item_by_name(
+            workspace_id, semantic_model_name, "SemanticModel"
+        )
+
+    def _validate_definition_format(self, format: str) -> None:
+        valid_formats = {"TMSL", "TMDL"}
+        if format not in valid_formats:
+            raise FabricValidationError(
+                "format",
+                format,
+                f"Invalid format. Supported values: {', '.join(sorted(valid_formats))}",
+            )
 
     def _get_bim(self, definition: Dict[str, Any]) -> Dict[str, Any]:
         parts = definition.get("definition", {}).get("parts", [])

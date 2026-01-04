@@ -2,7 +2,7 @@
 # ABOUTME: Provides tools to create semantic models and add tables/relationships.
 """Semantic model management MCP tools."""
 
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 import logging
 
 from ms_fabric_mcp_server.models.semantic_model import SemanticModelColumn
@@ -90,6 +90,81 @@ def register_semantic_model_tools(
 
         logger.info(
             f"Table '{table_name}' added successfully to semantic model '{semantic_model_name}' in workspace '{workspace_name}'"
+        )
+        return result
+
+    @mcp.tool(title="Get Semantic Model Details")
+    @handle_tool_errors
+    def get_semantic_model_details(
+        workspace_name: str,
+        semantic_model_name: Optional[str] = None,
+        semantic_model_id: Optional[str] = None,
+    ) -> dict:
+        """Get semantic model metadata by name or ID."""
+        log_tool_invocation(
+            "get_semantic_model_details",
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+            semantic_model_id=semantic_model_id,
+        )
+
+        semantic_model = semantic_model_service.get_semantic_model_details(
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+            semantic_model_id=semantic_model_id,
+        )
+
+        result = {
+            "status": "success",
+            "workspace_name": workspace_name,
+            "workspace_id": semantic_model.workspace_id,
+            "semantic_model_id": semantic_model.id,
+            "semantic_model_name": semantic_model.display_name,
+            "description": semantic_model.description,
+            "type": semantic_model.type,
+            "created_date": semantic_model.created_date,
+            "modified_date": semantic_model.modified_date,
+        }
+
+        logger.info(
+            f"Semantic model details retrieved for '{semantic_model.display_name}' in workspace '{workspace_name}'"
+        )
+        return result
+
+    @mcp.tool(title="Get Semantic Model Definition")
+    @handle_tool_errors
+    def get_semantic_model_definition(
+        workspace_name: str,
+        semantic_model_name: Optional[str] = None,
+        semantic_model_id: Optional[str] = None,
+        format: str = "TMSL",
+    ) -> dict:
+        """Get semantic model definition parts in the requested format."""
+        log_tool_invocation(
+            "get_semantic_model_definition",
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+            semantic_model_id=semantic_model_id,
+            format=format,
+        )
+
+        semantic_model, definition = semantic_model_service.get_semantic_model_definition(
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+            semantic_model_id=semantic_model_id,
+            format=format,
+        )
+
+        result = {
+            "status": "success",
+            "workspace_name": workspace_name,
+            "semantic_model_name": semantic_model.display_name,
+            "semantic_model_id": semantic_model.id,
+            "definition": definition,
+        }
+
+        logger.info(
+            f"Semantic model definition retrieved in workspace '{workspace_name}'"
         )
         return result
 
