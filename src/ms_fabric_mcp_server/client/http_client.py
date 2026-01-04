@@ -109,7 +109,7 @@ class FabricClient:
             logger.error(f"Failed to set up Azure credential: {exc}")
             raise FabricConfigError(f"Failed to configure authentication: {exc}")
     
-    def get_auth_token(self) -> str:
+    def get_auth_token(self, scopes: Optional[list[str]] = None) -> str:
         """Get fresh authentication token.
         
         Returns:
@@ -120,7 +120,8 @@ class FabricClient:
         """
         try:
             logger.debug("Acquiring authentication token")
-            token_result = self._credential.get_token(*self.config.SCOPES)
+            token_scopes = scopes or self.config.SCOPES
+            token_result = self._credential.get_token(*token_scopes)
             
             logger.debug("Authentication token acquired successfully")
             return token_result.token
@@ -129,13 +130,13 @@ class FabricClient:
             logger.error(f"Authentication failed: {exc}")
             raise FabricAuthError(f"Failed to acquire authentication token: {exc}")
     
-    def _get_auth_headers(self) -> Dict[str, str]:
+    def _get_auth_headers(self, scopes: Optional[list[str]] = None) -> Dict[str, str]:
         """Get authentication headers for API requests.
         
         Returns:
             Dictionary containing authorization and content-type headers
         """
-        token = self.get_auth_token()
+        token = self.get_auth_token(scopes)
         return {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
@@ -217,6 +218,27 @@ class FabricClient:
                 if wait_for_lro and response.status_code == 202
                 else response
             )
+
+    def make_powerbi_request(
+        self,
+        method: str,
+        endpoint: str,
+        payload: Optional[Dict[str, Any]] = None,
+        timeout: Optional[int] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> requests.Response:
+        """Make authenticated Power BI REST API request."""
+        if not endpoint.startswith("http"):
+            endpoint = f"{self.config.POWERBI_BASE_URL.rstrip('/')}/{endpoint.lstrip('/')}"
+
+        request_headers = self._get_auth_headers(self.config.POWERBI_SCOPES)
+        if headers:
+            request_headers.update(headers)
+
+        request_timeout = timeout or self.config.POWERBI_API_CALL_TIMEOUT
+        return self._execute_request(
+            method, endpoint, payload, request_headers, request_timeout
+        )
     
     def _execute_request(
         self,

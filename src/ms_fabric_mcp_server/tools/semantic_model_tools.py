@@ -5,7 +5,11 @@
 from typing import Optional, TYPE_CHECKING
 import logging
 
-from ms_fabric_mcp_server.models.semantic_model import SemanticModelColumn
+from ms_fabric_mcp_server.client.exceptions import FabricValidationError
+from ms_fabric_mcp_server.models.semantic_model import (
+    SemanticModelColumn,
+    SemanticModelMeasure,
+)
 from ms_fabric_mcp_server.services.semantic_model import FabricSemanticModelService
 
 if TYPE_CHECKING:
@@ -93,6 +97,88 @@ def register_semantic_model_tools(
         )
         return result
 
+    @mcp.tool(title="Add Measures to Semantic Model")
+    @handle_tool_errors
+    def add_measures_to_semantic_model(
+        workspace_name: str,
+        table_name: str,
+        measures: list[SemanticModelMeasure],
+        semantic_model_name: Optional[str] = None,
+        semantic_model_id: Optional[str] = None,
+    ) -> dict:
+        """Add measures to a table in an existing semantic model."""
+        log_tool_invocation(
+            "add_measures_to_semantic_model",
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+            semantic_model_id=semantic_model_id,
+            table_name=table_name,
+        )
+
+        model = semantic_model_service.add_measures_to_semantic_model(
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+            semantic_model_id=semantic_model_id,
+            table_name=table_name,
+            measures=measures,
+        )
+
+        result = {
+            "status": "success",
+            "semantic_model_id": model.id,
+            "semantic_model_name": semantic_model_name,
+            "workspace_name": workspace_name,
+            "workspace_id": model.workspace_id,
+            "table_name": table_name,
+            "measures_added": [measure.name for measure in measures],
+        }
+
+        logger.info(
+            f"Measures added successfully to semantic model in workspace '{workspace_name}'"
+        )
+        return result
+
+    @mcp.tool(title="Delete Measures from Semantic Model")
+    @handle_tool_errors
+    def delete_measures_from_semantic_model(
+        workspace_name: str,
+        table_name: str,
+        measure_names: list[str],
+        semantic_model_name: Optional[str] = None,
+        semantic_model_id: Optional[str] = None,
+    ) -> dict:
+        """Delete measures from a table in an existing semantic model."""
+        log_tool_invocation(
+            "delete_measures_from_semantic_model",
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+            semantic_model_id=semantic_model_id,
+            table_name=table_name,
+        )
+
+        model = semantic_model_service.delete_measures_from_semantic_model(
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+            semantic_model_id=semantic_model_id,
+            table_name=table_name,
+            measure_names=measure_names,
+        )
+
+        result = {
+            "status": "success",
+            "semantic_model_id": model.id,
+            "semantic_model_name": semantic_model_name,
+            "workspace_name": workspace_name,
+            "workspace_id": model.workspace_id,
+            "table_name": table_name,
+            "measures_deleted": measure_names,
+        }
+
+        logger.info(
+            f"Measures deleted successfully from semantic model in workspace '{workspace_name}'"
+        )
+        return result
+
     @mcp.tool(title="Get Semantic Model Details")
     @handle_tool_errors
     def get_semantic_model_details(
@@ -138,6 +224,7 @@ def register_semantic_model_tools(
         semantic_model_name: Optional[str] = None,
         semantic_model_id: Optional[str] = None,
         format: str = "TMSL",
+        decode_model_bim: bool = False,
     ) -> dict:
         """Get semantic model definition parts in the requested format."""
         log_tool_invocation(
@@ -146,6 +233,7 @@ def register_semantic_model_tools(
             semantic_model_name=semantic_model_name,
             semantic_model_id=semantic_model_id,
             format=format,
+            decode_model_bim=decode_model_bim,
         )
 
         semantic_model, definition = semantic_model_service.get_semantic_model_definition(
@@ -162,6 +250,17 @@ def register_semantic_model_tools(
             "semantic_model_id": semantic_model.id,
             "definition": definition,
         }
+
+        if decode_model_bim:
+            if (format or "TMSL").upper() != "TMSL":
+                raise FabricValidationError(
+                    "decode_model_bim",
+                    format,
+                    "decode_model_bim is only supported for TMSL format",
+                )
+            result["model_bim_json"] = semantic_model_service.decode_model_bim(
+                definition
+            )
 
         logger.info(
             f"Semantic model definition retrieved in workspace '{workspace_name}'"

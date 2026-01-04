@@ -1,5 +1,5 @@
 # ABOUTME: Main entry point for registering Microsoft Fabric MCP tools.
-# ABOUTME: Provides register_fabric_tools() to add all 34 Fabric tools to an MCP server.
+# ABOUTME: Provides register_fabric_tools() to add all 38 Fabric tools to an MCP server.
 """Fabric MCP tools - Modular tool registration.
 
 This module provides the main entry point for registering Microsoft Fabric MCP tools.
@@ -22,6 +22,7 @@ from ..services import (
     FabricLivyService,
     FabricPipelineService,
     FabricSemanticModelService,
+    FabricPowerBIService,
 )
 from .workspace_tools import register_workspace_tools
 from .item_tools import register_item_tools
@@ -31,6 +32,7 @@ from .sql_tools import register_sql_tools
 from .livy_tools import register_livy_tools
 from .pipeline_tools import register_pipeline_tools
 from .semantic_model_tools import register_semantic_model_tools
+from .powerbi_tools import register_powerbi_tools
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +40,7 @@ logger = logging.getLogger(__name__)
 def register_fabric_tools(mcp: "FastMCP"):
     """Register all Fabric MCP tools (workspace, item, notebook, job, SQL, Livy, pipeline).
     
-    This is the main registration function that sets up all 34 Fabric tools.
+    This is the main registration function that sets up all 38 Fabric tools.
     It initializes the service hierarchy and registers all tool categories.
     
     Tool Categories:
@@ -50,9 +52,11 @@ def register_fabric_tools(mcp: "FastMCP"):
     - Livy tools (8): Session and statement management for Spark
     - Pipeline tools (5): create_blank_pipeline, add_copy_activity_to_pipeline, add_notebook_activity_to_pipeline,
       add_dataflow_activity_to_pipeline, add_activity_to_pipeline
-    - Semantic model tools (5): create_semantic_model, add_table_to_semantic_model,
+    - Semantic model tools (7): create_semantic_model, add_table_to_semantic_model,
       add_relationship_to_semantic_model, get_semantic_model_details,
-      get_semantic_model_definition
+      get_semantic_model_definition, add_measures_to_semantic_model,
+      delete_measures_from_semantic_model
+    - Power BI tools (2): refresh_semantic_model, execute_dax_query
     
     Args:
         mcp: FastMCP server instance to register tools on.
@@ -86,6 +90,13 @@ def register_fabric_tools(mcp: "FastMCP"):
         livy_service = FabricLivyService(fabric_client)
         pipeline_service = FabricPipelineService(fabric_client, workspace_service, item_service)
         semantic_model_service = FabricSemanticModelService(workspace_service, item_service)
+        powerbi_service = FabricPowerBIService(
+            fabric_client,
+            workspace_service,
+            item_service,
+            refresh_poll_interval=config.POWERBI_REFRESH_POLL_INTERVAL,
+            refresh_wait_timeout=config.POWERBI_REFRESH_WAIT_TIMEOUT,
+        )
         
         # SQL service is optional (requires pyodbc)
         sql_service = None
@@ -114,8 +125,9 @@ def register_fabric_tools(mcp: "FastMCP"):
     register_livy_tools(mcp, livy_service)
     register_pipeline_tools(mcp, pipeline_service, workspace_service, item_service)
     register_semantic_model_tools(mcp, semantic_model_service)
+    register_powerbi_tools(mcp, powerbi_service)
     
-    tool_count = 34 if sql_service else 31  # 3 SQL tools
+    tool_count = 38 if sql_service else 35  # 3 SQL tools
     logger.info(f"All Fabric tools registered successfully ({tool_count} tools)")
 
 
@@ -130,4 +142,5 @@ __all__ = [
     "register_livy_tools",
     "register_pipeline_tools",
     "register_semantic_model_tools",
+    "register_powerbi_tools",
 ]

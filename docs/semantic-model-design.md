@@ -68,6 +68,7 @@
 - Notes:
   - If sensitivity labels are encrypted, definition retrieval may fail; surface a clear error.
   - Consumers can decode and parse `model.bim` (TMSL) or TMDL parts.
+  - Optional `decode_model_bim` adds a decoded `model_bim_json` field for TMSL.
 
 ## Service Design
 - `FabricSemanticModelService` manages TMSL definitions:

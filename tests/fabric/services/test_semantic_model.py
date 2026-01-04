@@ -8,7 +8,11 @@ import pytest
 
 from ms_fabric_mcp_server.client.exceptions import FabricValidationError
 from ms_fabric_mcp_server.models.item import FabricItem
-from ms_fabric_mcp_server.models.semantic_model import SemanticModelColumn, DataType
+from ms_fabric_mcp_server.models.semantic_model import (
+    SemanticModelColumn,
+    SemanticModelMeasure,
+    DataType,
+)
 from ms_fabric_mcp_server.services.semantic_model import FabricSemanticModelService
 
 
@@ -264,4 +268,175 @@ class TestFabricSemanticModelService:
                 workspace_name="Workspace",
                 semantic_model_name="Model",
                 format="invalid",
+            )
+
+    def test_decode_model_bim(self, semantic_model_service):
+        definition = {
+            "definition": {
+                "parts": [
+                    {
+                        "path": "model.bim",
+                        "payload": _encode({"model": {"tables": []}}),
+                        "payloadType": "InlineBase64",
+                    }
+                ]
+            }
+        }
+
+        result = semantic_model_service.decode_model_bim(definition)
+
+        assert result == {"model": {"tables": []}}
+
+    def test_add_measures_to_semantic_model_success(
+        self, semantic_model_service, mock_workspace_service, mock_item_service
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="sm-1",
+            display_name="Model",
+            type="SemanticModel",
+            workspace_id="ws-1",
+        )
+        definition = {
+            "definition": {
+                "parts": [
+                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
+                    {"path": "model.bim", "payload": _encode({"model": {"tables": [{"name": "Sales"}]}}), "payloadType": "InlineBase64"},
+                ]
+            }
+        }
+        mock_item_service.get_item_definition.return_value = definition
+
+        measures = [
+            SemanticModelMeasure(
+                name="Total Sales",
+                expression="SUM(Sales[Amount])",
+                format_string="0.00",
+                display_folder="Sales Metrics",
+                description="Total sales amount",
+            )
+        ]
+
+        semantic_model_service.add_measures_to_semantic_model(
+            workspace_name="Workspace",
+            semantic_model_name="Model",
+            semantic_model_id=None,
+            table_name="Sales",
+            measures=measures,
+        )
+
+        args, kwargs = mock_item_service.update_item_definition.call_args
+        update_payload = args[2]
+        model_payload = update_payload["definition"]["parts"][1]["payload"]
+        bim = _decode(model_payload)
+        table = next(t for t in bim["model"]["tables"] if t["name"] == "Sales")
+        added = table["measures"][0]
+        assert added["name"] == "Total Sales"
+        assert added["expression"] == "SUM(Sales[Amount])"
+        assert added["formatString"] == "0.00"
+        assert added["displayFolder"] == "Sales Metrics"
+        assert added["description"] == "Total sales amount"
+
+    def test_add_measures_duplicate_name_raises(
+        self, semantic_model_service, mock_workspace_service, mock_item_service
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="sm-1",
+            display_name="Model",
+            type="SemanticModel",
+            workspace_id="ws-1",
+        )
+        definition = {
+            "definition": {
+                "parts": [
+                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "model.bim",
+                        "payload": _encode({"model": {"tables": [{"name": "Sales", "measures": [{"name": "Total Sales"}]}]}}),
+                        "payloadType": "InlineBase64",
+                    },
+                ]
+            }
+        }
+        mock_item_service.get_item_definition.return_value = definition
+
+        measures = [SemanticModelMeasure(name="Total Sales", expression="1")]
+
+        with pytest.raises(FabricValidationError):
+            semantic_model_service.add_measures_to_semantic_model(
+                workspace_name="Workspace",
+                semantic_model_name="Model",
+                semantic_model_id=None,
+                table_name="Sales",
+                measures=measures,
+            )
+
+    def test_delete_measures_success(
+        self, semantic_model_service, mock_workspace_service, mock_item_service
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="sm-1",
+            display_name="Model",
+            type="SemanticModel",
+            workspace_id="ws-1",
+        )
+        definition = {
+            "definition": {
+                "parts": [
+                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "model.bim",
+                        "payload": _encode({"model": {"tables": [{"name": "Sales", "measures": [{"name": "Total Sales"}, {"name": "Count Sales"}]}]}}),
+                        "payloadType": "InlineBase64",
+                    },
+                ]
+            }
+        }
+        mock_item_service.get_item_definition.return_value = definition
+
+        semantic_model_service.delete_measures_from_semantic_model(
+            workspace_name="Workspace",
+            semantic_model_name="Model",
+            semantic_model_id=None,
+            table_name="Sales",
+            measure_names=["Total Sales"],
+        )
+
+        args, kwargs = mock_item_service.update_item_definition.call_args
+        update_payload = args[2]
+        model_payload = update_payload["definition"]["parts"][1]["payload"]
+        bim = _decode(model_payload)
+        table = next(t for t in bim["model"]["tables"] if t["name"] == "Sales")
+        remaining = [m["name"] for m in table["measures"]]
+        assert remaining == ["Count Sales"]
+
+    def test_delete_measures_missing_raises(
+        self, semantic_model_service, mock_workspace_service, mock_item_service
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="sm-1",
+            display_name="Model",
+            type="SemanticModel",
+            workspace_id="ws-1",
+        )
+        definition = {
+            "definition": {
+                "parts": [
+                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
+                    {"path": "model.bim", "payload": _encode({"model": {"tables": [{"name": "Sales", "measures": [{"name": "Total Sales"}]}]}}), "payloadType": "InlineBase64"},
+                ]
+            }
+        }
+        mock_item_service.get_item_definition.return_value = definition
+
+        with pytest.raises(FabricValidationError):
+            semantic_model_service.delete_measures_from_semantic_model(
+                workspace_name="Workspace",
+                semantic_model_name="Model",
+                semantic_model_id=None,
+                table_name="Sales",
+                measure_names=["Missing Measure"],
             )

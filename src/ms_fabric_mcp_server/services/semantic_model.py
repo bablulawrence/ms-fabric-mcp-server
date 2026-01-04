@@ -14,7 +14,10 @@ from ms_fabric_mcp_server.client.exceptions import (
     FabricError,
     FabricValidationError,
 )
-from ms_fabric_mcp_server.models.semantic_model import SemanticModelColumn
+from ms_fabric_mcp_server.models.semantic_model import (
+    SemanticModelColumn,
+    SemanticModelMeasure,
+)
 from ms_fabric_mcp_server.services.item import FabricItemService
 from ms_fabric_mcp_server.services.workspace import FabricWorkspaceService
 
@@ -275,6 +278,118 @@ class FabricSemanticModelService:
         self._update_definition(workspace_id, semantic_model_id, definition, bim)
         return SemanticModelReference(workspace_id, semantic_model_id)
 
+    def add_measures_to_semantic_model(
+        self,
+        workspace_name: str,
+        semantic_model_name: Optional[str],
+        semantic_model_id: Optional[str],
+        table_name: str,
+        measures: List[SemanticModelMeasure],
+    ) -> SemanticModelReference:
+        """Add measures to a table in an existing semantic model."""
+        if not measures:
+            raise FabricValidationError("measures", "empty", "Measures list cannot be empty")
+
+        workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
+        semantic_model = self._resolve_semantic_model(
+            workspace_id, semantic_model_name, semantic_model_id
+        )
+        definition = self._get_definition_with_retry(
+            workspace_id, semantic_model.id, format="TMSL"
+        )
+        bim = self._get_bim(definition)
+        model = bim.setdefault("model", {})
+        tables = model.setdefault("tables", [])
+        table = self._find_list_item(tables, "name", table_name)
+        if not table:
+            raise FabricValidationError(
+                "table_name",
+                table_name,
+                f"Table '{table_name}' not found in semantic model",
+            )
+
+        table_measures = table.setdefault("measures", [])
+        existing_names = {m.get("name", "").lower() for m in table_measures}
+
+        for measure in measures:
+            if measure.name.lower() in existing_names:
+                raise FabricValidationError(
+                    "measure_name",
+                    measure.name,
+                    f"Measure '{measure.name}' already exists in table '{table_name}'",
+                )
+
+            entry = {
+                "name": measure.name,
+                "expression": measure.expression,
+                "lineageTag": str(uuid.uuid4()),
+            }
+            if measure.format_string:
+                entry["formatString"] = measure.format_string
+            if measure.display_folder:
+                entry["displayFolder"] = measure.display_folder
+            if measure.description:
+                entry["description"] = measure.description
+
+            table_measures.append(entry)
+            existing_names.add(measure.name.lower())
+
+        self._update_definition(workspace_id, semantic_model.id, definition, bim)
+        return SemanticModelReference(workspace_id, semantic_model.id)
+
+    def delete_measures_from_semantic_model(
+        self,
+        workspace_name: str,
+        semantic_model_name: Optional[str],
+        semantic_model_id: Optional[str],
+        table_name: str,
+        measure_names: List[str],
+    ) -> SemanticModelReference:
+        """Delete measures from a table in an existing semantic model."""
+        if not measure_names:
+            raise FabricValidationError(
+                "measure_names", "empty", "Measure names list cannot be empty"
+            )
+
+        workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
+        semantic_model = self._resolve_semantic_model(
+            workspace_id, semantic_model_name, semantic_model_id
+        )
+        definition = self._get_definition_with_retry(
+            workspace_id, semantic_model.id, format="TMSL"
+        )
+        bim = self._get_bim(definition)
+        model = bim.setdefault("model", {})
+        tables = model.setdefault("tables", [])
+        table = self._find_list_item(tables, "name", table_name)
+        if not table:
+            raise FabricValidationError(
+                "table_name",
+                table_name,
+                f"Table '{table_name}' not found in semantic model",
+            )
+
+        table_measures = table.get("measures", [])
+        names_lower = {name.lower() for name in measure_names}
+        existing_names = {m.get("name", "").lower() for m in table_measures}
+        missing = names_lower - existing_names
+        if missing:
+            missing_list = ", ".join(sorted(missing))
+            raise FabricValidationError(
+                "measure_names",
+                missing_list,
+                f"Measure(s) not found in table '{table_name}': {missing_list}",
+            )
+
+        table["measures"] = [
+            measure
+            for measure in table_measures
+            if measure.get("name", "").lower() not in names_lower
+        ]
+
+        self._update_definition(workspace_id, semantic_model.id, definition, bim)
+        return SemanticModelReference(workspace_id, semantic_model.id)
+
     def get_semantic_model_details(
         self,
         workspace_name: str,
@@ -306,6 +421,10 @@ class FabricSemanticModelService:
             workspace_id, semantic_model.id, format=normalized_format
         )
         return semantic_model, definition
+
+    def decode_model_bim(self, definition: Dict[str, Any]) -> Dict[str, Any]:
+        """Decode the model.bim payload from a TMSL definition."""
+        return self._get_bim(definition)
 
     def _validate_relationship_params(
         self, cardinality: str, cross_filter_direction: str

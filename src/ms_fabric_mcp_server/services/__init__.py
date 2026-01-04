@@ -10,6 +10,7 @@ from ms_fabric_mcp_server.services.sql import FabricSQLService
 from ms_fabric_mcp_server.services.livy import FabricLivyService
 from ms_fabric_mcp_server.services.pipeline import FabricPipelineService
 from ms_fabric_mcp_server.services.semantic_model import FabricSemanticModelService
+from ms_fabric_mcp_server.services.powerbi import FabricPowerBIService
 
 __all__ = [
     "FabricWorkspaceService",
@@ -20,4 +21,5 @@ __all__ = [
     "FabricLivyService",
     "FabricPipelineService",
     "FabricSemanticModelService",
+    "FabricPowerBIService",
 ]

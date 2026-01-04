@@ -55,7 +55,8 @@ rm -f "$TMP_FILE"
 Notes:
 - `fastmcp inspect` is for *inspection*, not invocation.
 - `PYTHONPATH=./src` ensures the local package is imported instead of any installed version.
- - If inspect fails with relative import errors, use the shim approach above.
+- If inspect fails with relative import errors, use the shim approach above.
+- `fastmcp` has no `call` or `--verbose` CLI; use the Python harness for invocation.
 
 ## 2) Invoke tools via a Python harness
 FastMCP doesn’t provide a CLI runner for tools; use a short async harness:
@@ -73,6 +74,7 @@ sys.path.insert(0, os.path.abspath('src'))
 from ms_fabric_mcp_server import register_fabric_tools
 
 load_dotenv('.env.integration')
+workspace_name = os.getenv("FABRIC_TEST_WORKSPACE_NAME")
 
 async def main():
     mcp = FastMCP("tool-runner")
@@ -97,6 +99,12 @@ PY
 Tips:
 - Keep this harness local (don’t commit) or store it as a short snippet in your notes.
 - Always validate with `get_*` tools after making semantic model changes.
+- Prefer `FABRIC_TEST_WORKSPACE_NAME` instead of hardcoding a workspace name.
+
+### Semantic model tool inputs
+- `add_measures_to_semantic_model`: requires `table_name` and `measures[]` with `name` + `expression`.
+- `delete_measures_from_semantic_model`: requires `table_name` and `measure_names[]`.
+- `get_semantic_model_definition` returns a base64 `model.bim` payload; set `decode_model_bim=true` to add a decoded `model_bim_json` field.
 
 ## Common failure modes
 - Auth failure: missing/invalid Azure credentials or Azure CLI session write errors.
