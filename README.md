@@ -78,6 +78,16 @@ Add to your `claude_desktop_config.json`:
 }
 ```
 
+### Codex Integration
+
+Add to your Codex `config.toml`:
+
+```toml
+[mcp_servers.ms_fabric_mcp]
+command = "uvx"
+args = ["ms-fabric-mcp-server"]
+```
+
 ### Running Standalone
 
 ```bash
@@ -92,6 +102,55 @@ python -m ms_fabric_mcp_server
 
 # With MCP Inspector (development)
 npx @modelcontextprotocol/inspector uvx ms-fabric-mcp-server
+```
+
+### Logging & Debugging (optional)
+
+MCP stdio servers must keep protocol traffic on stdout, so redirect **stderr** to capture logs.
+Giving the agent read access to the log file is a powerful way to debug failures.
+You can also set `AZURE_LOG_LEVEL` (Azure SDK) and `MCP_LOG_LEVEL` (server) to control verbosity.
+
+VS Code (Bash):
+
+```json
+{
+  "servers": {
+    "MS Fabric MCP Server": {
+      "type": "stdio",
+      "command": "bash",
+      "args": [
+        "-lc",
+        "LOG_DIR=\"$HOME/mcp_logs\"; LOG_FILE=\"$LOG_DIR/ms-fabric-mcp-$(date +%Y%m%d_%H%M%S).log\"; uvx ms-fabric-mcp-server 2> \"$LOG_FILE\""
+      ],
+      "env": {
+        "AZURE_LOG_LEVEL": "info",
+        "MCP_LOG_LEVEL": "INFO"
+      }
+    }
+  }
+}
+```
+
+VS Code (PowerShell):
+
+```json
+{
+  "servers": {
+    "MS Fabric MCP Server": {
+      "type": "stdio",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "$logDir=\"$env:USERPROFILE\\mcp_logs\"; New-Item -ItemType Directory -Force -Path $logDir | Out-Null; $ts=Get-Date -Format yyyyMMdd_HHmmss; $logFile=\"$logDir\\ms-fabric-mcp-$ts.log\"; uvx ms-fabric-mcp-server 2> $logFile"
+      ],
+      "env": {
+        "AZURE_LOG_LEVEL": "info",
+        "MCP_LOG_LEVEL": "INFO"
+      }
+    }
+  }
+}
 ```
 
 ### Programmatic Usage (Library Mode)
@@ -128,6 +187,7 @@ Environment variables (all optional with sensible defaults):
 | `LIVY_SESSION_WAIT_TIMEOUT` | `240` | Livy session wait timeout |
 | `MCP_SERVER_NAME` | `ms-fabric-mcp-server` | Server name for MCP |
 | `MCP_LOG_LEVEL` | `INFO` | Logging level |
+| `AZURE_LOG_LEVEL` | `info` | Azure SDK logging level |
 
 Copy `.env.example` to `.env` and customize as needed.
 

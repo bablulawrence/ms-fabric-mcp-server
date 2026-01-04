@@ -21,4 +21,8 @@ venv/
 .worktrees/ 
 asa-lib
 /dist
+.env
 .env.integration
+mcp_server.log
+mcp_server.pid
+scripts/
