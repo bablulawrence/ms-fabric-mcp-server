@@ -14,6 +14,9 @@ from ms_fabric_mcp_server.models.lakehouse import FabricLakehouse
 # Job models
 from ms_fabric_mcp_server.models.job import FabricJob
 
+# Semantic model models
+from ms_fabric_mcp_server.models.semantic_model import SemanticModelColumn, DataType
+
 # Result models
 from ms_fabric_mcp_server.models.results import (
     FabricOperationResult,
@@ -37,6 +40,9 @@ __all__ = [
     "FabricLakehouse",
     # Jobs
     "FabricJob",
+    # Semantic Models
+    "SemanticModelColumn",
+    "DataType",
     # Results
     "FabricOperationResult",
     "ImportNotebookResult",

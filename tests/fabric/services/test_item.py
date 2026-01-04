@@ -1,6 +1,6 @@
 """Unit tests for FabricItemService."""
 
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -164,29 +164,23 @@ class TestFabricItemService:
             )
         )
 
-        with patch("time.sleep", return_value=None):
-            item = item_service.create_item("ws-1", {"displayName": "Item", "type": "Notebook"})
+        item = item_service.create_item("ws-1", {"displayName": "Item", "type": "Notebook"})
 
         assert item.id == "item-1"
         item_service.get_item_by_id.assert_called_once_with("ws-1", "item-1")
 
-    def test_create_item_accepted_202_without_id_returns_unknown(self, item_service, mock_fabric_client):
-        """Async create without id returns placeholder item."""
+    def test_create_item_accepted_202_without_id_raises(self, item_service, mock_fabric_client):
+        """Async create without id raises FabricError."""
         response = MockResponseFactory.success({}, status_code=202)
         mock_fabric_client.make_api_request.return_value = response
         item_service.get_item_by_id = Mock()
 
-        with patch("time.sleep", return_value=None):
-            item = item_service.create_item(
+        with pytest.raises(FabricError):
+            item_service.create_item(
                 "ws-1",
                 {"displayName": "Item", "type": "Notebook", "description": "desc"},
             )
 
-        assert item.id == "unknown"
-        assert item.display_name == "Item"
-        assert item.type == "Notebook"
-        assert item.workspace_id == "ws-1"
-        assert item.description == "desc"
         item_service.get_item_by_id.assert_not_called()
 
     def test_create_item_unexpected_status_raises(self, item_service, mock_fabric_client):

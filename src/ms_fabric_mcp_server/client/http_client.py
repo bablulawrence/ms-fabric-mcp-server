@@ -3,6 +3,7 @@
 """HTTP client for Microsoft Fabric API operations with OpenTelemetry instrumentation."""
 
 import logging
+import time
 from typing import Optional, Dict, Any
 
 import requests
@@ -146,7 +147,8 @@ class FabricClient:
         endpoint: str,
         payload: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = None,
-        headers: Optional[Dict[str, str]] = None
+        headers: Optional[Dict[str, str]] = None,
+        wait_for_lro: bool = False,
     ) -> requests.Response:
         """Make authenticated API request with error handling and tracing.
         
@@ -156,6 +158,7 @@ class FabricClient:
             payload: Request payload for POST/PUT requests
             timeout: Request timeout in seconds (uses config default if not specified)
             headers: Additional headers to include
+            wait_for_lro: If True, wait for Fabric long-running operation completion
             
         Returns:
             Response object
@@ -197,12 +200,22 @@ class FabricClient:
                     "fabric.api.version": "v1",
                 }
             ) as span:
-                return self._execute_request(
+                response = self._execute_request(
                     method, endpoint, payload, request_headers, request_timeout, span
                 )
+                return (
+                    self._handle_lro_response(response)
+                    if wait_for_lro and response.status_code == 202
+                    else response
+                )
         else:
-            return self._execute_request(
+            response = self._execute_request(
                 method, endpoint, payload, request_headers, request_timeout
+            )
+            return (
+                self._handle_lro_response(response)
+                if wait_for_lro and response.status_code == 202
+                else response
             )
     
     def _execute_request(
@@ -277,7 +290,42 @@ class FabricClient:
                 span.set_status(Status(StatusCode.ERROR, "Unexpected error"))
                 span.record_exception(exc)
             raise FabricError(f"Unexpected error: {exc}")
-    
+
+    def _handle_lro_response(
+        self, initial_response: requests.Response
+    ) -> requests.Response:
+        """Poll Fabric long-running operations until completion."""
+        operation_id = initial_response.headers.get("x-ms-operation-id")
+        if not operation_id:
+            return initial_response
+
+        logger.info("Long running operation started (%s)", operation_id)
+        poll_endpoint = f"operations/{operation_id}"
+
+        while True:
+            poll_response = self.make_api_request("GET", poll_endpoint)
+            status = str(poll_response.json().get("status", ""))
+
+            if status == "Succeeded":
+                location = poll_response.headers.get("Location")
+                if location:
+                    return self.make_api_request("GET", location)
+
+                logger.warning(
+                    "Long running operation completed without Location header (%s)",
+                    operation_id,
+                )
+                return initial_response
+
+            if status == "Failed":
+                raise FabricError(
+                    f"Operation {operation_id} failed: {str(poll_response.json().get('error', ''))}"
+                )
+
+            retry_after = poll_response.headers.get("Retry-After")
+            retry_after_int = int(retry_after) if retry_after and retry_after.isdigit() else 2
+            time.sleep(retry_after_int)
+
     def handle_api_errors(self, response: requests.Response) -> None:
         """Centralized API error handling and custom exceptions.
         

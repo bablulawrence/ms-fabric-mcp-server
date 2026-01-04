@@ -1,5 +1,5 @@
 # ABOUTME: Main entry point for registering Microsoft Fabric MCP tools.
-# ABOUTME: Provides register_fabric_tools() to add all 29 Fabric tools to an MCP server.
+# ABOUTME: Provides register_fabric_tools() to add all 32 Fabric tools to an MCP server.
 """Fabric MCP tools - Modular tool registration.
 
 This module provides the main entry point for registering Microsoft Fabric MCP tools.
@@ -21,6 +21,7 @@ from ..services import (
     FabricSQLService,
     FabricLivyService,
     FabricPipelineService,
+    FabricSemanticModelService,
 )
 from .workspace_tools import register_workspace_tools
 from .item_tools import register_item_tools
@@ -29,6 +30,7 @@ from .job_tools import register_job_tools
 from .sql_tools import register_sql_tools
 from .livy_tools import register_livy_tools
 from .pipeline_tools import register_pipeline_tools
+from .semantic_model_tools import register_semantic_model_tools
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +38,7 @@ logger = logging.getLogger(__name__)
 def register_fabric_tools(mcp: "FastMCP"):
     """Register all Fabric MCP tools (workspace, item, notebook, job, SQL, Livy, pipeline).
     
-    This is the main registration function that sets up all 29 Fabric tools.
+    This is the main registration function that sets up all 32 Fabric tools.
     It initializes the service hierarchy and registers all tool categories.
     
     Tool Categories:
@@ -48,6 +50,7 @@ def register_fabric_tools(mcp: "FastMCP"):
     - Livy tools (8): Session and statement management for Spark
     - Pipeline tools (5): create_blank_pipeline, add_copy_activity_to_pipeline, add_notebook_activity_to_pipeline,
       add_dataflow_activity_to_pipeline, add_activity_to_pipeline
+    - Semantic model tools (3): create_semantic_model, add_table_to_semantic_model, add_relationship_to_semantic_model
     
     Args:
         mcp: FastMCP server instance to register tools on.
@@ -80,6 +83,7 @@ def register_fabric_tools(mcp: "FastMCP"):
         job_service = FabricJobService(fabric_client, workspace_service, item_service)
         livy_service = FabricLivyService(fabric_client)
         pipeline_service = FabricPipelineService(fabric_client, workspace_service, item_service)
+        semantic_model_service = FabricSemanticModelService(workspace_service, item_service)
         
         # SQL service is optional (requires pyodbc)
         sql_service = None
@@ -107,8 +111,9 @@ def register_fabric_tools(mcp: "FastMCP"):
         logger.info("SQL tools not registered (pyodbc not available)")
     register_livy_tools(mcp, livy_service)
     register_pipeline_tools(mcp, pipeline_service, workspace_service, item_service)
+    register_semantic_model_tools(mcp, semantic_model_service)
     
-    tool_count = 29 if sql_service else 26  # 3 SQL tools
+    tool_count = 32 if sql_service else 29  # 3 SQL tools
     logger.info(f"All Fabric tools registered successfully ({tool_count} tools)")
 
 
@@ -122,4 +127,5 @@ __all__ = [
     "register_sql_tools",
     "register_livy_tools",
     "register_pipeline_tools",
+    "register_semantic_model_tools",
 ]

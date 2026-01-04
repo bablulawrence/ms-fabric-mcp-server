@@ -1,6 +1,7 @@
 """Pytest configuration and shared fixtures for ms-fabric-mcp-server tests."""
 
 import asyncio
+import json
 import os
 import sys
 import time
@@ -466,6 +467,50 @@ def pipeline_copy_inputs():
 def dataflow_name():
     """Optional dataflow name for pipeline integration tests."""
     return get_env_optional("FABRIC_TEST_DATAFLOW_NAME")
+
+
+def _parse_semantic_model_columns(raw: str | None, env_name: str) -> list[dict] | None:
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise AssertionError(f"{env_name} must be valid JSON: {exc}")
+    if not isinstance(data, list):
+        raise AssertionError(f"{env_name} must be a JSON list")
+    if not data:
+        raise AssertionError(f"{env_name} must not be empty")
+    return data
+
+
+@pytest.fixture
+def semantic_model_table():
+    """Optional semantic model table name for integration tests."""
+    return get_env_optional("FABRIC_TEST_SEMANTIC_MODEL_TABLE")
+
+
+@pytest.fixture
+def semantic_model_columns():
+    """Optional semantic model columns (JSON) for integration tests."""
+    return _parse_semantic_model_columns(
+        get_env_optional("FABRIC_TEST_SEMANTIC_MODEL_COLUMNS"),
+        "FABRIC_TEST_SEMANTIC_MODEL_COLUMNS",
+    )
+
+
+@pytest.fixture
+def semantic_model_table_2():
+    """Optional second semantic model table name for relationship tests."""
+    return get_env_optional("FABRIC_TEST_SEMANTIC_MODEL_TABLE_2")
+
+
+@pytest.fixture
+def semantic_model_columns_2():
+    """Optional second semantic model columns (JSON) for relationship tests."""
+    return _parse_semantic_model_columns(
+        get_env_optional("FABRIC_TEST_SEMANTIC_MODEL_COLUMNS_2"),
+        "FABRIC_TEST_SEMANTIC_MODEL_COLUMNS_2",
+    )
 
 
 @pytest.fixture
