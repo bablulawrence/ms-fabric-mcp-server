@@ -6,14 +6,29 @@
   - `create_semantic_model`
   - `add_table_to_semantic_model`
   - `add_relationship_to_semantic_model`
+- Add retrieval tools for semantic model metadata and definitions.
 - Support richer relationship metadata: `cardinality`, `cross_filter_direction`, `is_active`.
 - Add unit + integration tests for semantic model functionality.
+
+## Implementation Status (as of 2026-01-04)
+- Implemented:
+  - `create_semantic_model`
+  - `add_table_to_semantic_model`
+  - `add_relationship_to_semantic_model` (uses `fromCardinality`/`toCardinality` + `crossFilteringBehavior` + `isActive`)
+  - Semantic model models/service/tool registration
+  - Unit + integration tests for semantic model tools
+  - LRO handling updates for create/update definitions
+- Planned (not implemented yet):
+  - `get_semantic_model_details` (metadata only)
+  - `get_semantic_model_definition` (definition parts, LRO-aware)
+  - Optional: schema summary extraction (tables/columns/relationships/measures)
 
 ## Scope (What’s Included)
 - New semantic model service and models.
 - New semantic model MCP tool module.
 - Tool registration updates and README updates.
 - Unit tests and integration tests with env-driven inputs.
+- Planned retrieval tools for metadata/definition.
 
 ## Non-Goals
 - Auto-discovery of columns from SQL endpoints.
@@ -37,15 +52,37 @@
   optional `cardinality`, `cross_filter_direction`, `is_active`.
 - Defaults: `cardinality="manyToOne"`, `cross_filter_direction="oneDirection"`, `is_active=True`.
 - Behavior: validates duplicates and appends relationship entry in BIM.
-- `cross_filter_direction` will map to TMSL `crossFilteringBehavior`.
+- `cross_filter_direction` maps to TMSL `crossFilteringBehavior`.
+- `cardinality` maps to TMSL `fromCardinality`/`toCardinality`.
+
+### `get_semantic_model_details` (planned)
+- Inputs: `workspace_name`, `semantic_model_name` (or `semantic_model_id`)
+- Output: status + metadata fields (no definition parts).
+- Behavior: fetches semantic model metadata only (id, displayName, description, type, workspaceId).
+- Rationale: fast, cheap, avoids LRO and large payloads.
+
+### `get_semantic_model_definition` (planned)
+- Inputs: `workspace_name`, `semantic_model_name` (or `semantic_model_id`), optional `format` (`TMSL` default, `TMDL`)
+- Output: status + definition parts.
+- Behavior: calls semantic model definition API with LRO polling and returns parts verbatim.
+- Notes:
+  - If sensitivity labels are encrypted, definition retrieval may fail; surface a clear error.
+  - Consumers can decode and parse `model.bim` (TMSL) or TMDL parts.
 
 ## Service Design
-- New `FabricSemanticModelService` to manage TMSL definitions:
+- `FabricSemanticModelService` manages TMSL definitions:
   - `create_semantic_model`
   - `add_table_to_semantic_model`
   - `add_relationships_to_semantic_model`
-- Use `get_item_definition(..., format="TMSL")` and `update_item_definition`.
-- Keep `definition.pbism` unchanged; update `model.bim` only.
+- Uses `get_item_definition(..., format="TMSL")` and `update_item_definition`.
+- Keeps `definition.pbism` unchanged; updates `model.bim` only.
+- Planned additions:
+  - `get_semantic_model_details`:
+    - resolve workspace + semantic model id
+    - fetch metadata using the semantic model REST endpoint (or item metadata if equivalent)
+  - `get_semantic_model_definition`:
+    - call semantic model definition endpoint with `wait_for_lro=True`
+    - return parts with format metadata
 
 ## Tests
 
@@ -54,12 +91,14 @@
 - Validate DirectLake expression + table insertion.
 - Validate relationship insertion with metadata.
 - Validate duplicate checks.
+- Planned: add tests for metadata + definition retrieval tools.
 
 ### Integration (env-driven)
 - Create a semantic model in a real workspace.
 - Add a table with explicit columns.
 - Add a relationship when a second table is provided.
 - Skip when required env vars are missing.
+- Planned: add integration coverage for definition retrieval.
 
 ## Environment Variables (Integration)
 Proposed additions to `.env.integration.example`:
@@ -77,3 +116,6 @@ Proposed additions to `.env.integration.example`:
 5) Add unit tests: `tests/fabric/services/test_semantic_model.py`.
 6) Add integration tests: `tests/fabric/integration/test_semantic_model_tools_integration.py`.
 7) Add env var documentation to `.env.integration.example` and README.
+8) Add metadata tool: `get_semantic_model_details`.
+9) Add definition tool: `get_semantic_model_definition` (LRO-aware).
+10) Add unit + integration tests for new retrieval tools.
