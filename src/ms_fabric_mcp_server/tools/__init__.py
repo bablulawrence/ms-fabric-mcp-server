@@ -1,5 +1,5 @@
 # ABOUTME: Main entry point for registering Microsoft Fabric MCP tools.
-# ABOUTME: Provides register_fabric_tools() to add all 28 Fabric tools to an MCP server.
+# ABOUTME: Provides register_fabric_tools() to add all 29 Fabric tools to an MCP server.
 """Fabric MCP tools - Modular tool registration.
 
 This module provides the main entry point for registering Microsoft Fabric MCP tools.
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 def register_fabric_tools(mcp: "FastMCP"):
     """Register all Fabric MCP tools (workspace, item, notebook, job, SQL, Livy, pipeline).
     
-    This is the main registration function that sets up all 28 Fabric tools.
+    This is the main registration function that sets up all 29 Fabric tools.
     It initializes the service hierarchy and registers all tool categories.
     
     Tool Categories:
@@ -46,7 +46,8 @@ def register_fabric_tools(mcp: "FastMCP"):
     - Job tools (4): run_on_demand_job, get_job_status, get_job_status_by_url, get_operation_result
     - SQL tools (3): get_sql_endpoint, execute_sql_query, execute_sql_statement
     - Livy tools (8): Session and statement management for Spark
-    - Pipeline tools (3): create_blank_pipeline, add_copy_activity_to_pipeline, add_activity_to_pipeline
+    - Pipeline tools (5): create_blank_pipeline, add_copy_activity_to_pipeline, add_notebook_activity_to_pipeline,
+      add_dataflow_activity_to_pipeline, add_activity_to_pipeline
     
     Args:
         mcp: FastMCP server instance to register tools on.
@@ -107,7 +108,7 @@ def register_fabric_tools(mcp: "FastMCP"):
     register_livy_tools(mcp, livy_service)
     register_pipeline_tools(mcp, pipeline_service, workspace_service, item_service)
     
-    tool_count = 27 if sql_service else 24  # 3 SQL tools
+    tool_count = 29 if sql_service else 26  # 3 SQL tools
     logger.info(f"All Fabric tools registered successfully ({tool_count} tools)")
 
 

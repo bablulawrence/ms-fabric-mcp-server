@@ -463,6 +463,12 @@ def pipeline_copy_inputs():
 
 
 @pytest.fixture
+def dataflow_name():
+    """Optional dataflow name for pipeline integration tests."""
+    return get_env_optional("FABRIC_TEST_DATAFLOW_NAME")
+
+
+@pytest.fixture
 def sql_dependencies_available(tool_registry):
     """Skip SQL tests if dependencies or tools are unavailable."""
     pyodbc = pytest.importorskip("pyodbc")

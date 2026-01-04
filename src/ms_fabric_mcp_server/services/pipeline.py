@@ -820,6 +820,193 @@ class FabricPipelineService:
         except Exception as exc:
             logger.error(f"Failed to add Copy Activity to pipeline: {exc}")
             raise FabricError(f"Failed to add Copy Activity to pipeline: {exc}")
+
+    def add_notebook_activity_to_pipeline(
+        self,
+        workspace_id: str,
+        pipeline_name: str,
+        notebook_name: str,
+        activity_name: Optional[str] = None,
+        notebook_workspace_id: Optional[str] = None,
+        depends_on_activity_name: Optional[str] = None,
+        session_tag: Optional[str] = None,
+        parameters: Optional[Dict[str, Any]] = None,
+        timeout: str = "0.12:00:00",
+        retry: int = 0,
+        retry_interval_seconds: int = 30,
+    ) -> str:
+        """Add a Notebook Activity to an existing pipeline.
+
+        Retrieves an existing pipeline, adds a Notebook Activity to it, and updates
+        the pipeline definition. The Notebook Activity will be appended to any existing
+        activities.
+
+        Args:
+            workspace_id: Workspace ID containing the pipeline
+            pipeline_name: Name of the existing pipeline
+            notebook_name: Name of the notebook to add
+            activity_name: Name for the notebook activity
+            notebook_workspace_id: Workspace ID containing the notebook (optional). Defaults to pipeline workspace.
+            depends_on_activity_name: Optional name of an existing activity this one depends on
+            session_tag: Optional session tag for the notebook execution
+            parameters: Optional parameters to pass to the notebook
+            timeout: Activity timeout (default: "0.12:00:00")
+            retry: Number of retry attempts (default: 0)
+            retry_interval_seconds: Retry interval in seconds (default: 30)
+
+        Returns:
+            Pipeline ID (GUID) of the updated pipeline
+        """
+        logger.info(
+            f"Adding Notebook Activity to pipeline '{pipeline_name}' in workspace {workspace_id}"
+        )
+
+        activity_name = activity_name or f"RunNotebook_{notebook_name}"
+        notebook_workspace_id = notebook_workspace_id or workspace_id
+
+        self._validate_notebook_activity_inputs(
+            workspace_id, pipeline_name, notebook_name, activity_name
+        )
+
+        try:
+            pipeline, definition = self._get_pipeline_definition(
+                workspace_id, pipeline_name
+            )
+            notebook = self.item_service.get_item_by_name(
+                notebook_workspace_id, notebook_name, "Notebook"
+            )
+
+            type_properties = {
+                "notebookId": notebook.id,
+                "workspaceId": notebook_workspace_id,
+                "parameters": parameters or {},
+            }
+            if session_tag is not None:
+                type_properties["sessionTag"] = session_tag
+
+            activity = {
+                "name": activity_name,
+                "type": "TridentNotebook",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": timeout,
+                    "retry": retry,
+                    "retryIntervalInSeconds": retry_interval_seconds,
+                    "secureOutput": False,
+                    "secureInput": False,
+                },
+                "typeProperties": type_properties,
+            }
+
+            self._append_activity_to_definition(
+                definition, activity, depends_on_activity_name
+            )
+            self._update_pipeline_definition(workspace_id, pipeline.id, definition)
+
+            logger.info(
+                f"Successfully added Notebook Activity '{activity_name}' to pipeline {pipeline.id}"
+            )
+            return pipeline.id
+
+        except FabricValidationError:
+            raise
+        except FabricItemNotFoundError:
+            raise
+        except FabricAPIError:
+            raise
+        except Exception as exc:
+            logger.error(f"Failed to add Notebook Activity to pipeline: {exc}")
+            raise FabricError(f"Failed to add Notebook Activity to pipeline: {exc}")
+
+    def add_dataflow_activity_to_pipeline(
+        self,
+        workspace_id: str,
+        pipeline_name: str,
+        dataflow_name: str,
+        activity_name: Optional[str] = None,
+        dataflow_workspace_id: Optional[str] = None,
+        depends_on_activity_name: Optional[str] = None,
+        timeout: str = "0.12:00:00",
+        retry: int = 0,
+        retry_interval_seconds: int = 30,
+    ) -> str:
+        """Add a Dataflow Activity to an existing pipeline.
+
+        Retrieves an existing pipeline, adds a Dataflow Activity to it, and updates
+        the pipeline definition. The Dataflow Activity will be appended to any existing
+        activities.
+
+        Args:
+            workspace_id: Workspace ID containing the pipeline
+            pipeline_name: Name of the existing pipeline
+            dataflow_name: Name of the dataflow to add
+            activity_name: Name for the dataflow activity
+            dataflow_workspace_id: Workspace ID containing the dataflow (optional). Defaults to pipeline workspace.
+            depends_on_activity_name: Optional name of an existing activity this one depends on
+            timeout: Activity timeout (default: "0.12:00:00")
+            retry: Number of retry attempts (default: 0)
+            retry_interval_seconds: Retry interval in seconds (default: 30)
+
+        Returns:
+            Pipeline ID (GUID) of the updated pipeline
+        """
+        logger.info(
+            f"Adding Dataflow Activity to pipeline '{pipeline_name}' in workspace {workspace_id}"
+        )
+
+        activity_name = activity_name or f"RunDataflow_{dataflow_name}"
+        dataflow_workspace_id = dataflow_workspace_id or workspace_id
+
+        self._validate_dataflow_activity_inputs(
+            workspace_id, pipeline_name, dataflow_name, activity_name
+        )
+
+        try:
+            pipeline, definition = self._get_pipeline_definition(
+                workspace_id, pipeline_name
+            )
+            dataflow = self.item_service.get_item_by_name(
+                dataflow_workspace_id, dataflow_name, "Dataflow"
+            )
+
+            activity = {
+                "name": activity_name,
+                "type": "RefreshDataflow",
+                "dependsOn": [],
+                "policy": {
+                    "timeout": timeout,
+                    "retry": retry,
+                    "retryIntervalInSeconds": retry_interval_seconds,
+                    "secureOutput": False,
+                    "secureInput": False,
+                },
+                "typeProperties": {
+                    "dataflowId": dataflow.id,
+                    "workspaceId": dataflow_workspace_id,
+                    "notifyOption": "NoNotification",
+                    "dataflowType": "Dataflow-Gen2",
+                },
+            }
+
+            self._append_activity_to_definition(
+                definition, activity, depends_on_activity_name
+            )
+            self._update_pipeline_definition(workspace_id, pipeline.id, definition)
+
+            logger.info(
+                f"Successfully added Dataflow Activity '{activity_name}' to pipeline {pipeline.id}"
+            )
+            return pipeline.id
+
+        except FabricValidationError:
+            raise
+        except FabricItemNotFoundError:
+            raise
+        except FabricAPIError:
+            raise
+        except Exception as exc:
+            logger.error(f"Failed to add Dataflow Activity to pipeline: {exc}")
+            raise FabricError(f"Failed to add Dataflow Activity to pipeline: {exc}")
     
     def add_activity_from_json(
         self,
@@ -995,3 +1182,135 @@ class FabricPipelineService:
         except Exception as exc:
             logger.error(f"Failed to add activity from JSON to pipeline: {exc}")
             raise FabricError(f"Failed to add activity from JSON to pipeline: {exc}")
+
+    def _validate_notebook_activity_inputs(
+        self,
+        workspace_id: str,
+        pipeline_name: str,
+        notebook_name: str,
+        activity_name: str,
+    ) -> None:
+        if not workspace_id or not str(workspace_id).strip():
+            raise FabricValidationError(
+                "workspace_id", str(workspace_id), "Workspace ID cannot be empty"
+            )
+        if not pipeline_name or not pipeline_name.strip():
+            raise FabricValidationError(
+                "pipeline_name", pipeline_name, "Pipeline name cannot be empty"
+            )
+        if not notebook_name or not notebook_name.strip():
+            raise FabricValidationError(
+                "notebook_name", notebook_name, "Notebook name cannot be empty"
+            )
+        if not activity_name or not activity_name.strip():
+            raise FabricValidationError(
+                "activity_name", activity_name, "Activity name cannot be empty"
+            )
+
+    def _validate_dataflow_activity_inputs(
+        self,
+        workspace_id: str,
+        pipeline_name: str,
+        dataflow_name: str,
+        activity_name: str,
+    ) -> None:
+        if not workspace_id or not str(workspace_id).strip():
+            raise FabricValidationError(
+                "workspace_id", str(workspace_id), "Workspace ID cannot be empty"
+            )
+        if not pipeline_name or not pipeline_name.strip():
+            raise FabricValidationError(
+                "pipeline_name", pipeline_name, "Pipeline name cannot be empty"
+            )
+        if not dataflow_name or not dataflow_name.strip():
+            raise FabricValidationError(
+                "dataflow_name", dataflow_name, "Dataflow name cannot be empty"
+            )
+        if not activity_name or not activity_name.strip():
+            raise FabricValidationError(
+                "activity_name", activity_name, "Activity name cannot be empty"
+            )
+
+    def _get_pipeline_definition(
+        self, workspace_id: str, pipeline_name: str
+    ) -> tuple[Any, Dict[str, Any]]:
+        pipeline = self.item_service.get_item_by_name(
+            workspace_id, pipeline_name, "DataPipeline"
+        )
+        definition_response = self.item_service.get_item_definition(
+            workspace_id, pipeline.id
+        )
+
+        parts = definition_response.get("definition", {}).get("parts", [])
+        pipeline_content_part = None
+        for part in parts:
+            if part.get("path") == "pipeline-content.json":
+                pipeline_content_part = part
+                break
+
+        if not pipeline_content_part:
+            raise FabricError("Pipeline definition missing pipeline-content.json part")
+
+        encoded_payload = pipeline_content_part.get("payload", "")
+        existing_definition = self._decode_definition(encoded_payload)
+
+        return pipeline, existing_definition
+
+    def _append_activity_to_definition(
+        self,
+        definition: Dict[str, Any],
+        activity: Dict[str, Any],
+        depends_on_activity_name: Optional[str] = None,
+    ) -> None:
+        if "properties" not in definition:
+            definition["properties"] = {}
+        if "activities" not in definition["properties"]:
+            definition["properties"]["activities"] = []
+
+        activities = definition["properties"]["activities"]
+        existing_names = {item.get("name") for item in activities if item.get("name")}
+
+        if activity.get("name") in existing_names:
+            raise FabricValidationError(
+                "activity_name",
+                activity.get("name", ""),
+                "Activity name already exists in pipeline",
+            )
+
+        if depends_on_activity_name:
+            if depends_on_activity_name not in existing_names:
+                raise FabricValidationError(
+                    "depends_on_activity_name",
+                    depends_on_activity_name,
+                    "Dependent activity does not exist in pipeline",
+                )
+            activity["dependsOn"].append(
+                {
+                    "activity": depends_on_activity_name,
+                    "dependencyConditions": ["Succeeded"],
+                }
+            )
+
+        activities.append(activity)
+
+    def _update_pipeline_definition(
+        self, workspace_id: str, pipeline_id: str, definition: Dict[str, Any]
+    ) -> None:
+        encoded_definition = self._encode_definition(definition)
+        update_payload = {
+            "definition": {
+                "parts": [
+                    {
+                        "path": "pipeline-content.json",
+                        "payload": encoded_definition,
+                        "payloadType": "InlineBase64",
+                    }
+                ]
+            }
+        }
+
+        self.client.make_api_request(
+            "POST",
+            f"workspaces/{workspace_id}/items/{pipeline_id}/updateDefinition",
+            payload=update_payload,
+        )

@@ -72,3 +72,74 @@ async def test_add_copy_activity_to_pipeline(
         assert add_result["status"] == "success"
     finally:
         await delete_item_if_exists(pipeline_name, "DataPipeline")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_add_notebook_activity_to_pipeline(
+    call_tool,
+    delete_item_if_exists,
+    notebook_fixture_path,
+    workspace_name,
+):
+    pipeline_name = unique_name("e2e_pipeline_notebook")
+    notebook_name = unique_name("e2e_notebook")
+    try:
+        create_result = await call_tool(
+            "create_blank_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            description="Integration test pipeline notebook activity",
+        )
+        assert create_result["status"] == "success"
+
+        import_result = await call_tool(
+            "import_notebook_to_fabric",
+            workspace_name=workspace_name,
+            notebook_display_name=notebook_name,
+            local_notebook_path=str(notebook_fixture_path),
+        )
+        assert import_result["status"] == "success"
+
+        add_result = await call_tool(
+            "add_notebook_activity_to_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            notebook_name=notebook_name,
+        )
+        assert add_result["status"] == "success"
+    finally:
+        await delete_item_if_exists(pipeline_name, "DataPipeline")
+        await delete_item_if_exists(notebook_name, "Notebook")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_add_dataflow_activity_to_pipeline(
+    call_tool,
+    delete_item_if_exists,
+    dataflow_name,
+    workspace_name,
+):
+    if not dataflow_name:
+        pytest.skip("Missing dataflow name for pipeline dataflow activity test")
+
+    pipeline_name = unique_name("e2e_pipeline_dataflow")
+    try:
+        create_result = await call_tool(
+            "create_blank_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            description="Integration test pipeline dataflow activity",
+        )
+        assert create_result["status"] == "success"
+
+        add_result = await call_tool(
+            "add_dataflow_activity_to_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            dataflow_name=dataflow_name,
+        )
+        assert add_result["status"] == "success"
+    finally:
+        await delete_item_if_exists(pipeline_name, "DataPipeline")

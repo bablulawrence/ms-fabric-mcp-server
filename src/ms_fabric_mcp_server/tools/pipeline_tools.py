@@ -6,7 +6,7 @@ This module provides MCP tools for Microsoft Fabric pipeline operations includin
 creating pipelines with Copy Activities for data ingestion.
 """
 
-from typing import Optional, TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING
 import logging
 
 if TYPE_CHECKING:
@@ -33,6 +33,8 @@ def register_pipeline_tools(
     This function registers pipeline-related tools:
     - create_blank_pipeline: Create a blank pipeline with no activities
     - add_copy_activity_to_pipeline: Add a Copy Activity to an existing pipeline
+    - add_notebook_activity_to_pipeline: Add a Notebook Activity to an existing pipeline
+    - add_dataflow_activity_to_pipeline: Add a Dataflow Activity to an existing pipeline
     - add_activity_to_pipeline: Add any activity from JSON template to an existing pipeline
     
     Args:
@@ -275,6 +277,190 @@ def register_pipeline_tools(
         
         logger.info(
             f"Copy Activity '{final_activity_name}' added successfully to pipeline {pipeline_id}"
+        )
+        return result
+
+    @mcp.tool(title="Add Notebook Activity to Pipeline")
+    @handle_tool_errors
+    def add_notebook_activity_to_pipeline(
+        workspace_name: str,
+        pipeline_name: str,
+        notebook_name: str,
+        notebook_workspace_name: Optional[str] = None,
+        activity_name: Optional[str] = None,
+        depends_on_activity_name: Optional[str] = None,
+        session_tag: Optional[str] = None,
+        parameters: Optional[Dict[str, Any]] = None,
+        timeout: str = "0.12:00:00",
+        retry: int = 0,
+        retry_interval_seconds: int = 30,
+    ) -> dict:
+        """Add a Notebook Activity to an existing Fabric pipeline.
+
+        Retrieves an existing pipeline, adds a Notebook Activity to it, and updates
+        the pipeline definition. The Notebook Activity will be appended to any existing
+        activities in the pipeline.
+
+        **Use this tool when:**
+        - You have an existing pipeline and want to add a new Notebook Activity
+        - You're building complex pipelines with multiple activities
+        - You want to incrementally build a pipeline
+
+        Parameters:
+            workspace_name: The display name of the workspace containing the pipeline.
+            pipeline_name: Name of the existing pipeline to update.
+            notebook_name: Name of the notebook to run.
+            notebook_workspace_name: Optional name of the workspace containing the notebook.
+            activity_name: Optional custom name for the activity (default: auto-generated).
+            depends_on_activity_name: Optional name of an existing activity this one depends on.
+            session_tag: Optional session tag for the notebook execution.
+            parameters: Optional parameters to pass to the notebook.
+            timeout: Activity timeout (default: "0.12:00:00").
+            retry: Number of retry attempts (default: 0).
+            retry_interval_seconds: Retry interval in seconds (default: 30).
+
+        Returns:
+            Dictionary with status, pipeline_id, pipeline_name, activity_name, workspace_name, and message.
+        """
+        activity_name = activity_name or f"RunNotebook_{notebook_name}"
+        log_tool_invocation(
+            "add_notebook_activity_to_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            notebook_name=notebook_name,
+            activity_name=activity_name,
+            depends_on_activity_name=depends_on_activity_name,
+        )
+
+        logger.info(
+            f"Adding Notebook Activity to pipeline '{pipeline_name}' in workspace '{workspace_name}' "
+            f"to run {notebook_name}"
+        )
+
+        # Resolve workspace IDs
+        workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+        workspace = workspace_service.get_workspace_by_id(workspace_id)
+        notebook_workspace_id = (
+            workspace_service.resolve_workspace_id(notebook_workspace_name)
+            if notebook_workspace_name
+            else workspace_id
+        )
+
+        pipeline_id = pipeline_service.add_notebook_activity_to_pipeline(
+            workspace_id=workspace_id,
+            pipeline_name=pipeline_name,
+            notebook_name=notebook_name,
+            activity_name=activity_name,
+            notebook_workspace_id=notebook_workspace_id,
+            depends_on_activity_name=depends_on_activity_name,
+            session_tag=session_tag,
+            parameters=parameters,
+            timeout=timeout,
+            retry=retry,
+            retry_interval_seconds=retry_interval_seconds,
+        )
+
+        result = {
+            "status": "success",
+            "pipeline_id": pipeline_id,
+            "pipeline_name": pipeline_name,
+            "activity_name": activity_name,
+            "workspace_name": workspace.display_name,
+            "workspace_id": workspace_id,
+            "message": f"Notebook Activity '{activity_name}' added successfully to pipeline '{pipeline_name}'",
+        }
+
+        logger.info(
+            f"Notebook Activity '{activity_name}' added successfully to pipeline {pipeline_id}"
+        )
+        return result
+
+    @mcp.tool(title="Add Dataflow Activity to Pipeline")
+    @handle_tool_errors
+    def add_dataflow_activity_to_pipeline(
+        workspace_name: str,
+        pipeline_name: str,
+        dataflow_name: str,
+        dataflow_workspace_name: Optional[str] = None,
+        activity_name: Optional[str] = None,
+        depends_on_activity_name: Optional[str] = None,
+        timeout: str = "0.12:00:00",
+        retry: int = 0,
+        retry_interval_seconds: int = 30,
+    ) -> dict:
+        """Add a Dataflow Activity to an existing Fabric pipeline.
+
+        Retrieves an existing pipeline, adds a Dataflow Activity to it, and updates
+        the pipeline definition. The Dataflow Activity will be appended to any existing
+        activities in the pipeline.
+
+        **Use this tool when:**
+        - You have an existing pipeline and want to add a new Dataflow Activity
+        - You're building complex pipelines with multiple activities
+        - You want to incrementally build a pipeline
+
+        Parameters:
+            workspace_name: The display name of the workspace containing the pipeline.
+            pipeline_name: Name of the existing pipeline to update.
+            dataflow_name: Name of the Dataflow to run.
+            dataflow_workspace_name: Optional name of the workspace containing the Dataflow.
+            activity_name: Optional custom name for the activity (default: auto-generated).
+            depends_on_activity_name: Optional name of an existing activity this one depends on.
+            timeout: Activity timeout (default: "0.12:00:00").
+            retry: Number of retry attempts (default: 0).
+            retry_interval_seconds: Retry interval in seconds (default: 30).
+
+        Returns:
+            Dictionary with status, pipeline_id, pipeline_name, activity_name, workspace_name, and message.
+        """
+        activity_name = activity_name or f"RunDataflow_{dataflow_name}"
+        log_tool_invocation(
+            "add_dataflow_activity_to_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            dataflow_name=dataflow_name,
+            activity_name=activity_name,
+            depends_on_activity_name=depends_on_activity_name,
+        )
+
+        logger.info(
+            f"Adding Dataflow Activity to pipeline '{pipeline_name}' in workspace '{workspace_name}' "
+            f"to run {dataflow_name}"
+        )
+
+        # Resolve workspace IDs
+        workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+        workspace = workspace_service.get_workspace_by_id(workspace_id)
+        dataflow_workspace_id = (
+            workspace_service.resolve_workspace_id(dataflow_workspace_name)
+            if dataflow_workspace_name
+            else workspace_id
+        )
+
+        pipeline_id = pipeline_service.add_dataflow_activity_to_pipeline(
+            workspace_id=workspace_id,
+            pipeline_name=pipeline_name,
+            dataflow_name=dataflow_name,
+            activity_name=activity_name,
+            dataflow_workspace_id=dataflow_workspace_id,
+            depends_on_activity_name=depends_on_activity_name,
+            timeout=timeout,
+            retry=retry,
+            retry_interval_seconds=retry_interval_seconds,
+        )
+
+        result = {
+            "status": "success",
+            "pipeline_id": pipeline_id,
+            "pipeline_name": pipeline_name,
+            "activity_name": activity_name,
+            "workspace_name": workspace.display_name,
+            "workspace_id": workspace_id,
+            "message": f"Dataflow Activity '{activity_name}' added successfully to pipeline '{pipeline_name}'",
+        }
+
+        logger.info(
+            f"Dataflow Activity '{activity_name}' added successfully to pipeline {pipeline_id}"
         )
         return result
     
