@@ -139,7 +139,14 @@ Notes:
 **Happy Path:**
 1. `create_blank_pipeline`
 2. `add_activity_to_pipeline` (Wait activity)
-3. `add_copy_activity_to_pipeline` (optional, requires copy inputs)
+3. `add_copy_activity_to_pipeline` (**REQUIRED** - must be tested with copy inputs from `.env.integration`)
+   - Use environment variables:
+     - `FABRIC_TEST_SOURCE_TYPE` (e.g., AzurePostgreSqlSource)
+     - `FABRIC_TEST_SOURCE_CONNECTION_ID`
+     - `FABRIC_TEST_SOURCE_SCHEMA`
+     - `FABRIC_TEST_SOURCE_TABLE`
+     - `FABRIC_TEST_DEST_CONNECTION_ID`
+     - `FABRIC_TEST_DEST_TABLE_NAME`
    - SQL fallback example (use SQL Analytics endpoint connection):
      ```
      add_copy_activity_to_pipeline(
@@ -158,9 +165,19 @@ Notes:
      ```
 4. `add_notebook_activity_to_pipeline` (use the notebook created earlier; set `depends_on_activity_name`)
 5. `add_dataflow_activity_to_pipeline` (optional, requires dataflow inputs; set `depends_on_activity_name`)
-6. (Optional) `run_on_demand_job` (Pipeline) and poll `get_job_status_by_url`
+6. **`run_on_demand_job` (Pipeline) - REQUIRED: Execute pipeline end-to-end**
+7. **Poll `get_job_status_by_url` until pipeline reaches terminal state OR copy activity completes**
+8. **Validate copy activity output:**
+   - Use `execute_sql_query` to verify destination table exists and contains data
+   - Query row count: `SELECT COUNT(*) FROM <dest_table_name>`
+   - Query sample data: `SELECT TOP 3 * FROM <dest_table_name>`
+   - Verify columns match source schema expectations
 
-Expected: Activity appends successfully; pipeline id returned.
+Expected: 
+- Activities append successfully; pipeline id returned
+- Pipeline executes successfully (may still be running if notebook activity included)
+- Copy activity completes and data is validated in destination lakehouse table
+- Row count > 0 and sample data retrieval successful
 
 **Negative Tests:**
 1. `add_activity_to_pipeline` to non-existent pipeline
@@ -286,7 +303,7 @@ in this environment.
 - If capacity is inactive, Notebook and Livy flows will fail with `CapacityNotActive`;
   record the failure and skip ahead rather than retrying indefinitely.
 
-## Notebook + Livy Polling Tips
+## Notebook + Livy + Pipeline Polling Tips
 Notebook:
 - `get_job_status_by_url` can remain `NotStarted` while the run is active; use
   `list_notebook_executions` to confirm `InProgress`/`Success`.
@@ -297,6 +314,17 @@ Livy:
 - Use `livy_create_session(with_wait=False)` and poll `livy_get_session_status` until `idle`.
 - If startup is slow, call `livy_list_sessions` to capture `FallbackReasons`.
 - Run statements with `with_wait=False`, then poll `livy_get_statement_status` until `available`.
+
+Pipeline:
+- Poll `get_job_status_by_url` for pipeline execution status
+- Copy activity typically completes in seconds to minutes (depends on data volume)
+- Notebook activity within pipeline takes 5-10 minutes (includes Spark session startup)
+- **Validation strategy:**
+  - After ~2-5 minutes, query destination table to validate copy activity output
+  - Don't wait for entire pipeline to complete if only validating copy activity
+  - Pipeline can remain `InProgress` if notebook activity is still running
+- Use backoff polling: 20s → 30s → 60s → 120s intervals
+- Cap total wait at 15-20 minutes for pipelines with notebook activities
 
 ## Cleanup
 At the end of the test run, **ask the user for permission** before deleting any items.
@@ -313,7 +341,8 @@ At the end of the test run, **ask the user for permission** before deleting any 
 - `delete_item` for Notebook and Pipeline (DataPipeline).
 - `delete_item` for Semantic Model.
 - `livy_close_session` for Livy sessions (if still open).
-- If the pipeline run executed a copy activity, remove any created destination table/data.
+- **Drop the destination table created by copy activity using `execute_sql_statement`:**
+  - `DROP TABLE IF EXISTS <FABRIC_TEST_DEST_TABLE_NAME>`
 - If semantic model tests created scratch lakehouse tables, drop them.
 - If delete fails, verify by `list_items` and retry.
 
@@ -360,8 +389,10 @@ Record:
 - [ ] If cleanup approved: all created notebooks and pipelines removed
 - [ ] If cleanup approved: semantic model removed
 - [ ] Livy sessions closed (always, regardless of cleanup choice)
-- [ ] Job run reached terminal state
+- [ ] Job run reached terminal state (or copy activity validated if notebook still running)
+- [ ] **Pipeline executed end-to-end with copy activity validated**
+- [ ] **Copy activity destination table verified (row count + sample data)**
 - [ ] SQL query succeeded; DML statement returned expected error
-- [ ] If cleanup approved: any copy destination tables/data cleaned up
+- [ ] If cleanup approved: copy destination table dropped (DROP TABLE IF EXISTS)
 - [ ] If cleanup approved: any semantic model scratch tables cleaned up
-- [ ] If cleanup declined: list of remaining items reported to user
+- [ ] If cleanup declined: list of remaining items reported to user (including destination table)
