@@ -5,7 +5,7 @@ Validate the Microsoft Fabric MCP tools by invoking them directly (as the integr
 using real workspace/lakehouse resources and end-to-end flows that create, run, and clean up items.
 
 ## Scope
-- Workspace, Item, Notebook, Job, Pipeline, SQL, Livy tools.
+- Workspace, Item, Notebook, Job, Pipeline, SQL, Livy, Semantic Model, Power BI tools.
 - Direct tool calls via MCP server (no unit-test harness).
 - Uses the same environment values as integration tests.
 
@@ -14,14 +14,18 @@ using real workspace/lakehouse resources and end-to-end flows that create, run, 
 2. Discover workspace/lakehouse and capture their IDs.
 3. Run Notebook + Job flow (creates the most artifacts).
 4. Run Pipeline flow.
-5. Run SQL flow.
-6. Run Livy flow (use polling, not blocking waits).
-7. Cleanup everything created.
+5. Run Semantic Model flow.
+6. Run Power BI flow.
+7. Run SQL flow.
+8. Run Livy flow (use polling, not blocking waits).
+9. Cleanup everything created.
 
 ## Preconditions
 - Fabric capacity is active for the target workspace.
 - Auth is available (DefaultAzureCredential).
 - You can call MCP tools (through the Fabric MCP server).
+- Power BI REST API access is available for the tenant and the test principal has dataset
+  refresh + execute queries permissions.
 - `.env.integration` values exist and are valid:
   - `FABRIC_TEST_WORKSPACE_NAME`
   - `FABRIC_TEST_LAKEHOUSE_NAME`
@@ -35,6 +39,17 @@ Use the values from `.env.integration`:
 - Lakehouse: `FABRIC_TEST_LAKEHOUSE_NAME`
 - SQL database: `FABRIC_TEST_SQL_DATABASE`
 - Optional pipeline copy inputs (source/destination connection, table, schema)
+- Optional pipeline dataflow inputs:
+  - `FABRIC_TEST_DATAFLOW_NAME`
+  - `FABRIC_TEST_DATAFLOW_WORKSPACE_NAME` (if different from test workspace)
+- Optional semantic model inputs:
+  - `FABRIC_TEST_SEMANTIC_MODEL_NAME` (otherwise generate a timestamped name)
+  - `FABRIC_TEST_SM_TABLE_1`, `FABRIC_TEST_SM_TABLE_2` (lakehouse tables to model)
+  - `FABRIC_TEST_SM_COLUMNS_TABLE_1`, `FABRIC_TEST_SM_COLUMNS_TABLE_2`
+    (column name + data type pairs; supported data types: `string`, `int64`, `decimal`,
+    `double`, `boolean`, `dateTime`)
+- Optional Power BI inputs:
+  - `FABRIC_TEST_DAX_QUERY` (otherwise use a simple default query)
 
 IDs you must capture during discovery:
 - `workspace_id` from `list_workspaces` (needed for Livy).
@@ -86,11 +101,32 @@ Notes:
 1. `create_blank_pipeline`
 2. `add_activity_to_pipeline` (Wait activity)
 3. `add_copy_activity_to_pipeline` (optional, requires copy inputs)
+4. `add_notebook_activity_to_pipeline` (use the notebook created earlier; set `depends_on_activity_name`)
+5. `add_dataflow_activity_to_pipeline` (optional, requires dataflow inputs; set `depends_on_activity_name`)
 4. (Optional) `run_on_demand_job` (Pipeline) and poll `get_job_status_by_url`
 
 Expected: Activity appends successfully; pipeline id returned.
 
-### 4) SQL Flow
+### 4) Semantic Model Flow
+1. (Optional) Create two small lakehouse tables for testing (via `execute_sql_statement`)
+2. `create_semantic_model`
+3. `add_table_to_semantic_model` (table 1 with explicit columns)
+4. `add_table_to_semantic_model` (table 2 with explicit columns)
+5. `add_relationship_to_semantic_model` (e.g., Dim → Fact key)
+6. `add_measures_to_semantic_model` (simple measure)
+7. `get_semantic_model_details`
+8. `get_semantic_model_definition` (`format="TMSL"`, optionally `decode_model_bim=true`)
+9. `delete_measures_from_semantic_model` (validate delete path)
+
+Expected: Semantic model updates are reflected in definition; measures add/delete succeeds.
+
+### 5) Power BI Flow
+1. `refresh_semantic_model` (use the semantic model created above)
+2. `execute_dax_query` (e.g., `EVALUATE ROW("one", 1)` or use `FABRIC_TEST_DAX_QUERY`)
+
+Expected: Refresh completes with status `success`; DAX query returns a Power BI response.
+
+### 6) SQL Flow
 1. `get_sql_endpoint` (Lakehouse)
 2. `execute_sql_query` (`SELECT 1 AS value`)
 3. `execute_sql_statement` (DML against a scratch table) OR `SELECT 1` -> expected error
@@ -98,7 +134,7 @@ Expected: Activity appends successfully; pipeline id returned.
 Optional: use a pre-created scratch table for a fully successful DML run; otherwise keep
 the expected error from `SELECT 1`.
 
-### 5) Livy Flow (Session + Statement)
+### 7) Livy Flow (Session + Statement)
 Observed in this environment: session creation often falls back to on-demand cluster
 (`FallbackReasons: CustomLibraries, SystemSparkConfigMismatch`), which adds several
 minutes of startup latency and can exceed MCP tool-call timeouts (~60s).
@@ -128,8 +164,10 @@ in this environment.
 ## Cleanup
 Always delete created items to avoid clutter/cost:
 - `delete_item` for Notebook and Pipeline (DataPipeline).
+- `delete_item` for Semantic Model.
 - `livy_close_session` for Livy sessions.
 - If the pipeline run executed a copy activity, remove any created destination table/data.
+- If semantic model tests created scratch lakehouse tables, drop them.
 
 If delete fails, verify by `list_items` and retry.
 
@@ -138,6 +176,8 @@ If delete fails, verify by `list_items` and retry.
 - `scp` claim missing: some notebook history/log endpoints may require delegated tokens.
 - Transient `NotStarted`/`Running` states: continue polling.
 - Livy session logs 404 before the session is fully started.
+- Power BI REST calls denied due to tenant policy or insufficient dataset permissions.
+- Semantic model definition not immediately available after creation; retry with backoff.
 
 ## Reporting
 Record:
@@ -148,7 +188,9 @@ Record:
 
 ## Post-Run Checklist
 - All created notebooks and pipelines removed.
+- Semantic model removed.
 - Livy sessions closed.
 - Job run reached terminal state.
 - SQL query succeeded; DML statement returned expected error.
 - Any copy destination tables/data cleaned up (if pipeline execution was run).
+- Any semantic model scratch tables cleaned up.
