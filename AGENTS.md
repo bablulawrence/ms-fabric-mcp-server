@@ -54,6 +54,10 @@ async def get_workspace_by_name(
 - Integration tests require `FABRIC_INTEGRATION_TESTS=1` and live Azure resources
 - Run integration tests: `cp .env.integration.example .env.integration && FABRIC_INTEGRATION_TESTS=1 pytest`
 
+## Publishing
+- Bump the version in `pyproject.toml` before any TestPyPI/PyPI publish.
+- Use the GitHub workflow to publish (run `publish-testpypi.yml` or `publish.yml`) instead of local uploads.
+
 ## Commit Style
 - Short imperative summaries
 - Optional conventional prefixes: `docs:`, `chore:`, `fix:`, `feat:`
