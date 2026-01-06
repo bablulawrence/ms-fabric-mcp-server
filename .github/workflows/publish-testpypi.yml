@@ -92,6 +92,7 @@ jobs:
     needs: [tests, integration]
     if: >-
       ${{
+        always() &&
         needs.tests.result == 'success' &&
         (needs.integration.result == 'success' || needs.integration.result == 'skipped')
       }}
