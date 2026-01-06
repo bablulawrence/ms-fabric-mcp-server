@@ -69,8 +69,13 @@ Use the values from `.env.integration`:
   - `FABRIC_TEST_SEMANTIC_MODEL_NAME` (otherwise generate a timestamped name)
   - `FABRIC_TEST_SEMANTIC_MODEL_TABLE` (table 1)
   - `FABRIC_TEST_SEMANTIC_MODEL_TABLE_2` (table 2)
+    - **Tables must have a valid foreign key relationship** (e.g., fact→dimension)
+    - Example: `fact_sale` (table 1) and `dimension_city` (table 2) with `CityKey` relationship
+  - `FABRIC_TEST_SM_RELATIONSHIP_FROM_COL` (foreign key column in table 1)
+  - `FABRIC_TEST_SM_RELATIONSHIP_TO_COL` (primary key column in table 2)
   - `FABRIC_TEST_SEMANTIC_MODEL_COLUMNS` (columns for table 1, JSON array)
   - `FABRIC_TEST_SEMANTIC_MODEL_COLUMNS_2` (columns for table 2, JSON array)
+    - **Must include the relationship key columns**
 - Power BI inputs:
   - `FABRIC_TEST_DAX_QUERY` (otherwise use default queries)
 - Cross-workspace testing (optional):
@@ -247,16 +252,46 @@ Expected: Pipeline created with all activity types and proper dependencies.
 
 ### 4) Semantic Model Flow (Comprehensive)
 
+**Prerequisite - Discover Valid Relationships:**
+Before creating the semantic model, identify tables with valid foreign key relationships:
+
+**Example queries to discover relationships:**
+```sql
+-- Find tables with common column names (potential FK relationships)
+SELECT t1.TABLE_NAME as Table1, t1.COLUMN_NAME as Column1,
+       t2.TABLE_NAME as Table2, t2.COLUMN_NAME as Column2
+FROM INFORMATION_SCHEMA.COLUMNS t1
+JOIN INFORMATION_SCHEMA.COLUMNS t2 
+  ON t1.COLUMN_NAME = t2.COLUMN_NAME 
+  AND t1.TABLE_NAME < t2.TABLE_NAME
+WHERE t1.COLUMN_NAME LIKE '%Key' OR t1.COLUMN_NAME LIKE '%ID'
+ORDER BY t1.COLUMN_NAME;
+
+-- Verify relationship by sampling data from both tables
+SELECT DISTINCT FK_Column FROM Table1 ORDER BY FK_Column LIMIT 10;
+SELECT DISTINCT PK_Column FROM Table2 ORDER BY PK_Column LIMIT 10;
+
+-- Check for orphaned foreign keys (values in FK not in PK)
+SELECT COUNT(*) as OrphanedCount
+FROM Table1 t1
+LEFT JOIN Table2 t2 ON t1.FK_Column = t2.PK_Column
+WHERE t2.PK_Column IS NULL;
+```
+
+**Document the chosen relationship** (e.g., `fact_sale.CityKey` → `dimension_city.CityKey`, cardinality: many-to-one)
+
 **Happy Path - Full Lifecycle:**
 1. `create_semantic_model`
 2. `get_semantic_model_details` - verify creation
-3. `add_table_to_semantic_model` (table 1 with all column types)
-4. `add_table_to_semantic_model` (table 2)
-5. `add_relationship_to_semantic_model` (manyToOne, oneDirection)
+3. `add_table_to_semantic_model` (table 1 with all column types **including relationship key**)
+4. `add_table_to_semantic_model` (table 2 **including relationship key**)
+5. `add_relationship_to_semantic_model` (use validated relationship from prerequisite)
+   - Example: `fact_sale.CityKey` → `dimension_city.CityKey` (manyToOne, oneDirection)
+   - Verify cardinality matches data reality
 6. `add_measures_to_semantic_model` (simple SUM measure)
 7. `add_measures_to_semantic_model` (add second measure - COUNT)
 8. `get_semantic_model_definition` (format="TMSL", decode_model_bim=false)
-9. `get_semantic_model_definition` (format="TMSL", decode_model_bim=true)
+9. `get_semantic_model_definition` (format="TMSL", decode_model_bim=true) - verify relationship exists
 10. `delete_measures_from_semantic_model` (delete one measure)
 11. `add_measures_to_semantic_model` (**recreate deleted measure**)
 12. Verify final state with `get_semantic_model_definition`
@@ -273,11 +308,18 @@ Test all supported data types in `add_table_to_semantic_model`:
 Create a test table with one column of each type to verify all are handled correctly.
 
 **Relationship Variations:**
-1. `add_relationship_to_semantic_model` with `cardinality="manyToOne"` (default)
-2. `add_relationship_to_semantic_model` with `cardinality="oneToMany"`
-3. `add_relationship_to_semantic_model` with `cardinality="oneToOne"`
-4. `add_relationship_to_semantic_model` with `cardinality="manyToMany"`
-5. `add_relationship_to_semantic_model` with `cross_filter_direction="bothDirections"`
+**Note:** All relationship tests should use the same validated FK relationship from the prerequisite.
+Only vary the parameters (cardinality, cross_filter_direction, is_active), not the tables/columns.
+
+1. `add_relationship_to_semantic_model` with `cardinality="manyToOne"` (default) - validates tool
+2. Test parameter variations on the **same** relationship:
+   - `cardinality="oneToMany"` (reverse direction test)
+   - `cardinality="oneToOne"` (1:1 constraint test)
+   - `cardinality="manyToMany"` (M:M junction test)
+   - `cross_filter_direction="bothDirections"` (bidirectional filter test)
+   - `is_active=false` (inactive relationship test)
+
+**Important:** If testing multiple relationships, ensure each one is based on a valid FK in the data schema.
 6. `add_relationship_to_semantic_model` with `is_active=false`
 
 **Measure Variations:**
@@ -288,8 +330,8 @@ Create a test table with one column of each type to verify all are handled corre
 5. Measure with format string (if supported)
 
 **Negative Tests:**
-1. `create_semantic_model` with duplicate name
-   - Expected: Error indicating model already exists
+1. ~~`create_semantic_model` with duplicate name~~
+   - **SKIP:** Fabric API allows duplicate display names (creates new model with different ID)
 2. `add_table_to_semantic_model` to non-existent model
    - Expected: Semantic model not found error
 3. `add_table_to_semantic_model` with invalid column data type
@@ -304,8 +346,8 @@ Create a test table with one column of each type to verify all are handled corre
    - Expected: Column not found error
 8. `add_relationship_to_semantic_model` with invalid cardinality value
    - Expected: Invalid cardinality error
-9. `add_measures_to_semantic_model` with invalid DAX expression
-   - Expected: DAX validation error
+9. ~~`add_measures_to_semantic_model` with invalid DAX expression~~
+   - **SKIP:** Fabric API accepts invalid DAX at creation time; validation occurs at refresh/query time
 10. `add_measures_to_semantic_model` to non-existent table
     - Expected: Table not found error
 11. `delete_measures_from_semantic_model` with non-existent measure name
@@ -541,11 +583,15 @@ At the end of the test run, **ask the user for permission** before deleting any 
 | Discovery | 3 | Invalid workspace, empty name, invalid filter |
 | Notebook | 10 | Invalid file, duplicate name, missing dependencies |
 | Pipeline | 8 | Duplicate name, invalid activity, missing dependencies |
-| Semantic Model | 13 | Invalid types, missing tables/columns, bad DAX |
+| Semantic Model | 11 | Invalid types, missing tables/columns (2 skipped - see notes) |
 | Power BI | 7 | Invalid model, bad DAX syntax, missing references |
 | SQL | 8 | Invalid endpoint, bad SQL, wrong statement type |
 | Livy | 8 | Invalid session/statement, closed session, syntax errors |
-| **Total** | **57** | |
+| **Total** | **55** | |
+
+**Skipped Negative Tests (Fabric API Behavior):**
+- `create_semantic_model` with duplicate name: Fabric allows duplicate display names
+- `add_measures_to_semantic_model` with invalid DAX: Validation occurs at refresh/query time, not creation
 
 ## Expected Failure Modes
 - `CapacityNotActive`: capacity paused or inactive.

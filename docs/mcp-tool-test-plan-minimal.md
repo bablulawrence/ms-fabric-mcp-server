@@ -51,9 +51,13 @@ Use the values from `.env.integration`:
 - Optional semantic model inputs:
   - `FABRIC_TEST_SEMANTIC_MODEL_NAME` (otherwise generate a timestamped name)
   - `FABRIC_TEST_SM_TABLE_1`, `FABRIC_TEST_SM_TABLE_2` (lakehouse tables to model)
+    - **Must have a valid foreign key relationship** (e.g., fact→dimension or dimension→dimension)
+    - Example: `fact_sale` (table 1) and `dimension_city` (table 2) with `CityKey` relationship
+  - `FABRIC_TEST_SM_RELATIONSHIP_FROM_COL`, `FABRIC_TEST_SM_RELATIONSHIP_TO_COL` (relationship key columns)
   - `FABRIC_TEST_SM_COLUMNS_TABLE_1`, `FABRIC_TEST_SM_COLUMNS_TABLE_2`
     (column name + data type pairs; supported data types: `string`, `int64`, `decimal`,
     `double`, `boolean`, `dateTime`)
+    - **Must include the relationship key columns**
 - Optional Power BI inputs:
   - `FABRIC_TEST_DAX_QUERY` (otherwise use a simple default query)
 
@@ -168,17 +172,42 @@ Expected: Activity appends successfully; pipeline id returned.
 
 **Happy Path:**
 1. (Optional) Create two small lakehouse tables for testing (via `execute_sql_statement`)
-2. `create_semantic_model`
-3. `add_table_to_semantic_model` (table 1 with explicit columns)
-4. `add_table_to_semantic_model` (table 2 with explicit columns)
-5. `add_relationship_to_semantic_model` (e.g., Dim → Fact key)
-6. `add_measures_to_semantic_model` (simple measure)
-7. `get_semantic_model_details`
-8. `get_semantic_model_definition` (`format="TMSL"`, optionally `decode_model_bim=true`)
-9. `delete_measures_from_semantic_model` (validate delete path)
-10. `add_measures_to_semantic_model` (**recreate deleted measure** - always restore after delete tests)
+2. **Query lakehouse schema to identify tables with valid relationships**
+   - Use `execute_sql_query` to find tables with foreign key relationships, OR
+   - Query `INFORMATION_SCHEMA` to identify fact/dimension tables, OR
+   - Use known tables from the test lakehouse (e.g., `fact_sale` → `dimension_city`)
+   - **Important:** Verify the relationship exists in the data schema before adding to semantic model
+   - Document the chosen tables and the relationship key columns in the test log
+   
+   **Example queries to discover valid relationships:**
+   ```sql
+   -- Find tables with common column names (potential FK relationships)
+   SELECT t1.TABLE_NAME as Table1, t1.COLUMN_NAME as Column1,
+          t2.TABLE_NAME as Table2, t2.COLUMN_NAME as Column2
+   FROM INFORMATION_SCHEMA.COLUMNS t1
+   JOIN INFORMATION_SCHEMA.COLUMNS t2 
+     ON t1.COLUMN_NAME = t2.COLUMN_NAME 
+     AND t1.TABLE_NAME < t2.TABLE_NAME
+   WHERE t1.COLUMN_NAME LIKE '%Key' OR t1.COLUMN_NAME LIKE '%ID'
+   ORDER BY t1.COLUMN_NAME;
+   
+   -- Sample data from candidate tables to verify the relationship
+   SELECT DISTINCT TableName.KeyColumn FROM TableName ORDER BY KeyColumn LIMIT 10;
+   ```
+   
+3. `create_semantic_model`
+4. `add_table_to_semantic_model` (table 1 with explicit columns including relationship key)
+5. `add_table_to_semantic_model` (table 2 with explicit columns including relationship key)
+6. `add_relationship_to_semantic_model` (use the validated relationship from step 2)
+   - Example: `fact_sale.CityKey` → `dimension_city.CityKey` (many-to-one)
+   - Verify cardinality makes semantic sense (many-to-one for fact→dimension)
+7. `add_measures_to_semantic_model` (simple measure)
+8. `get_semantic_model_details`
+9. `get_semantic_model_definition` (`format="TMSL"`, optionally `decode_model_bim=true`)
+10. `delete_measures_from_semantic_model` (validate delete path)
+11. `add_measures_to_semantic_model` (**recreate deleted measure** - always restore after delete tests)
 
-Expected: Semantic model updates are reflected in definition; measures add/delete succeeds.
+Expected: Semantic model updates are reflected in definition; measures add/delete succeeds; relationship is semantically valid.
 
 **Important:** Any item deleted as part of testing (e.g., measures) must be **recreated immediately**
 after the delete test, before proceeding to the next flow. This ensures the model remains in a
