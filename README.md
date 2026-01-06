@@ -193,7 +193,7 @@ Copy `.env.example` to `.env` and customize as needed.
 
 ## Available Tools
 
-The server provides **24 core tools**, with **3 additional SQL tools** when installed with `[sql]` extras (27 total).
+The server provides **35 core tools**, with **3 additional SQL tools** when installed with `[sql]` extras (38 total).
 
 | Tool Group | Count | Tools |
 |------------|-------|-------|
@@ -202,7 +202,9 @@ The server provides **24 core tools**, with **3 additional SQL tools** when inst
 | **Notebook** | 6 | `import_notebook_to_fabric`, `get_notebook_content`, `attach_lakehouse_to_notebook`, `get_notebook_execution_details`, `list_notebook_executions`, `get_notebook_driver_logs` |
 | **Job** | 4 | `run_on_demand_job`, `get_job_status`, `get_job_status_by_url`, `get_operation_result` |
 | **Livy** | 8 | `livy_create_session`, `livy_list_sessions`, `livy_get_session_status`, `livy_close_session`, `livy_run_statement`, `livy_get_statement_status`, `livy_cancel_statement`, `livy_get_session_log` |
-| **Pipeline** | 3 | `create_blank_pipeline`, `add_copy_activity_to_pipeline`, `add_activity_to_pipeline` |
+| **Pipeline** | 5 | `create_blank_pipeline`, `add_copy_activity_to_pipeline`, `add_notebook_activity_to_pipeline`, `add_dataflow_activity_to_pipeline`, `add_activity_to_pipeline` |
+| **Semantic Model** | 7 | `create_semantic_model`, `add_table_to_semantic_model`, `add_relationship_to_semantic_model`, `get_semantic_model_details`, `get_semantic_model_definition`, `add_measures_to_semantic_model`, `delete_measures_from_semantic_model` |
+| **Power BI** | 2 | `refresh_semantic_model`, `execute_dax_query` |
 | **SQL** *(optional)* | 3 | `get_sql_endpoint`, `execute_sql_query`, `execute_sql_statement` |
 
 ### SQL Tools (Optional)
@@ -220,7 +222,7 @@ sudo apt-get update
 sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
 ```
 
-If `pyodbc` is not available, the server starts with 24 tools (SQL tools disabled).
+If `pyodbc` is not available, the server starts with 35 tools (SQL tools disabled).
 
 ## Development
 

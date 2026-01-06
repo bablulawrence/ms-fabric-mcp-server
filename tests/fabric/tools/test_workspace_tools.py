@@ -47,6 +47,9 @@ class TestToolRegistration:
             register_job_tools,
             register_sql_tools,
             register_livy_tools,
+            register_pipeline_tools,
+            register_semantic_model_tools,
+            register_powerbi_tools,
         )
         
         assert all([
@@ -56,4 +59,7 @@ class TestToolRegistration:
             callable(register_job_tools),
             callable(register_sql_tools),
             callable(register_livy_tools),
+            callable(register_pipeline_tools),
+            callable(register_semantic_model_tools),
+            callable(register_powerbi_tools),
         ])

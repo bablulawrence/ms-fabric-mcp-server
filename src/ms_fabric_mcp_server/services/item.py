@@ -3,7 +3,6 @@
 """Generic service for Fabric item operations."""
 
 import logging
-import time
 from typing import List, Dict, Optional, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -258,12 +257,18 @@ class FabricItemService:
             logger.error(f"Unexpected error fetching item {item_id}: {exc}")
             raise FabricError(f"Failed to fetch item: {exc}")
     
-    def get_item_definition(self, workspace_id: str, item_id: str) -> Dict[str, Any]:
+    def get_item_definition(
+        self,
+        workspace_id: str,
+        item_id: str,
+        format: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Get the full definition of an item, including content.
         
         Args:
             workspace_id: Workspace ID
             item_id: Item ID
+            format: Optional format hint (e.g., "TMSL", "ipynb")
             
         Returns:
             Dictionary containing item definition
@@ -274,11 +279,18 @@ class FabricItemService:
         logger.debug(f"Fetching definition for item {item_id}")
         
         try:
+            endpoint = f"workspaces/{workspace_id}/items/{item_id}/getDefinition"
+            if format:
+                endpoint = f"{endpoint}?format={format}"
             response = self.client.make_api_request(
-                "POST", 
-                f"workspaces/{workspace_id}/items/{item_id}/getDefinition"
+                "POST",
+                endpoint,
+                wait_for_lro=True,
             )
             definition = response.json()
+
+            if not isinstance(definition, dict):
+                raise FabricError("Failed to fetch item definition: empty response")
             
             logger.info(f"Successfully fetched definition for item {item_id}")
             return definition
@@ -288,6 +300,39 @@ class FabricItemService:
         except Exception as exc:
             logger.error(f"Unexpected error fetching item definition: {exc}")
             raise FabricError(f"Failed to fetch item definition: {exc}")
+
+    def update_item_definition(
+        self,
+        workspace_id: str,
+        item_id: str,
+        definition: Dict[str, Any],
+    ) -> None:
+        """Update an item's definition content.
+
+        Args:
+            workspace_id: Workspace ID
+            item_id: Item ID
+            definition: Definition payload for updateDefinition endpoint
+
+        Raises:
+            FabricAPIError: If API request fails
+            FabricError: For unexpected errors
+        """
+        logger.debug(f"Updating definition for item {item_id}")
+
+        try:
+            self.client.make_api_request(
+                "POST",
+                f"workspaces/{workspace_id}/items/{item_id}/updateDefinition",
+                payload=definition,
+                wait_for_lro=True,
+            )
+            logger.info(f"Successfully updated definition for item {item_id}")
+        except FabricAPIError:
+            raise
+        except Exception as exc:
+            logger.error(f"Unexpected error updating item definition: {exc}")
+            raise FabricError(f"Failed to update item definition: {exc}")
     
     def create_item(self, workspace_id: str, item_definition: Dict[str, Any]) -> FabricItem:
         """Create new item in workspace.
@@ -320,52 +365,47 @@ class FabricItemService:
             response = self.client.make_api_request(
                 "POST",
                 f"workspaces/{workspace_id}/items",
-                payload=item_definition
+                payload=item_definition,
+                wait_for_lro=True,
             )
-            
-            # Handle different response formats
-            if response.status_code == 201:
-                item_data = response.json()
-                item = FabricItem(
-                    id=item_data["id"],
-                    display_name=item_data["displayName"],
-                    type=item_data["type"],
-                    workspace_id=workspace_id,
-                    description=item_data.get("description"),
-                    created_date=item_data.get("createdDate"),
-                    modified_date=item_data.get("modifiedDate")
+
+            if response.status_code not in (200, 201, 202):
+                raise FabricAPIError(
+                    response.status_code,
+                    "Unexpected response status for item creation",
                 )
-                
-                logger.info(f"Successfully created {item_type} with ID: {item.id}")
-                return item
-            
-            elif response.status_code == 202:
-                # Accepted - operation is async
-                logger.info("Item creation accepted (async operation)")
+
+            if response.status_code == 202:
+                item_id = None
                 try:
                     response_data = response.json()
-                    item_id = response_data.get("id")
-                    if item_id:
-                        # Wait and fetch the created item
-                        time.sleep(2)
-                        return self.get_item_by_id(workspace_id, item_id)
-                except:
-                    pass
-                
-                # Return minimal item object
-                return FabricItem(
-                    id="unknown",
-                    display_name=item_definition["displayName"],
-                    type=item_definition["type"],
-                    workspace_id=workspace_id,
-                    description=item_definition.get("description")
+                    if isinstance(response_data, dict):
+                        item_id = response_data.get("id")
+                except Exception:
+                    item_id = None
+                if item_id:
+                    return self.get_item_by_id(workspace_id, item_id)
+                raise FabricError(
+                    "Failed to create item: operation completed without Location or item id"
                 )
-            
-            else:
-                raise FabricAPIError(
-                    response.status_code, 
-                    "Unexpected response status for item creation"
-                )
+
+            item_data = response.json()
+
+            if not isinstance(item_data, dict) or not item_data:
+                raise FabricError("Failed to create item: empty response")
+
+            item = FabricItem(
+                id=item_data["id"],
+                display_name=item_data["displayName"],
+                type=item_data["type"],
+                workspace_id=workspace_id,
+                description=item_data.get("description"),
+                created_date=item_data.get("createdDate"),
+                modified_date=item_data.get("modifiedDate")
+            )
+
+            logger.info(f"Successfully created {item_type} with ID: {item.id}")
+            return item
                 
         except FabricAPIError:
             raise

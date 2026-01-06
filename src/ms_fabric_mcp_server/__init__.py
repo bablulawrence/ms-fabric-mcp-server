@@ -60,6 +60,8 @@ from .services import (
     FabricSQLService,
     FabricLivyService,
     FabricPipelineService,
+    FabricSemanticModelService,
+    FabricPowerBIService,
 )
 
 # Model exports
@@ -68,6 +70,9 @@ from .models import (
     FabricItem,
     FabricLakehouse,
     FabricJob,
+    SemanticModelColumn,
+    SemanticModelMeasure,
+    DataType,
 )
 
 __all__ = [
@@ -100,10 +105,15 @@ __all__ = [
     "FabricSQLService",
     "FabricLivyService",
     "FabricPipelineService",
+    "FabricSemanticModelService",
+    "FabricPowerBIService",
     
     # Models
     "FabricWorkspace",
     "FabricItem",
     "FabricLakehouse",
     "FabricJob",
+    "SemanticModelColumn",
+    "SemanticModelMeasure",
+    "DataType",
 ]

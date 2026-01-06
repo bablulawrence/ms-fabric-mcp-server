@@ -3,6 +3,7 @@
 """HTTP client for Microsoft Fabric API operations with OpenTelemetry instrumentation."""
 
 import logging
+import time
 from typing import Optional, Dict, Any
 
 import requests
@@ -108,7 +109,7 @@ class FabricClient:
             logger.error(f"Failed to set up Azure credential: {exc}")
             raise FabricConfigError(f"Failed to configure authentication: {exc}")
     
-    def get_auth_token(self) -> str:
+    def get_auth_token(self, scopes: Optional[list[str]] = None) -> str:
         """Get fresh authentication token.
         
         Returns:
@@ -119,7 +120,8 @@ class FabricClient:
         """
         try:
             logger.debug("Acquiring authentication token")
-            token_result = self._credential.get_token(*self.config.SCOPES)
+            token_scopes = scopes or self.config.SCOPES
+            token_result = self._credential.get_token(*token_scopes)
             
             logger.debug("Authentication token acquired successfully")
             return token_result.token
@@ -128,13 +130,13 @@ class FabricClient:
             logger.error(f"Authentication failed: {exc}")
             raise FabricAuthError(f"Failed to acquire authentication token: {exc}")
     
-    def _get_auth_headers(self) -> Dict[str, str]:
+    def _get_auth_headers(self, scopes: Optional[list[str]] = None) -> Dict[str, str]:
         """Get authentication headers for API requests.
         
         Returns:
             Dictionary containing authorization and content-type headers
         """
-        token = self.get_auth_token()
+        token = self.get_auth_token(scopes)
         return {
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json"
@@ -146,7 +148,8 @@ class FabricClient:
         endpoint: str,
         payload: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = None,
-        headers: Optional[Dict[str, str]] = None
+        headers: Optional[Dict[str, str]] = None,
+        wait_for_lro: bool = False,
     ) -> requests.Response:
         """Make authenticated API request with error handling and tracing.
         
@@ -156,6 +159,7 @@ class FabricClient:
             payload: Request payload for POST/PUT requests
             timeout: Request timeout in seconds (uses config default if not specified)
             headers: Additional headers to include
+            wait_for_lro: If True, wait for Fabric long-running operation completion
             
         Returns:
             Response object
@@ -197,13 +201,44 @@ class FabricClient:
                     "fabric.api.version": "v1",
                 }
             ) as span:
-                return self._execute_request(
+                response = self._execute_request(
                     method, endpoint, payload, request_headers, request_timeout, span
                 )
+                return (
+                    self._handle_lro_response(response)
+                    if wait_for_lro and response.status_code == 202
+                    else response
+                )
         else:
-            return self._execute_request(
+            response = self._execute_request(
                 method, endpoint, payload, request_headers, request_timeout
             )
+            return (
+                self._handle_lro_response(response)
+                if wait_for_lro and response.status_code == 202
+                else response
+            )
+
+    def make_powerbi_request(
+        self,
+        method: str,
+        endpoint: str,
+        payload: Optional[Dict[str, Any]] = None,
+        timeout: Optional[int] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> requests.Response:
+        """Make authenticated Power BI REST API request."""
+        if not endpoint.startswith("http"):
+            endpoint = f"{self.config.POWERBI_BASE_URL.rstrip('/')}/{endpoint.lstrip('/')}"
+
+        request_headers = self._get_auth_headers(self.config.POWERBI_SCOPES)
+        if headers:
+            request_headers.update(headers)
+
+        request_timeout = timeout or self.config.POWERBI_API_CALL_TIMEOUT
+        return self._execute_request(
+            method, endpoint, payload, request_headers, request_timeout
+        )
     
     def _execute_request(
         self,
@@ -277,7 +312,42 @@ class FabricClient:
                 span.set_status(Status(StatusCode.ERROR, "Unexpected error"))
                 span.record_exception(exc)
             raise FabricError(f"Unexpected error: {exc}")
-    
+
+    def _handle_lro_response(
+        self, initial_response: requests.Response
+    ) -> requests.Response:
+        """Poll Fabric long-running operations until completion."""
+        operation_id = initial_response.headers.get("x-ms-operation-id")
+        if not operation_id:
+            return initial_response
+
+        logger.info("Long running operation started (%s)", operation_id)
+        poll_endpoint = f"operations/{operation_id}"
+
+        while True:
+            poll_response = self.make_api_request("GET", poll_endpoint)
+            status = str(poll_response.json().get("status", ""))
+
+            if status == "Succeeded":
+                location = poll_response.headers.get("Location")
+                if location:
+                    return self.make_api_request("GET", location)
+
+                logger.warning(
+                    "Long running operation completed without Location header (%s)",
+                    operation_id,
+                )
+                return initial_response
+
+            if status == "Failed":
+                raise FabricError(
+                    f"Operation {operation_id} failed: {str(poll_response.json().get('error', ''))}"
+                )
+
+            retry_after = poll_response.headers.get("Retry-After")
+            retry_after_int = int(retry_after) if retry_after and retry_after.isdigit() else 2
+            time.sleep(retry_after_int)
+
     def handle_api_errors(self, response: requests.Response) -> None:
         """Centralized API error handling and custom exceptions.
         

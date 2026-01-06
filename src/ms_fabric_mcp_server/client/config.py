@@ -23,6 +23,11 @@ class FabricConfig(BaseModel):
         LIVY_POLL_INTERVAL: Livy polling interval in seconds (default: 2.0)
         LIVY_STATEMENT_WAIT_TIMEOUT: Livy statement wait timeout in seconds (default: 10)
         LIVY_SESSION_WAIT_TIMEOUT: Livy session wait timeout in seconds (default: 240)
+        POWERBI_BASE_URL: Base URL for Power BI REST API (default: https://api.powerbi.com/v1.0/myorg)
+        POWERBI_SCOPES: OAuth scopes for Power BI (default: https://analysis.windows.net/powerbi/api/.default)
+        POWERBI_API_CALL_TIMEOUT: Power BI API call timeout in seconds (default: 30)
+        POWERBI_REFRESH_POLL_INTERVAL: Refresh polling interval in seconds (default: 5)
+        POWERBI_REFRESH_WAIT_TIMEOUT: Refresh wait timeout in seconds (default: 1800)
     """
     
     # API Configuration
@@ -73,6 +78,31 @@ class FabricConfig(BaseModel):
         description="Timeout for waiting on Livy session startup in seconds",
         ge=1
     )
+
+    # Power BI Configuration
+    POWERBI_BASE_URL: str = Field(
+        default="https://api.powerbi.com/v1.0/myorg",
+        description="Base URL for Power BI REST API"
+    )
+    POWERBI_SCOPES: list[str] = Field(
+        default_factory=lambda: ["https://analysis.windows.net/powerbi/api/.default"],
+        description="OAuth scopes for Power BI REST API"
+    )
+    POWERBI_API_CALL_TIMEOUT: int = Field(
+        default=30,
+        description="Power BI API call timeout in seconds",
+        ge=1
+    )
+    POWERBI_REFRESH_POLL_INTERVAL: float = Field(
+        default=5.0,
+        description="Polling interval for Power BI refresh operations in seconds",
+        gt=0.0
+    )
+    POWERBI_REFRESH_WAIT_TIMEOUT: int = Field(
+        default=1800,
+        description="Timeout for waiting on Power BI refresh completion in seconds",
+        ge=1
+    )
     
     @classmethod
     def from_environment(cls) -> 'FabricConfig':
@@ -84,6 +114,11 @@ class FabricConfig(BaseModel):
         scopes_str = os.getenv("FABRIC_SCOPES", "https://api.fabric.microsoft.com/.default")
         scopes = [s.strip() for s in scopes_str.split(",")]
         
+        powerbi_scopes_str = os.getenv(
+            "POWERBI_SCOPES", "https://analysis.windows.net/powerbi/api/.default"
+        )
+        powerbi_scopes = [s.strip() for s in powerbi_scopes_str.split(",")]
+
         return cls(
             BASE_URL=os.getenv("FABRIC_BASE_URL", "https://api.fabric.microsoft.com/v1"),
             SCOPES=scopes,
@@ -94,6 +129,15 @@ class FabricConfig(BaseModel):
             LIVY_POLL_INTERVAL=float(os.getenv("LIVY_POLL_INTERVAL", "2.0")),
             LIVY_STATEMENT_WAIT_TIMEOUT=int(os.getenv("LIVY_STATEMENT_WAIT_TIMEOUT", "10")),
             LIVY_SESSION_WAIT_TIMEOUT=int(os.getenv("LIVY_SESSION_WAIT_TIMEOUT", "240")),
+            POWERBI_BASE_URL=os.getenv("POWERBI_BASE_URL", "https://api.powerbi.com/v1.0/myorg"),
+            POWERBI_SCOPES=powerbi_scopes,
+            POWERBI_API_CALL_TIMEOUT=int(os.getenv("POWERBI_API_CALL_TIMEOUT", "30")),
+            POWERBI_REFRESH_POLL_INTERVAL=float(
+                os.getenv("POWERBI_REFRESH_POLL_INTERVAL", "5")
+            ),
+            POWERBI_REFRESH_WAIT_TIMEOUT=int(
+                os.getenv("POWERBI_REFRESH_WAIT_TIMEOUT", "1800")
+            ),
         )
     
     def get_endpoints(self) -> dict[str, str]:
