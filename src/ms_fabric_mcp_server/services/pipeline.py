@@ -87,6 +87,8 @@ class FabricPipelineService:
         destination_lakehouse_id: str,
         destination_connection_id: str,
         destination_table: str,
+        source_access_mode: str = "direct",
+        source_sql_query: Optional[str] = None,
         description: Optional[str] = None,
         table_action_option: str = "Append",
         apply_v_order: bool = True,
@@ -110,6 +112,8 @@ class FabricPipelineService:
             destination_lakehouse_id: Workspace artifact ID of the destination Lakehouse
             destination_connection_id: Fabric workspace connection ID for destination
             destination_table: Name for the destination table in Lakehouse
+            source_access_mode: Source access mode ("direct" or "sql"). Default is "direct".
+            source_sql_query: Optional SQL query for sql access mode.
             description: Optional description for the pipeline
             table_action_option: Table action option (default: "Append", options: "Append", "Overwrite")
             apply_v_order: Apply V-Order optimization (default: True)
@@ -156,6 +160,8 @@ class FabricPipelineService:
             destination_connection_id,
             destination_table
         )
+        source_access_mode = source_access_mode.lower().strip() if source_access_mode else ""
+        self._validate_source_access_mode(source_access_mode, source_sql_query)
         
         try:
             # Build pipeline definition
@@ -172,7 +178,9 @@ class FabricPipelineService:
                 apply_v_order,
                 timeout,
                 retry,
-                retry_interval_seconds
+                retry_interval_seconds,
+                source_access_mode=source_access_mode,
+                source_sql_query=source_sql_query,
             )
             
             # Encode definition to Base64
@@ -306,7 +314,9 @@ class FabricPipelineService:
         apply_v_order: bool,
         timeout: str,
         retry: int,
-        retry_interval_seconds: int
+        retry_interval_seconds: int,
+        source_access_mode: str = "direct",
+        source_sql_query: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Build the pipeline JSON structure with Copy Activity.
         
@@ -327,89 +337,35 @@ class FabricPipelineService:
             timeout: Activity timeout
             retry: Number of retry attempts
             retry_interval_seconds: Retry interval in seconds
+            source_access_mode: Source access mode ("direct" or "sql")
+            source_sql_query: Optional SQL query for sql access mode
             
         Returns:
             Pipeline definition dictionary ready for encoding
         """
         logger.debug("Building Copy Activity definition")
-        
-        # Determine source dataset type based on source_type
-        source_dataset_type = self._get_source_dataset_type(source_type)
-        
+
+        copy_activity = self._build_copy_activity(
+            workspace_id=workspace_id,
+            source_type=source_type,
+            source_connection_id=source_connection_id,
+            source_schema=source_schema,
+            source_table=source_table,
+            destination_lakehouse_id=destination_lakehouse_id,
+            destination_connection_id=destination_connection_id,
+            destination_table=destination_table,
+            table_action_option=table_action_option,
+            apply_v_order=apply_v_order,
+            timeout=timeout,
+            retry=retry,
+            retry_interval_seconds=retry_interval_seconds,
+            source_access_mode=source_access_mode,
+            source_sql_query=source_sql_query,
+        )
+
         definition = {
             "properties": {
-                "activities": [
-                    {
-                        "name": "CopyDataToLakehouse",
-                        "type": "Copy",
-                        "dependsOn": [],
-                        "policy": {
-                            "timeout": timeout,
-                            "retry": retry,
-                            "retryIntervalInSeconds": retry_interval_seconds,
-                            "secureOutput": False,
-                            "secureInput": False
-                        },
-                        "typeProperties": {
-                            "source": {
-                                "type": source_type,
-                                "partitionOption": "None",
-                                "queryTimeout": "02:00:00",
-                                "datasetSettings": {
-                                    "annotations": [],
-                                    "type": source_dataset_type,
-                                    "schema": [],
-                                    "typeProperties": {
-                                        "schema": source_schema,
-                                        "table": source_table
-                                    },
-                                    "version": "2.0",
-                                    "externalReferences": {
-                                        "connection": source_connection_id
-                                    }
-                                }
-                            },
-                            "sink": {
-                                "type": "LakehouseTableSink",
-                                "tableActionOption": table_action_option,
-                                "applyVOrder": apply_v_order,
-                                "datasetSettings": {
-                                    "annotations": [],
-                                    "connectionSettings": {
-                                        "name": "DestinationLakehouse",
-                                        "properties": {
-                                            "annotations": [],
-                                            "type": "Lakehouse",
-                                            "typeProperties": {
-                                                "workspaceId": workspace_id,
-                                                "artifactId": destination_lakehouse_id,
-                                                "rootFolder": "Tables"
-                                            },
-                                            "externalReferences": {
-                                                "connection": destination_connection_id
-                                            }
-                                        }
-                                    },
-                                    "type": "LakehouseTable",
-                                    "schema": [],
-                                    "typeProperties": {
-                                        "schema": "dbo",
-                                        "table": destination_table
-                                    }
-                                }
-                            },
-                            "enableStaging": False,
-                            "translator": {
-                                "type": "TabularTranslator",
-                                "typeConversion": True,
-                                "typeConversionSettings": {
-                                    "allowDataTruncation": True,
-                                    "treatBooleanAsNumber": False
-                                }
-                            }
-                        }
-                    }
-                ],
+                "activities": [copy_activity],
                 "annotations": []
             }
         }
@@ -446,6 +402,139 @@ class FabricPipelineService:
         
         # Fallback: return as-is to allow newer/unknown source types
         return source_type
+
+    def _validate_source_access_mode(
+        self,
+        source_access_mode: str,
+        source_sql_query: Optional[str],
+    ) -> None:
+        if not source_access_mode:
+            raise FabricValidationError(
+                "source_access_mode",
+                source_access_mode,
+                "Source access mode cannot be empty",
+            )
+
+        if source_access_mode not in {"direct", "sql"}:
+            raise FabricValidationError(
+                "source_access_mode",
+                source_access_mode,
+                "Source access mode must be 'direct' or 'sql'",
+            )
+
+        if source_sql_query and source_access_mode != "sql":
+            raise FabricValidationError(
+                "source_sql_query",
+                source_sql_query,
+                "source_sql_query requires source_access_mode='sql'",
+            )
+
+    def _resolve_source_type(self, source_type: str, source_access_mode: str) -> str:
+        if source_access_mode == "sql":
+            return "AzureSqlSource"
+        return source_type
+
+    def _build_copy_activity(
+        self,
+        workspace_id: str,
+        source_type: str,
+        source_connection_id: str,
+        source_schema: str,
+        source_table: str,
+        destination_lakehouse_id: str,
+        destination_connection_id: str,
+        destination_table: str,
+        table_action_option: str,
+        apply_v_order: bool,
+        timeout: str,
+        retry: int,
+        retry_interval_seconds: int,
+        source_access_mode: str = "direct",
+        source_sql_query: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        effective_source_type = self._resolve_source_type(source_type, source_access_mode)
+        source_dataset_type = self._get_source_dataset_type(effective_source_type)
+
+        include_schema = not (
+            source_access_mode == "direct" and source_type == "LakehouseTableSource"
+        )
+        source_type_properties: Dict[str, Any] = {"table": source_table}
+        if include_schema:
+            source_type_properties["schema"] = source_schema
+
+        source_settings: Dict[str, Any] = {
+            "type": effective_source_type,
+            "partitionOption": "None",
+            "queryTimeout": "02:00:00",
+            "datasetSettings": {
+                "annotations": [],
+                "type": source_dataset_type,
+                "schema": [],
+                "typeProperties": source_type_properties,
+                "version": "2.0",
+                "externalReferences": {
+                    "connection": source_connection_id
+                },
+            },
+        }
+        if source_access_mode == "sql" and source_sql_query:
+            source_settings["sqlReaderQuery"] = source_sql_query
+
+        copy_activity = {
+            "name": "CopyDataToLakehouse",
+            "type": "Copy",
+            "dependsOn": [],
+            "policy": {
+                "timeout": timeout,
+                "retry": retry,
+                "retryIntervalInSeconds": retry_interval_seconds,
+                "secureOutput": False,
+                "secureInput": False
+            },
+            "typeProperties": {
+                "source": source_settings,
+                "sink": {
+                    "type": "LakehouseTableSink",
+                    "tableActionOption": table_action_option,
+                    "applyVOrder": apply_v_order,
+                    "datasetSettings": {
+                        "annotations": [],
+                        "connectionSettings": {
+                            "name": "DestinationLakehouse",
+                            "properties": {
+                                "annotations": [],
+                                "type": "Lakehouse",
+                                "typeProperties": {
+                                    "workspaceId": workspace_id,
+                                    "artifactId": destination_lakehouse_id,
+                                    "rootFolder": "Tables"
+                                },
+                                "externalReferences": {
+                                    "connection": destination_connection_id
+                                }
+                            }
+                        },
+                        "type": "LakehouseTable",
+                        "schema": [],
+                        "typeProperties": {
+                            "schema": "dbo",
+                            "table": destination_table
+                        }
+                    }
+                },
+                "enableStaging": False,
+                "translator": {
+                    "type": "TabularTranslator",
+                    "typeConversion": True,
+                    "typeConversionSettings": {
+                        "allowDataTruncation": True,
+                        "treatBooleanAsNumber": False
+                    }
+                }
+            }
+        }
+
+        return copy_activity
     
     def _encode_definition(self, definition: Dict[str, Any]) -> str:
         """Encode pipeline definition to Base64 for API submission.
@@ -598,6 +687,8 @@ class FabricPipelineService:
         destination_connection_id: str,
         destination_table: str,
         activity_name: Optional[str] = None,
+        source_access_mode: str = "direct",
+        source_sql_query: Optional[str] = None,
         table_action_option: str = "Append",
         apply_v_order: bool = True,
         timeout: str = "0.12:00:00",
@@ -621,6 +712,8 @@ class FabricPipelineService:
             destination_connection_id: Fabric workspace connection ID for destination
             destination_table: Name for the destination table in Lakehouse
             activity_name: Optional custom name for the activity (default: "CopyDataToLakehouse_{table}")
+            source_access_mode: Source access mode ("direct" or "sql"). Default is "direct".
+            source_sql_query: Optional SQL query for sql access mode.
             table_action_option: Table action option (default: "Append", options: "Append", "Overwrite")
             apply_v_order: Apply V-Order optimization (default: True)
             timeout: Activity timeout (default: "0.12:00:00")
@@ -667,6 +760,8 @@ class FabricPipelineService:
             destination_connection_id,
             destination_table
         )
+        source_access_mode = source_access_mode.lower().strip() if source_access_mode else ""
+        self._validate_source_access_mode(source_access_mode, source_sql_query)
         
         try:
             # Get existing pipeline
@@ -700,81 +795,25 @@ class FabricPipelineService:
             # Generate activity name if not provided
             if not activity_name:
                 activity_name = f"CopyDataToLakehouse_{destination_table}"
-            
-            # Determine source dataset type
-            source_dataset_type = self._get_source_dataset_type(source_type)
-            
-            # Build Copy Activity
-            copy_activity = {
-                "name": activity_name,
-                "type": "Copy",
-                "dependsOn": [],
-                "policy": {
-                    "timeout": timeout,
-                    "retry": retry,
-                    "retryIntervalInSeconds": retry_interval_seconds,
-                    "secureOutput": False,
-                    "secureInput": False
-                },
-                "typeProperties": {
-                    "source": {
-                        "type": source_type,
-                        "partitionOption": "None",
-                        "queryTimeout": "02:00:00",
-                        "datasetSettings": {
-                            "annotations": [],
-                            "type": source_dataset_type,
-                            "schema": [],
-                            "typeProperties": {
-                                "schema": source_schema,
-                                "table": source_table
-                            },
-                            "version": "2.0",
-                            "externalReferences": {
-                                "connection": source_connection_id
-                            }
-                        }
-                    },
-                    "sink": {
-                        "type": "LakehouseTableSink",
-                        "tableActionOption": table_action_option,
-                        "applyVOrder": apply_v_order,
-                        "datasetSettings": {
-                            "annotations": [],
-                            "connectionSettings": {
-                                "name": "DestinationLakehouse",
-                                "properties": {
-                                    "annotations": [],
-                                    "type": "Lakehouse",
-                                    "typeProperties": {
-                                        "workspaceId": workspace_id,
-                                        "artifactId": destination_lakehouse_id,
-                                        "rootFolder": "Tables"
-                                    },
-                                    "externalReferences": {
-                                        "connection": destination_connection_id
-                                    }
-                                }
-                            },
-                            "type": "LakehouseTable",
-                            "schema": [],
-                            "typeProperties": {
-                                "schema": "dbo",
-                                "table": destination_table
-                            }
-                        }
-                    },
-                    "enableStaging": False,
-                    "translator": {
-                        "type": "TabularTranslator",
-                        "typeConversion": True,
-                        "typeConversionSettings": {
-                            "allowDataTruncation": True,
-                            "treatBooleanAsNumber": False
-                        }
-                    }
-                }
-            }
+
+            copy_activity = self._build_copy_activity(
+                workspace_id=workspace_id,
+                source_type=source_type,
+                source_connection_id=source_connection_id,
+                source_schema=source_schema,
+                source_table=source_table,
+                destination_lakehouse_id=destination_lakehouse_id,
+                destination_connection_id=destination_connection_id,
+                destination_table=destination_table,
+                table_action_option=table_action_option,
+                apply_v_order=apply_v_order,
+                timeout=timeout,
+                retry=retry,
+                retry_interval_seconds=retry_interval_seconds,
+                source_access_mode=source_access_mode,
+                source_sql_query=source_sql_query,
+            )
+            copy_activity["name"] = activity_name
             
             # Add the Copy Activity to existing activities
             if "properties" not in existing_definition:

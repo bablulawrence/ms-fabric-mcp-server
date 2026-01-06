@@ -76,6 +76,49 @@ async def test_add_copy_activity_to_pipeline(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_add_copy_activity_to_pipeline_sql_mode(
+    call_tool,
+    delete_item_if_exists,
+    lakehouse_id,
+    pipeline_copy_sql_inputs,
+    workspace_name,
+):
+    if not pipeline_copy_sql_inputs:
+        pytest.skip("Missing pipeline SQL copy inputs")
+
+    pipeline_name = unique_name("e2e_pipeline_copy_sql")
+    try:
+        create_result = await call_tool(
+            "create_blank_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            description="Integration test pipeline copy (sql mode)",
+        )
+        assert create_result["status"] == "success"
+
+        add_kwargs = {
+            "workspace_name": workspace_name,
+            "pipeline_name": pipeline_name,
+            "source_type": "LakehouseTableSource",
+            "source_connection_id": pipeline_copy_sql_inputs["source_connection_id"],
+            "source_table_schema": pipeline_copy_sql_inputs["source_schema"],
+            "source_table_name": pipeline_copy_sql_inputs["source_table"],
+            "destination_lakehouse_id": lakehouse_id,
+            "destination_connection_id": pipeline_copy_sql_inputs["destination_connection_id"],
+            "destination_table_name": pipeline_copy_sql_inputs["destination_table"],
+            "source_access_mode": "sql",
+        }
+        if pipeline_copy_sql_inputs.get("source_sql_query"):
+            add_kwargs["source_sql_query"] = pipeline_copy_sql_inputs["source_sql_query"]
+
+        add_result = await call_tool("add_copy_activity_to_pipeline", **add_kwargs)
+        assert add_result["status"] == "success"
+    finally:
+        await delete_item_if_exists(pipeline_name, "DataPipeline")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_add_notebook_activity_to_pipeline(
     call_tool,
     delete_item_if_exists,

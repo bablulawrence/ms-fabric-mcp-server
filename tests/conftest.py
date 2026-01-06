@@ -464,6 +464,35 @@ def pipeline_copy_inputs():
 
 
 @pytest.fixture
+def pipeline_copy_sql_inputs():
+    """Optional pipeline copy inputs for SQL fallback mode."""
+    source_connection_id = get_env_optional("FABRIC_TEST_SOURCE_SQL_CONNECTION_ID")
+    source_schema = get_env_optional("FABRIC_TEST_SOURCE_SCHEMA")
+    source_table = get_env_optional("FABRIC_TEST_SOURCE_TABLE")
+    dest_connection_id = get_env_optional("FABRIC_TEST_DEST_CONNECTION_ID")
+    dest_table = get_env_optional("FABRIC_TEST_DEST_TABLE_NAME") or source_table
+    source_sql_query = get_env_optional("FABRIC_TEST_SOURCE_SQL_QUERY")
+
+    if not all([
+        source_connection_id,
+        source_schema,
+        source_table,
+        dest_connection_id,
+        dest_table,
+    ]):
+        return None
+
+    return {
+        "source_connection_id": source_connection_id,
+        "source_schema": source_schema,
+        "source_table": source_table,
+        "destination_connection_id": dest_connection_id,
+        "destination_table": dest_table,
+        "source_sql_query": source_sql_query,
+    }
+
+
+@pytest.fixture
 def dataflow_name():
     """Optional dataflow name for pipeline integration tests."""
     return get_env_optional("FABRIC_TEST_DATAFLOW_NAME")

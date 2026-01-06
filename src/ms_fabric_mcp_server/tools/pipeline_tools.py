@@ -151,6 +151,8 @@ def register_pipeline_tools(
         destination_connection_id: str,
         destination_table_name: str,
         activity_name: Optional[str] = None,
+        source_access_mode: str = "direct",
+        source_sql_query: Optional[str] = None,
         table_action_option: str = "Append",
         apply_v_order: bool = True,
         timeout: str = "0.12:00:00",
@@ -179,6 +181,8 @@ def register_pipeline_tools(
             destination_connection_id: Fabric workspace connection ID for destination Lakehouse.
             destination_table_name: Name for the destination table in Lakehouse.
             activity_name: Optional custom name for the activity (default: auto-generated).
+            source_access_mode: Source access mode ("direct" or "sql"). Default is "direct".
+            source_sql_query: Optional SQL query for sql access mode.
             table_action_option: Table action option (default: "Append", options: "Append", "Overwrite").
             apply_v_order: Apply V-Order optimization (default: True).
             timeout: Activity timeout (default: "0.12:00:00").
@@ -223,6 +227,22 @@ def register_pipeline_tools(
                 destination_table_name="customers",
                 activity_name="CopyCustomersData"
             )
+            
+            # SQL fallback mode (use when direct Lakehouse copy fails with
+            # "datasource type Lakehouse is invalid" error):
+            result = add_copy_activity_to_pipeline(
+                workspace_name="Analytics Workspace",
+                pipeline_name="My_Existing_Pipeline",
+                source_type="LakehouseTableSource",
+                source_connection_id=sql_endpoint_conn_id,  # SQL analytics endpoint connection
+                source_table_schema="dbo",
+                source_table_name="fact_sale",
+                destination_lakehouse_id=lakehouse_id,
+                destination_connection_id=lakehouse_conn_id,
+                destination_table_name="fact_sale_copy",
+                source_access_mode="sql",
+                source_sql_query="SELECT * FROM dbo.fact_sale"  # optional
+            )
             ```
         """
         log_tool_invocation(
@@ -232,7 +252,8 @@ def register_pipeline_tools(
             source_type=source_type,
             source_table=f"{source_table_schema}.{source_table_name}",
             destination_table=destination_table_name,
-            activity_name=activity_name or f"CopyDataToLakehouse_{destination_table_name}"
+            activity_name=activity_name or f"CopyDataToLakehouse_{destination_table_name}",
+            source_access_mode=source_access_mode,
         )
         
         logger.info(
@@ -256,6 +277,8 @@ def register_pipeline_tools(
             destination_connection_id=destination_connection_id,
             destination_table=destination_table_name,
             activity_name=activity_name,
+            source_access_mode=source_access_mode,
+            source_sql_query=source_sql_query,
             table_action_option=table_action_option,
             apply_v_order=apply_v_order,
             timeout=timeout,

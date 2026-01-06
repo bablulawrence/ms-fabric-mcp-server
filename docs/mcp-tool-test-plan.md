@@ -39,6 +39,8 @@ Use the values from `.env.integration`:
 - Lakehouse: `FABRIC_TEST_LAKEHOUSE_NAME`
 - SQL database: `FABRIC_TEST_SQL_DATABASE`
 - Optional pipeline copy inputs (source/destination connection, table, schema)
+  - Optional SQL endpoint connection for SQL fallback:
+    - `FABRIC_TEST_SOURCE_SQL_CONNECTION_ID`
 - Optional pipeline dataflow inputs:
   - `FABRIC_TEST_DATAFLOW_NAME`
   - `FABRIC_TEST_DATAFLOW_WORKSPACE_NAME` (if different from test workspace)
@@ -56,8 +58,15 @@ IDs you must capture during discovery:
 - `lakehouse_id` from `list_items` (needed for Livy and copy activity).
 
 ## Tool Invocation Approach
-Call tools directly through the MCP server, using the same sequences as integration tests,
-and track created items by a timestamped prefix so they can be cleaned up.
+Call tools directly through the MCP server, using the same sequences as integration tests.
+Do not run scripts or call Fabric REST APIs directly for this plan; keep everything within
+the MCP tool surface to validate end-to-end behavior.
+
+Always load `.env.integration` into your shell before you start so tests can read
+environment variables (pytest only reads `os.environ`):
+```
+set -a; source .env.integration; set +a
+```
 
 Keep a simple run log for traceability:
 - Timestamp
@@ -101,6 +110,22 @@ Notes:
 1. `create_blank_pipeline`
 2. `add_activity_to_pipeline` (Wait activity)
 3. `add_copy_activity_to_pipeline` (optional, requires copy inputs)
+   - SQL fallback example (use SQL Analytics endpoint connection):
+     ```
+     add_copy_activity_to_pipeline(
+       workspace_name=...,
+       pipeline_name=...,
+       source_type="LakehouseTableSource",
+       source_connection_id=FABRIC_TEST_SOURCE_SQL_CONNECTION_ID,  # Fabric connection ID
+       source_table_schema=FABRIC_TEST_SOURCE_SCHEMA,
+       source_table_name=FABRIC_TEST_SOURCE_TABLE,
+       destination_lakehouse_id=...,
+       destination_connection_id=FABRIC_TEST_DEST_CONNECTION_ID,
+       destination_table_name=FABRIC_TEST_DEST_TABLE_NAME,
+       source_access_mode="sql",
+       source_sql_query="SELECT * FROM dbo.fact_sale"  # optional
+     )
+     ```
 4. `add_notebook_activity_to_pipeline` (use the notebook created earlier; set `depends_on_activity_name`)
 5. `add_dataflow_activity_to_pipeline` (optional, requires dataflow inputs; set `depends_on_activity_name`)
 4. (Optional) `run_on_demand_job` (Pipeline) and poll `get_job_status_by_url`
@@ -160,6 +185,20 @@ in this environment.
 - When `livy_get_session_log` returns 404, keep polling status; logs appear after the
   session starts and the Spark app is running.
 - When using shell sleeps, set `timeout_ms` explicitly to avoid short default timeouts.
+- If capacity is inactive, Notebook and Livy flows will fail with `CapacityNotActive`;
+  record the failure and skip ahead rather than retrying indefinitely.
+
+## Notebook + Livy Polling Tips
+Notebook:
+- `get_job_status_by_url` can remain `NotStarted` while the run is active; use
+  `list_notebook_executions` to confirm `InProgress`/`Success`.
+- Only call `get_notebook_driver_logs` after execution starts (Spark app ID present).
+- Use backoff polling and cap total wait time (10-20 minutes).
+
+Livy:
+- Use `livy_create_session(with_wait=False)` and poll `livy_get_session_status` until `idle`.
+- If startup is slow, call `livy_list_sessions` to capture `FallbackReasons`.
+- Run statements with `with_wait=False`, then poll `livy_get_statement_status` until `available`.
 
 ## Cleanup
 Always delete created items to avoid clutter/cost:

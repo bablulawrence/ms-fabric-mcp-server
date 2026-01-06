@@ -223,6 +223,55 @@ class TestFabricPipelineService:
         assert sink_dataset["type"] == "LakehouseTable"
         assert sink_dataset["typeProperties"]["table"] == "movie"
 
+    def test_build_copy_activity_definition_lakehouse_omits_schema(self, pipeline_service):
+        """LakehouseTableSource should omit schema in source dataset settings."""
+        definition = pipeline_service._build_copy_activity_definition(
+            workspace_id="workspace-123",
+            source_type="LakehouseTableSource",
+            source_connection_id="conn-123",
+            source_schema="dbo",
+            source_table="fact_sale",
+            destination_lakehouse_id="lakehouse-456",
+            destination_connection_id="dest-conn-789",
+            destination_table="fact_sale_copy",
+            table_action_option="Append",
+            apply_v_order=True,
+            timeout="01:00:00",
+            retry=0,
+            retry_interval_seconds=30,
+        )
+
+        activity = definition["properties"]["activities"][0]
+        source_type_properties = activity["typeProperties"]["source"]["datasetSettings"]["typeProperties"]
+        assert "schema" not in source_type_properties
+        assert source_type_properties["table"] == "fact_sale"
+
+    def test_build_copy_activity_definition_sql_mode(self, pipeline_service):
+        """SQL mode should emit AzureSqlSource and AzureSqlTable with optional query."""
+        definition = pipeline_service._build_copy_activity_definition(
+            workspace_id="workspace-123",
+            source_type="LakehouseTableSource",
+            source_connection_id="conn-123",
+            source_schema="dbo",
+            source_table="fact_sale",
+            destination_lakehouse_id="lakehouse-456",
+            destination_connection_id="dest-conn-789",
+            destination_table="fact_sale_copy",
+            table_action_option="Append",
+            apply_v_order=True,
+            timeout="01:00:00",
+            retry=0,
+            retry_interval_seconds=30,
+            source_access_mode="sql",
+            source_sql_query="SELECT 1",
+        )
+
+        activity = definition["properties"]["activities"][0]
+        source = activity["typeProperties"]["source"]
+        assert source["type"] == "AzureSqlSource"
+        assert source["datasetSettings"]["type"] == "AzureSqlTable"
+        assert source["sqlReaderQuery"] == "SELECT 1"
+
     def test_get_source_dataset_type_mapping(self, pipeline_service):
         """Known source types map to dataset types."""
         assert pipeline_service._get_source_dataset_type("AzurePostgreSqlSource") == "AzurePostgreSqlTable"
@@ -235,6 +284,16 @@ class TestFabricPipelineService:
     def test_get_source_dataset_type_invalid(self, pipeline_service):
         """Unsupported source types fall back to input value."""
         assert pipeline_service._get_source_dataset_type("UnsupportedType") == "UnsupportedType"
+
+    def test_validate_source_access_mode_invalid(self, pipeline_service):
+        """Invalid source access mode raises validation error."""
+        with pytest.raises(FabricValidationError):
+            pipeline_service._validate_source_access_mode("bad", None)
+
+    def test_validate_source_access_mode_query_requires_sql(self, pipeline_service):
+        """SQL query requires sql access mode."""
+        with pytest.raises(FabricValidationError):
+            pipeline_service._validate_source_access_mode("direct", "SELECT 1")
 
     def test_encode_definition(self, pipeline_service):
         """Test encoding pipeline definition to Base64."""
