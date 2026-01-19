@@ -1259,8 +1259,12 @@ class FabricPipelineService:
             )
             activities = self._get_pipeline_activities(definition)
 
-            target_index = self._find_activity_index(activities, activity_name)
-            if target_index is None:
+            matching_indices = [
+                index
+                for index, activity in enumerate(activities)
+                if activity.get("name") == activity_name
+            ]
+            if not matching_indices:
                 raise FabricValidationError(
                     "activity_name",
                     activity_name,
@@ -1277,11 +1281,16 @@ class FabricPipelineService:
                     f"{dependent_list}. Remove dependencies first.",
                 )
 
-            activities.pop(target_index)
+            activities[:] = [
+                activity
+                for activity in activities
+                if activity.get("name") != activity_name
+            ]
             self._update_pipeline_definition(workspace_id, pipeline.id, definition)
 
             logger.info(
-                f"Successfully deleted activity '{activity_name}' from pipeline {pipeline.id}"
+                f"Successfully deleted {len(matching_indices)} activities named "
+                f"'{activity_name}' from pipeline {pipeline.id}"
             )
             return pipeline.id
 
@@ -1342,13 +1351,6 @@ class FabricPipelineService:
             activity_names = {
                 activity.get("name") for activity in activities if activity.get("name")
             }
-
-            if activity_name not in activity_names:
-                raise FabricValidationError(
-                    "activity_name",
-                    activity_name,
-                    "Activity not found in pipeline",
-                )
 
             if from_activity_name:
                 if from_activity_name not in activity_names:
