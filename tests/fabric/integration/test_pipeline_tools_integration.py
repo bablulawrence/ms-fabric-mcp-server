@@ -186,3 +186,158 @@ async def test_add_dataflow_activity_to_pipeline(
         assert add_result["status"] == "success"
     finally:
         await delete_item_if_exists(pipeline_name, "DataPipeline")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_remove_dependencies_and_delete_activity(
+    call_tool,
+    delete_item_if_exists,
+    workspace_name,
+):
+    pipeline_name = unique_name("e2e_pipeline_delete_dep")
+    try:
+        create_result = await call_tool(
+            "create_blank_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            description="Integration test pipeline delete activity",
+        )
+        assert create_result["status"] == "success"
+
+        activity_a = {
+            "name": "WaitA",
+            "type": "Wait",
+            "dependsOn": [],
+            "typeProperties": {"waitTimeInSeconds": 1},
+        }
+        activity_b = {
+            "name": "WaitB",
+            "type": "Wait",
+            "dependsOn": [{"activity": "WaitA", "dependencyConditions": ["Succeeded"]}],
+            "typeProperties": {"waitTimeInSeconds": 1},
+        }
+        activity_c = {
+            "name": "WaitC",
+            "type": "Wait",
+            "dependsOn": [{"activity": "WaitA", "dependencyConditions": ["Succeeded"]}],
+            "typeProperties": {"waitTimeInSeconds": 1},
+        }
+
+        add_a = await call_tool(
+            "add_activity_to_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            activity_json=activity_a,
+        )
+        assert add_a["status"] == "success"
+
+        add_b = await call_tool(
+            "add_activity_to_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            activity_json=activity_b,
+        )
+        assert add_b["status"] == "success"
+
+        add_c = await call_tool(
+            "add_activity_to_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            activity_json=activity_c,
+        )
+        assert add_c["status"] == "success"
+
+        delete_blocked = await call_tool(
+            "delete_activity_from_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            activity_name="WaitA",
+        )
+        assert delete_blocked["status"] == "error"
+
+        remove_result = await call_tool(
+            "remove_activity_dependency",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            activity_name="WaitA",
+        )
+        assert remove_result["status"] == "success"
+        assert remove_result["removed_count"] == 2
+
+        delete_result = await call_tool(
+            "delete_activity_from_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            activity_name="WaitA",
+        )
+        assert delete_result["status"] == "success"
+    finally:
+        await delete_item_if_exists(pipeline_name, "DataPipeline")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_remove_dependency_from_specific_activity(
+    call_tool,
+    delete_item_if_exists,
+    workspace_name,
+):
+    pipeline_name = unique_name("e2e_pipeline_delete_dep_specific")
+    try:
+        create_result = await call_tool(
+            "create_blank_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            description="Integration test pipeline delete activity (specific)",
+        )
+        assert create_result["status"] == "success"
+
+        activity_a = {
+            "name": "WaitA",
+            "type": "Wait",
+            "dependsOn": [],
+            "typeProperties": {"waitTimeInSeconds": 1},
+        }
+        activity_b = {
+            "name": "WaitB",
+            "type": "Wait",
+            "dependsOn": [{"activity": "WaitA", "dependencyConditions": ["Succeeded"]}],
+            "typeProperties": {"waitTimeInSeconds": 1},
+        }
+
+        add_a = await call_tool(
+            "add_activity_to_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            activity_json=activity_a,
+        )
+        assert add_a["status"] == "success"
+
+        add_b = await call_tool(
+            "add_activity_to_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            activity_json=activity_b,
+        )
+        assert add_b["status"] == "success"
+
+        remove_result = await call_tool(
+            "remove_activity_dependency",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            activity_name="WaitA",
+            from_activity_name="WaitB",
+        )
+        assert remove_result["status"] == "success"
+        assert remove_result["removed_count"] == 1
+
+        delete_result = await call_tool(
+            "delete_activity_from_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            activity_name="WaitA",
+        )
+        assert delete_result["status"] == "success"
+    finally:
+        await delete_item_if_exists(pipeline_name, "DataPipeline")

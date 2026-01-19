@@ -36,6 +36,8 @@ def register_pipeline_tools(
     - add_notebook_activity_to_pipeline: Add a Notebook Activity to an existing pipeline
     - add_dataflow_activity_to_pipeline: Add a Dataflow Activity to an existing pipeline
     - add_activity_to_pipeline: Add any activity from JSON template to an existing pipeline
+    - delete_activity_from_pipeline: Delete an activity from an existing pipeline
+    - remove_activity_dependency: Remove dependsOn entries referencing an activity
     
     Args:
         mcp: FastMCP server instance to register tools on.
@@ -646,5 +648,132 @@ def register_pipeline_tools(
             f"{activity_type} activity '{activity_name}' added successfully to pipeline {pipeline_id}"
         )
         return result
+
+    @mcp.tool(title="Delete Activity from Pipeline")
+    @handle_tool_errors
+    def delete_activity_from_pipeline(
+        workspace_name: str,
+        pipeline_name: str,
+        activity_name: str,
+    ) -> dict:
+        """Delete an activity from an existing Fabric pipeline.
+
+        Removes the specified activity from the pipeline definition. This will
+        fail if any other activity depends on it. Use remove_activity_dependency
+        to remove dependencies first.
+
+        Parameters:
+            workspace_name: The display name of the workspace containing the pipeline.
+            pipeline_name: Name of the existing pipeline to update.
+            activity_name: Name of the activity to delete.
+
+        Returns:
+            Dictionary with status, pipeline_id, pipeline_name, activity_name, workspace_name, and message.
+        """
+        log_tool_invocation(
+            "delete_activity_from_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            activity_name=activity_name,
+        )
+
+        logger.info(
+            f"Deleting activity '{activity_name}' from pipeline '{pipeline_name}' "
+            f"in workspace '{workspace_name}'"
+        )
+
+        workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+        workspace = workspace_service.get_workspace_by_id(workspace_id)
+
+        pipeline_id = pipeline_service.delete_activity_from_pipeline(
+            workspace_id=workspace_id,
+            pipeline_name=pipeline_name,
+            activity_name=activity_name,
+        )
+
+        result = {
+            "status": "success",
+            "pipeline_id": pipeline_id,
+            "pipeline_name": pipeline_name,
+            "activity_name": activity_name,
+            "workspace_name": workspace.display_name,
+            "workspace_id": workspace_id,
+            "message": (
+                f"Activity '{activity_name}' deleted successfully "
+                f"from pipeline '{pipeline_name}'"
+            ),
+        }
+
+        logger.info(
+            f"Activity '{activity_name}' deleted successfully from pipeline {pipeline_id}"
+        )
+        return result
+
+    @mcp.tool(title="Remove Activity Dependency")
+    @handle_tool_errors
+    def remove_activity_dependency(
+        workspace_name: str,
+        pipeline_name: str,
+        activity_name: str,
+        from_activity_name: Optional[str] = None,
+    ) -> dict:
+        """Remove dependsOn references to a target activity.
+
+        Removes dependsOn edges pointing to the target activity. If from_activity_name
+        is provided, only removes edges from that activity.
+
+        Parameters:
+            workspace_name: The display name of the workspace containing the pipeline.
+            pipeline_name: Name of the existing pipeline to update.
+            activity_name: Name of the activity being depended on.
+            from_activity_name: Optional activity to remove dependencies from.
+
+        Returns:
+            Dictionary with status, pipeline_id, pipeline_name, activity_name,
+            removed_count, workspace_name, and message.
+        """
+        log_tool_invocation(
+            "remove_activity_dependency",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            activity_name=activity_name,
+            from_activity_name=from_activity_name,
+        )
+
+        logger.info(
+            f"Removing dependencies on '{activity_name}' from pipeline '{pipeline_name}' "
+            f"in workspace '{workspace_name}'"
+        )
+
+        workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+        workspace = workspace_service.get_workspace_by_id(workspace_id)
+
+        pipeline_id, removed_count = pipeline_service.remove_activity_dependency(
+            workspace_id=workspace_id,
+            pipeline_name=pipeline_name,
+            activity_name=activity_name,
+            from_activity_name=from_activity_name,
+        )
+
+        result = {
+            "status": "success",
+            "pipeline_id": pipeline_id,
+            "pipeline_name": pipeline_name,
+            "activity_name": activity_name,
+            "from_activity_name": from_activity_name,
+            "removed_count": removed_count,
+            "workspace_name": workspace.display_name,
+            "workspace_id": workspace_id,
+            "message": (
+                f"Removed {removed_count} dependencies on '{activity_name}' "
+                f"from pipeline '{pipeline_name}'"
+            ),
+        }
+
+        logger.info(
+            f"Removed {removed_count} dependencies on '{activity_name}' "
+            f"from pipeline {pipeline_id}"
+        )
+        return result
     
-    logger.info("Pipeline tools registered successfully (3 tools)")
+    logger.info("Pipeline tools registered successfully (7 tools)")

@@ -1222,6 +1222,181 @@ class FabricPipelineService:
             logger.error(f"Failed to add activity from JSON to pipeline: {exc}")
             raise FabricError(f"Failed to add activity from JSON to pipeline: {exc}")
 
+    def delete_activity_from_pipeline(
+        self,
+        workspace_id: str,
+        pipeline_name: str,
+        activity_name: str,
+    ) -> str:
+        """Delete an activity from an existing pipeline.
+
+        Args:
+            workspace_id: Workspace ID containing the pipeline
+            pipeline_name: Name of the existing pipeline
+            activity_name: Name of the activity to delete
+
+        Returns:
+            Pipeline ID (GUID) of the updated pipeline
+
+        Raises:
+            FabricValidationError: If activity not found or has dependencies
+            FabricItemNotFoundError: If pipeline not found
+            FabricAPIError: If pipeline update fails
+            FabricError: For other errors
+        """
+        logger.info(
+            f"Deleting activity '{activity_name}' from pipeline '{pipeline_name}' "
+            f"in workspace {workspace_id}"
+        )
+
+        self._validate_activity_operation_inputs(
+            workspace_id, pipeline_name, activity_name
+        )
+
+        try:
+            pipeline, definition = self._get_pipeline_definition(
+                workspace_id, pipeline_name
+            )
+            activities = self._get_pipeline_activities(definition)
+
+            target_index = self._find_activity_index(activities, activity_name)
+            if target_index is None:
+                raise FabricValidationError(
+                    "activity_name",
+                    activity_name,
+                    "Activity not found in pipeline",
+                )
+
+            dependents = self._find_dependent_activities(activities, activity_name)
+            if dependents:
+                dependent_list = ", ".join(dependents)
+                raise FabricValidationError(
+                    "activity_name",
+                    activity_name,
+                    "Activity is referenced by dependsOn in: "
+                    f"{dependent_list}. Remove dependencies first.",
+                )
+
+            activities.pop(target_index)
+            self._update_pipeline_definition(workspace_id, pipeline.id, definition)
+
+            logger.info(
+                f"Successfully deleted activity '{activity_name}' from pipeline {pipeline.id}"
+            )
+            return pipeline.id
+
+        except FabricValidationError:
+            raise
+        except FabricItemNotFoundError:
+            raise
+        except FabricAPIError:
+            raise
+        except Exception as exc:
+            logger.error(f"Failed to delete activity from pipeline: {exc}")
+            raise FabricError(f"Failed to delete activity from pipeline: {exc}")
+
+    def remove_activity_dependency(
+        self,
+        workspace_id: str,
+        pipeline_name: str,
+        activity_name: str,
+        from_activity_name: Optional[str] = None,
+    ) -> tuple[str, int]:
+        """Remove dependsOn references to a target activity.
+
+        Args:
+            workspace_id: Workspace ID containing the pipeline
+            pipeline_name: Name of the existing pipeline
+            activity_name: Target activity name to remove dependencies to
+            from_activity_name: Optional source activity name to limit removal
+
+        Returns:
+            Tuple of (pipeline ID, removed dependency count)
+
+        Raises:
+            FabricValidationError: If activity not found or no dependencies removed
+            FabricItemNotFoundError: If pipeline not found
+            FabricAPIError: If pipeline update fails
+            FabricError: For other errors
+        """
+        logger.info(
+            f"Removing dependencies on '{activity_name}' in pipeline '{pipeline_name}' "
+            f"from activity '{from_activity_name or 'ALL'}'"
+        )
+
+        self._validate_activity_operation_inputs(
+            workspace_id, pipeline_name, activity_name
+        )
+        if from_activity_name is not None and not str(from_activity_name).strip():
+            raise FabricValidationError(
+                "from_activity_name",
+                str(from_activity_name),
+                "From activity name cannot be empty",
+            )
+
+        try:
+            pipeline, definition = self._get_pipeline_definition(
+                workspace_id, pipeline_name
+            )
+            activities = self._get_pipeline_activities(definition)
+            activity_names = {
+                activity.get("name") for activity in activities if activity.get("name")
+            }
+
+            if activity_name not in activity_names:
+                raise FabricValidationError(
+                    "activity_name",
+                    activity_name,
+                    "Activity not found in pipeline",
+                )
+
+            if from_activity_name:
+                if from_activity_name not in activity_names:
+                    raise FabricValidationError(
+                        "from_activity_name",
+                        from_activity_name,
+                        "From activity not found in pipeline",
+                    )
+                source_activity = next(
+                    activity
+                    for activity in activities
+                    if activity.get("name") == from_activity_name
+                )
+                removed_count = self._remove_dependency_from_activity(
+                    source_activity, activity_name
+                )
+            else:
+                removed_count = 0
+                for activity in activities:
+                    removed_count += self._remove_dependency_from_activity(
+                        activity, activity_name
+                    )
+
+            if removed_count == 0:
+                raise FabricValidationError(
+                    "activity_name",
+                    activity_name,
+                    "No dependencies found to remove",
+                )
+
+            self._update_pipeline_definition(workspace_id, pipeline.id, definition)
+
+            logger.info(
+                f"Removed {removed_count} dependencies on '{activity_name}' "
+                f"from pipeline {pipeline.id}"
+            )
+            return pipeline.id, removed_count
+
+        except FabricValidationError:
+            raise
+        except FabricItemNotFoundError:
+            raise
+        except FabricAPIError:
+            raise
+        except Exception as exc:
+            logger.error(f"Failed to remove activity dependencies: {exc}")
+            raise FabricError(f"Failed to remove activity dependencies: {exc}")
+
     def _validate_notebook_activity_inputs(
         self,
         workspace_id: str,
@@ -1240,6 +1415,25 @@ class FabricPipelineService:
         if not notebook_name or not notebook_name.strip():
             raise FabricValidationError(
                 "notebook_name", notebook_name, "Notebook name cannot be empty"
+            )
+        if not activity_name or not activity_name.strip():
+            raise FabricValidationError(
+                "activity_name", activity_name, "Activity name cannot be empty"
+            )
+
+    def _validate_activity_operation_inputs(
+        self,
+        workspace_id: str,
+        pipeline_name: str,
+        activity_name: str,
+    ) -> None:
+        if not workspace_id or not str(workspace_id).strip():
+            raise FabricValidationError(
+                "workspace_id", str(workspace_id), "Workspace ID cannot be empty"
+            )
+        if not pipeline_name or not pipeline_name.strip():
+            raise FabricValidationError(
+                "pipeline_name", pipeline_name, "Pipeline name cannot be empty"
             )
         if not activity_name or not activity_name.strip():
             raise FabricValidationError(
@@ -1294,6 +1488,50 @@ class FabricPipelineService:
         existing_definition = self._decode_definition(encoded_payload)
 
         return pipeline, existing_definition
+
+    def _get_pipeline_activities(self, definition: Dict[str, Any]) -> list:
+        if "properties" not in definition:
+            definition["properties"] = {}
+        if "activities" not in definition["properties"]:
+            definition["properties"]["activities"] = []
+        return definition["properties"]["activities"]
+
+    def _find_activity_index(
+        self, activities: list, activity_name: str
+    ) -> Optional[int]:
+        for index, activity in enumerate(activities):
+            if activity.get("name") == activity_name:
+                return index
+        return None
+
+    def _find_dependent_activities(
+        self, activities: list, activity_name: str
+    ) -> list:
+        dependents = []
+        for activity in activities:
+            for dependency in activity.get("dependsOn", []) or []:
+                if dependency.get("activity") == activity_name:
+                    dependents.append(activity.get("name") or "UnnamedActivity")
+                    break
+        return dependents
+
+    def _remove_dependency_from_activity(
+        self,
+        activity: Dict[str, Any],
+        target_name: str,
+    ) -> int:
+        depends_on = activity.get("dependsOn")
+        if not depends_on or not isinstance(depends_on, list):
+            return 0
+        original_len = len(depends_on)
+        filtered = [
+            dependency
+            for dependency in depends_on
+            if dependency.get("activity") != target_name
+        ]
+        if len(filtered) != original_len:
+            activity["dependsOn"] = filtered
+        return original_len - len(filtered)
 
     def _append_activity_to_definition(
         self,
