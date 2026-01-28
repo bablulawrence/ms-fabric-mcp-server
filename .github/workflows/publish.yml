@@ -97,18 +97,31 @@ jobs:
           import sys
           import tomllib
 
-          tag = os.environ["GITHUB_REF_NAME"]
-          if tag.startswith("v"):
-              tag = tag[1:]
+          ref_name = os.environ["GITHUB_REF_NAME"]
+          ref_type = os.environ.get("GITHUB_REF_TYPE", "")
 
           with open("pyproject.toml", "rb") as handle:
               version = tomllib.load(handle)["project"]["version"]
 
-          if tag != version:
-              print(f"Tag version {tag} does not match pyproject version {version}.")
+          if ref_type == "tag":
+              tag = ref_name[1:] if ref_name.startswith("v") else ref_name
+              if tag != version:
+                  print(f"Tag version {tag} does not match pyproject version {version}.")
+                  sys.exit(1)
+              print(f"Tag version {tag} matches pyproject version {version}.")
+              sys.exit(0)
+
+          if ref_name != "main":
+              print(
+                  "Publish workflow must run on main when using workflow_dispatch "
+                  f"(got {ref_name})."
+              )
               sys.exit(1)
 
-          print(f"Tag version {tag} matches pyproject version {version}.")
+          print(
+              "Publish workflow running on main (workflow_dispatch). "
+              f"Using pyproject version {version}."
+          )
           PY
 
       - name: Set up uv
