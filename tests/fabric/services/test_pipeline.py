@@ -640,3 +640,284 @@ class TestFabricPipelineService:
 
         with pytest.raises(FabricItemNotFoundError):
             pipeline_service.add_activity_from_json("ws-1", "Pipe", {"name": "A1", "type": "Copy"})
+
+    def test_delete_activity_from_pipeline_success(
+        self, pipeline_service, mock_item_service, mock_client
+    ):
+        """Deletes an activity and updates definition."""
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        base_definition = {
+            "properties": {
+                "activities": [
+                    {"name": "A", "dependsOn": []},
+                    {"name": "B", "dependsOn": []},
+                ]
+            }
+        }
+        encoded = pipeline_service._encode_definition(base_definition)
+        mock_item_service.get_item_definition.return_value = {
+            "definition": {"parts": [{"path": "pipeline-content.json", "payload": encoded}]}
+        }
+
+        pipeline_id = pipeline_service.delete_activity_from_pipeline("ws-1", "Pipe", "A")
+
+        assert pipeline_id == "pipe-1"
+        _, kwargs = mock_client.make_api_request.call_args
+        payload = kwargs["payload"]["definition"]["parts"][0]["payload"]
+        updated = _decode_payload(payload)
+        names = [activity.get("name") for activity in updated["properties"]["activities"]]
+        assert "A" not in names
+        assert "B" in names
+
+    def test_delete_activity_from_pipeline_missing_activity(
+        self, pipeline_service, mock_item_service
+    ):
+        """Missing activity name raises validation error."""
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        base_definition = {"properties": {"activities": [{"name": "B", "dependsOn": []}]}}
+        encoded = pipeline_service._encode_definition(base_definition)
+        mock_item_service.get_item_definition.return_value = {
+            "definition": {"parts": [{"path": "pipeline-content.json", "payload": encoded}]}
+        }
+
+        with pytest.raises(FabricValidationError):
+            pipeline_service.delete_activity_from_pipeline("ws-1", "Pipe", "A")
+
+    def test_delete_activity_from_pipeline_with_dependents(
+        self, pipeline_service, mock_item_service
+    ):
+        """Dependent activities block deletion."""
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        base_definition = {
+            "properties": {
+                "activities": [
+                    {"name": "A", "dependsOn": []},
+                    {
+                        "name": "B",
+                        "dependsOn": [
+                            {"activity": "A", "dependencyConditions": ["Succeeded"]}
+                        ],
+                    },
+                ]
+            }
+        }
+        encoded = pipeline_service._encode_definition(base_definition)
+        mock_item_service.get_item_definition.return_value = {
+            "definition": {"parts": [{"path": "pipeline-content.json", "payload": encoded}]}
+        }
+
+        with pytest.raises(FabricValidationError):
+            pipeline_service.delete_activity_from_pipeline("ws-1", "Pipe", "A")
+
+    def test_delete_activity_from_pipeline_duplicate_names(
+        self, pipeline_service, mock_item_service, mock_client
+    ):
+        """Deletes all activities with a matching name."""
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        base_definition = {
+            "properties": {
+                "activities": [
+                    {"name": "A", "dependsOn": []},
+                    {"name": "A", "dependsOn": []},
+                    {"name": "B", "dependsOn": []},
+                ]
+            }
+        }
+        encoded = pipeline_service._encode_definition(base_definition)
+        mock_item_service.get_item_definition.return_value = {
+            "definition": {"parts": [{"path": "pipeline-content.json", "payload": encoded}]}
+        }
+
+        pipeline_id = pipeline_service.delete_activity_from_pipeline("ws-1", "Pipe", "A")
+
+        assert pipeline_id == "pipe-1"
+        _, kwargs = mock_client.make_api_request.call_args
+        payload = kwargs["payload"]["definition"]["parts"][0]["payload"]
+        updated = _decode_payload(payload)
+        names = [activity.get("name") for activity in updated["properties"]["activities"]]
+        assert names == ["B"]
+
+    def test_remove_activity_dependency_global_success(
+        self, pipeline_service, mock_item_service, mock_client
+    ):
+        """Removes dependency edges across all activities."""
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        base_definition = {
+            "properties": {
+                "activities": [
+                    {"name": "A", "dependsOn": []},
+                    {
+                        "name": "B",
+                        "dependsOn": [
+                            {"activity": "A", "dependencyConditions": ["Succeeded"]},
+                            {"activity": "C", "dependencyConditions": ["Succeeded"]},
+                        ],
+                    },
+                    {
+                        "name": "C",
+                        "dependsOn": [
+                            {"activity": "A", "dependencyConditions": ["Succeeded"]}
+                        ],
+                    },
+                ]
+            }
+        }
+        encoded = pipeline_service._encode_definition(base_definition)
+        mock_item_service.get_item_definition.return_value = {
+            "definition": {"parts": [{"path": "pipeline-content.json", "payload": encoded}]}
+        }
+
+        pipeline_id, removed_count = pipeline_service.remove_activity_dependency(
+            "ws-1", "Pipe", "A"
+        )
+
+        assert pipeline_id == "pipe-1"
+        assert removed_count == 2
+        _, kwargs = mock_client.make_api_request.call_args
+        payload = kwargs["payload"]["definition"]["parts"][0]["payload"]
+        updated = _decode_payload(payload)
+        activities = {activity["name"]: activity for activity in updated["properties"]["activities"]}
+        assert activities["B"]["dependsOn"] == [
+            {"activity": "C", "dependencyConditions": ["Succeeded"]}
+        ]
+        assert activities["C"]["dependsOn"] == []
+
+    def test_remove_activity_dependency_specific_success(
+        self, pipeline_service, mock_item_service, mock_client
+    ):
+        """Removes dependency edges from a specific activity."""
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        base_definition = {
+            "properties": {
+                "activities": [
+                    {"name": "A", "dependsOn": []},
+                    {
+                        "name": "B",
+                        "dependsOn": [
+                            {"activity": "A", "dependencyConditions": ["Succeeded"]}
+                        ],
+                    },
+                    {
+                        "name": "C",
+                        "dependsOn": [
+                            {"activity": "A", "dependencyConditions": ["Succeeded"]}
+                        ],
+                    },
+                ]
+            }
+        }
+        encoded = pipeline_service._encode_definition(base_definition)
+        mock_item_service.get_item_definition.return_value = {
+            "definition": {"parts": [{"path": "pipeline-content.json", "payload": encoded}]}
+        }
+
+        pipeline_id, removed_count = pipeline_service.remove_activity_dependency(
+            "ws-1", "Pipe", "A", from_activity_name="B"
+        )
+
+        assert pipeline_id == "pipe-1"
+        assert removed_count == 1
+        _, kwargs = mock_client.make_api_request.call_args
+        payload = kwargs["payload"]["definition"]["parts"][0]["payload"]
+        updated = _decode_payload(payload)
+        activities = {activity["name"]: activity for activity in updated["properties"]["activities"]}
+        assert activities["B"]["dependsOn"] == []
+        assert activities["C"]["dependsOn"] == [
+            {"activity": "A", "dependencyConditions": ["Succeeded"]}
+        ]
+
+    def test_remove_activity_dependency_no_edges(
+        self, pipeline_service, mock_item_service
+    ):
+        """No dependency edges removed raises validation error."""
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        base_definition = {
+            "properties": {
+                "activities": [
+                    {"name": "A", "dependsOn": []},
+                    {
+                        "name": "B",
+                        "dependsOn": [
+                            {"activity": "C", "dependencyConditions": ["Succeeded"]}
+                        ],
+                    },
+                ]
+            }
+        }
+        encoded = pipeline_service._encode_definition(base_definition)
+        mock_item_service.get_item_definition.return_value = {
+            "definition": {"parts": [{"path": "pipeline-content.json", "payload": encoded}]}
+        }
+
+        with pytest.raises(FabricValidationError):
+            pipeline_service.remove_activity_dependency("ws-1", "Pipe", "A")
+
+    def test_remove_activity_dependency_missing_target_succeeds(
+        self, pipeline_service, mock_item_service, mock_client
+    ):
+        """Removes edges even if target activity is missing from activities list."""
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        base_definition = {
+            "properties": {
+                "activities": [
+                    {"name": "B", "dependsOn": [{"activity": "Missing"}]},
+                    {"name": "C", "dependsOn": []},
+                ]
+            }
+        }
+        encoded = pipeline_service._encode_definition(base_definition)
+        mock_item_service.get_item_definition.return_value = {
+            "definition": {"parts": [{"path": "pipeline-content.json", "payload": encoded}]}
+        }
+
+        pipeline_id, removed_count = pipeline_service.remove_activity_dependency(
+            "ws-1", "Pipe", "Missing"
+        )
+
+        assert pipeline_id == "pipe-1"
+        assert removed_count == 1
+        _, kwargs = mock_client.make_api_request.call_args
+        payload = kwargs["payload"]["definition"]["parts"][0]["payload"]
+        updated = _decode_payload(payload)
+        activities = {activity["name"]: activity for activity in updated["properties"]["activities"]}
+        assert activities["B"]["dependsOn"] == []
