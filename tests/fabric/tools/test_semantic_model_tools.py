@@ -62,6 +62,8 @@ class TestSemanticModelTools:
             lakehouse_name="Lakehouse",
             table_name="Table",
             columns=columns,
+            table_schema="gold",
+            model_table_name="FactSales",
         )["status"] == "success"
 
         measures = [SemanticModelMeasure(name="m1", expression="SUM(Table[id])")]

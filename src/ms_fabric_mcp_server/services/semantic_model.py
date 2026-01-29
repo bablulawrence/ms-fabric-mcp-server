@@ -135,6 +135,8 @@ class FabricSemanticModelService:
         lakehouse_name: str,
         table_name: str,
         columns: List[SemanticModelColumn],
+        table_schema: Optional[str] = None,
+        model_table_name: Optional[str] = None,
     ) -> SemanticModelReference:
         """Add a table from a lakehouse to an existing semantic model."""
         logger.info(
@@ -145,8 +147,23 @@ class FabricSemanticModelService:
             raise FabricValidationError(
                 "columns", "empty", "Columns list cannot be empty"
             )
+        if table_schema is not None and not table_schema.strip():
+            raise FabricValidationError(
+                "table_schema", table_schema, "Table schema cannot be empty"
+            )
+        if model_table_name is not None and not model_table_name.strip():
+            raise FabricValidationError(
+                "model_table_name", model_table_name, "Model table name cannot be empty"
+            )
+        if table_schema and ("/" in table_name or "\\" in table_name or "." in table_name):
+            raise FabricValidationError(
+                "table_name",
+                table_name,
+                "Table name must be unqualified when table_schema is provided",
+            )
 
         try:
+            resolved_table_name = model_table_name or table_name
             workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
             semantic_model_id = self.item_service.get_item_by_name(
                 workspace_id, semantic_model_name, "SemanticModel"
@@ -164,11 +181,7 @@ class FabricSemanticModelService:
             tables = model.setdefault("tables", [])
 
             expression_name = f"DirectLake - {lakehouse_name}"
-            table_expression = self._find_list_item(
-                expressions, "name", expression_name
-            )
-
-            if not table_expression:
+            if not self._find_list_item(expressions, "name", expression_name):
                 expressions.append(
                     {
                         "name": expression_name,
@@ -183,16 +196,24 @@ class FabricSemanticModelService:
                     }
                 )
 
-            if self._find_list_item(tables, "name", table_name):
+            if self._find_list_item(tables, "name", resolved_table_name):
                 raise FabricValidationError(
-                    "table_name",
-                    table_name,
-                    f"Table '{table_name}' already exists in semantic model '{semantic_model_name}'",
+                    "model_table_name" if model_table_name else "table_name",
+                    resolved_table_name,
+                    f"Table '{resolved_table_name}' already exists in semantic model '{semantic_model_name}'",
                 )
+
+            partition_source = {
+                "entityName": table_name,
+                "expressionSource": expression_name,
+                "type": "entity",
+            }
+            if table_schema:
+                partition_source["schemaName"] = table_schema
 
             tables.append(
                 {
-                    "name": table_name,
+                    "name": resolved_table_name,
                     "columns": [
                         {
                             "name": column.name,
@@ -205,13 +226,9 @@ class FabricSemanticModelService:
                     ],
                     "partitions": [
                         {
-                            "name": table_name,
+                            "name": resolved_table_name,
                             "mode": "directLake",
-                            "source": {
-                                "entityName": table_name,
-                                "expressionSource": expression_name,
-                                "type": "entity",
-                            },
+                            "source": partition_source,
                         }
                     ],
                     "lineageTag": str(uuid.uuid4()),

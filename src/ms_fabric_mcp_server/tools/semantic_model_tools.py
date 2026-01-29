@@ -75,14 +75,32 @@ def register_semantic_model_tools(
         lakehouse_name: str,
         table_name: str,
         columns: list[SemanticModelColumn],
+        table_schema: Optional[str] = None,
+        model_table_name: Optional[str] = None,
     ) -> dict:
-        """Add a table from a lakehouse to an existing semantic model."""
+        """Add a table from a lakehouse to an existing semantic model.
+
+        Parameters:
+            workspace_name: The display name of the workspace.
+            semantic_model_name: Name of the semantic model to update.
+            lakehouse_name: Name of the source lakehouse.
+            table_name: Source table name (unqualified when table_schema is provided).
+            columns: Column definitions for the table.
+            table_schema: Optional schema name for the source table.
+            model_table_name: Optional table name to use in the semantic model.
+
+        Notes:
+            - Schema-less DirectLake tables: omit table_schema and pass table_name only.
+            - Schema-based DirectLake tables: set table_schema and pass an unqualified table_name.
+        """
         log_tool_invocation(
             "add_table_to_semantic_model",
             workspace_name=workspace_name,
             semantic_model_name=semantic_model_name,
             lakehouse_name=lakehouse_name,
             table_name=table_name,
+            table_schema=table_schema,
+            model_table_name=model_table_name,
         )
 
         model = semantic_model_service.add_table_to_semantic_model(
@@ -91,6 +109,8 @@ def register_semantic_model_tools(
             lakehouse_name=lakehouse_name,
             table_name=table_name,
             columns=columns,
+            table_schema=table_schema,
+            model_table_name=model_table_name,
         )
 
         result = {

@@ -17,6 +17,7 @@ async def test_semantic_model_tools_flow(
     semantic_model_columns,
     semantic_model_table_2,
     semantic_model_columns_2,
+    semantic_model_refresh,
 ):
     if not semantic_model_table or not semantic_model_columns:
         pytest.skip("Missing semantic model table/columns inputs")
@@ -83,6 +84,14 @@ async def test_semantic_model_tools_flow(
                 is_active=True,
             )
             assert add_rel_result["status"] == "success"
+
+        if semantic_model_refresh:
+            refresh_result = await call_tool(
+                "refresh_semantic_model",
+                workspace_name=workspace_name,
+                semantic_model_name=semantic_model_name,
+            )
+            assert refresh_result["status"] == "success", refresh_result
     finally:
         await delete_item_if_exists(semantic_model_name, "SemanticModel")
 
@@ -136,5 +145,124 @@ async def test_get_semantic_model_details_and_definition(
         )
         assert definition_result["status"] == "success"
         assert definition_result.get("definition") is not None
+    finally:
+        await delete_item_if_exists(semantic_model_name, "SemanticModel")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_semantic_model_table_with_schema_refresh(
+    call_tool,
+    delete_item_if_exists,
+    poll_until,
+    workspace_name,
+    lakehouse_name,
+    semantic_model_table,
+    semantic_model_columns,
+    semantic_model_schema,
+    semantic_model_schema_refresh,
+    semantic_model_table_2,
+    semantic_model_columns_2,
+):
+    if not semantic_model_table or not semantic_model_columns or not semantic_model_schema:
+        pytest.skip("Missing semantic model table/columns/schema inputs")
+    if any(sep in semantic_model_table for sep in (".", "/", "\\")):
+        pytest.skip("Semantic model table must be unqualified when using schema")
+
+    semantic_model_name = unique_name("e2e_semantic_model_schema")
+    model_table_name = f"{semantic_model_schema}_{semantic_model_table}"
+
+    try:
+        create_result = await call_tool(
+            "create_semantic_model",
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+        )
+        assert create_result["status"] == "success"
+
+        async def _get_semantic_model():
+            result = await call_tool(
+                "list_items",
+                workspace_name=workspace_name,
+                item_type="SemanticModel",
+            )
+            if result.get("status") != "success":
+                return result
+            for item in result.get("items", []):
+                if item.get("display_name") == semantic_model_name:
+                    return result
+            return None
+
+        found = await poll_until(_get_semantic_model, timeout_seconds=120, interval_seconds=10)
+        assert found is not None
+
+        add_table_result = await call_tool(
+            "add_table_to_semantic_model",
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+            lakehouse_name=lakehouse_name,
+            table_name=semantic_model_table,
+            columns=semantic_model_columns,
+            table_schema=semantic_model_schema,
+            model_table_name=model_table_name,
+        )
+        assert add_table_result["status"] == "success"
+
+        if semantic_model_table_2 and semantic_model_columns_2:
+            add_table_2_result = await call_tool(
+                "add_table_to_semantic_model",
+                workspace_name=workspace_name,
+                semantic_model_name=semantic_model_name,
+                lakehouse_name=lakehouse_name,
+                table_name=semantic_model_table_2,
+                columns=semantic_model_columns_2,
+                table_schema=semantic_model_schema,
+                model_table_name=f"{semantic_model_schema}_{semantic_model_table_2}",
+            )
+            assert add_table_2_result["status"] == "success"
+
+            from_column = semantic_model_columns[0]["name"]
+            to_column = semantic_model_columns_2[0]["name"]
+            add_rel_result = await call_tool(
+                "add_relationship_to_semantic_model",
+                workspace_name=workspace_name,
+                semantic_model_name=semantic_model_name,
+                from_table=model_table_name,
+                from_column=from_column,
+                to_table=f"{semantic_model_schema}_{semantic_model_table_2}",
+                to_column=to_column,
+                cardinality="manyToOne",
+                cross_filter_direction="oneDirection",
+                is_active=True,
+            )
+            assert add_rel_result["status"] == "success"
+
+        definition_result = await call_tool(
+            "get_semantic_model_definition",
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+            format="TMSL",
+            decode_model_bim=True,
+        )
+        assert definition_result["status"] == "success"
+
+        model = definition_result.get("model_bim_json", {}).get("model", {})
+        tables = model.get("tables", [])
+        target = next((t for t in tables if t.get("name") == model_table_name), None)
+        assert target is not None
+        partitions = target.get("partitions", [])
+        assert partitions
+        source = partitions[0].get("source", {})
+        assert source.get("schemaName") == semantic_model_schema
+        assert source.get("entityName") == semantic_model_table
+
+        if semantic_model_schema_refresh:
+            refresh_result = await call_tool(
+                "refresh_semantic_model",
+                workspace_name=workspace_name,
+                semantic_model_name=semantic_model_name,
+            )
+            assert refresh_result["status"] == "success", refresh_result
+            assert refresh_result.get("refresh_status") == "Completed", refresh_result
     finally:
         await delete_item_if_exists(semantic_model_name, "SemanticModel")

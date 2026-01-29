@@ -543,6 +543,30 @@ def semantic_model_columns_2():
 
 
 @pytest.fixture
+def semantic_model_schema():
+    """Optional semantic model schema name for integration tests."""
+    return get_env_optional("FABRIC_TEST_SEMANTIC_MODEL_SCHEMA")
+
+
+@pytest.fixture
+def semantic_model_schema_refresh():
+    """Optional flag to require schema-based semantic model refresh."""
+    value = get_env_optional("FABRIC_TEST_SEMANTIC_MODEL_SCHEMA_REFRESH")
+    if not value:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "y"}
+
+
+@pytest.fixture
+def semantic_model_refresh():
+    """Optional flag to require semantic model refresh in integration tests."""
+    value = get_env_optional("FABRIC_TEST_SEMANTIC_MODEL_REFRESH")
+    if not value:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "y"}
+
+
+@pytest.fixture
 def sql_dependencies_available(tool_registry):
     """Skip SQL tests if dependencies or tools are unavailable."""
     pyodbc = pytest.importorskip("pyodbc")
