@@ -112,3 +112,28 @@ class TestItemTools:
 
         assert result["status"] == "success"
         assert result["item"]["folder_id"] == "folder-2"
+
+    def test_delete_item_success(self):
+        tools, tool_decorator = _capture_tools()
+        mcp = SimpleNamespace(tool=tool_decorator)
+
+        item_service = Mock()
+        workspace_service = Mock()
+        workspace_service.resolve_workspace_id.return_value = "ws-1"
+        item_service.get_item_by_name.return_value = FabricItem(
+            id="item-1",
+            display_name="Notebook",
+            type="Notebook",
+            workspace_id="ws-1",
+        )
+
+        register_item_tools(mcp, item_service, workspace_service)
+
+        result = tools["delete_item"](
+            workspace_name="Workspace",
+            item_display_name="Notebook",
+            item_type="Notebook",
+        )
+
+        assert result["status"] == "success"
+        item_service.delete_item.assert_called_once_with("ws-1", "item-1")
