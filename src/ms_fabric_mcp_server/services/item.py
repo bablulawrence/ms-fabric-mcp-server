@@ -263,6 +263,40 @@ class FabricItemService:
             raise FabricError("Failed to create folder: empty response")
         return data
 
+    def move_folder(
+        self,
+        workspace_id: str,
+        folder_id: str,
+        target_folder_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Move a folder within a workspace."""
+        if not folder_id or not str(folder_id).strip():
+            raise FabricValidationError(
+                "folder_id",
+                str(folder_id),
+                "Folder ID cannot be empty",
+            )
+        if target_folder_id is not None and not str(target_folder_id).strip():
+            raise FabricValidationError(
+                "target_folder_id",
+                str(target_folder_id),
+                "Target folder ID cannot be empty",
+            )
+
+        payload: Dict[str, Any] = {}
+        if target_folder_id:
+            payload["targetFolderId"] = target_folder_id
+
+        response = self.client.make_api_request(
+            "POST",
+            f"workspaces/{workspace_id}/folders/{folder_id}/move",
+            payload=payload,
+        )
+        data = response.json()
+        if not isinstance(data, dict) or not data.get("id"):
+            raise FabricError("Failed to move folder: empty response")
+        return data
+
     def resolve_folder_id_from_path(
         self,
         workspace_id: str,

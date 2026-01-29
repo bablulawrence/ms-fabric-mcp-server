@@ -30,6 +30,40 @@ async def test_list_items_with_type_filter(call_tool, workspace_name):
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_create_and_list_folders(call_tool, workspace_name):
+    parent_folder = unique_name("e2e_folder_root")
+    child_folder = unique_name("e2e_folder_child")
+
+    create_parent = await call_tool(
+        "create_folder",
+        workspace_name=workspace_name,
+        folder_name=parent_folder,
+    )
+    assert create_parent["status"] == "success"
+
+    create_child = await call_tool(
+        "create_folder",
+        workspace_name=workspace_name,
+        folder_name=child_folder,
+        parent_folder_path=parent_folder,
+    )
+    assert create_child["status"] == "success"
+
+    list_result = await call_tool(
+        "list_folders",
+        workspace_name=workspace_name,
+        root_folder_path=parent_folder,
+        recursive=True,
+    )
+    assert list_result["status"] == "success"
+    assert any(
+        folder.get("display_name") == child_folder
+        for folder in list_result.get("folders", [])
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_list_items_with_root_folder_path(
     call_tool,
     delete_item_if_exists,
@@ -215,3 +249,89 @@ async def test_move_item_to_folder_tool(
     finally:
         await delete_item_if_exists(pipeline_name, "DataPipeline")
         await delete_item_if_exists(target_pipeline, "DataPipeline")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_move_folder_tool(call_tool, workspace_name):
+    source_parent = unique_name("e2e_folder_source")
+    target_parent = unique_name("e2e_folder_target")
+    child_folder = unique_name("e2e_folder_child")
+
+    create_source = await call_tool(
+        "create_folder",
+        workspace_name=workspace_name,
+        folder_name=source_parent,
+    )
+    assert create_source["status"] == "success"
+
+    create_target = await call_tool(
+        "create_folder",
+        workspace_name=workspace_name,
+        folder_name=target_parent,
+    )
+    assert create_target["status"] == "success"
+
+    create_child = await call_tool(
+        "create_folder",
+        workspace_name=workspace_name,
+        folder_name=child_folder,
+        parent_folder_path=source_parent,
+    )
+    assert create_child["status"] == "success"
+    folder_id = create_child.get("folder_id")
+    assert folder_id
+
+    move_result = await call_tool(
+        "move_folder",
+        workspace_name=workspace_name,
+        folder_id=folder_id,
+        target_folder_path=target_parent,
+    )
+    assert move_result["status"] == "success"
+
+    list_result = await call_tool(
+        "list_folders",
+        workspace_name=workspace_name,
+        root_folder_path=target_parent,
+        recursive=True,
+    )
+    assert list_result["status"] == "success"
+    assert any(
+        folder.get("display_name") == child_folder
+        for folder in list_result.get("folders", [])
+    )
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_get_item_tool(call_tool, workspace_name, delete_item_if_exists):
+    pipeline_name = unique_name("e2e_get_item")
+    try:
+        create_result = await call_tool(
+            "create_blank_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+        )
+        assert create_result["status"] == "success"
+        pipeline_id = create_result.get("pipeline_id")
+        assert pipeline_id
+
+        by_name = await call_tool(
+            "get_item",
+            workspace_name=workspace_name,
+            item_display_name=pipeline_name,
+            item_type="DataPipeline",
+        )
+        assert by_name["status"] == "success"
+        assert by_name["item"]["id"] == pipeline_id
+
+        by_id = await call_tool(
+            "get_item",
+            workspace_name=workspace_name,
+            item_id=pipeline_id,
+        )
+        assert by_id["status"] == "success"
+        assert by_id["item"]["display_name"] == pipeline_name
+    finally:
+        await delete_item_if_exists(pipeline_name, "DataPipeline")

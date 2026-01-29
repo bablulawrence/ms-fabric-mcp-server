@@ -1,9 +1,8 @@
 # ABOUTME: Item management MCP tools for Microsoft Fabric.
-# ABOUTME: Provides list_items and delete_item tools.
+# ABOUTME: Provides item and folder management tools.
 """Item management MCP tools.
 
-This module provides MCP tools for generic Fabric item operations including
-listing and deleting items across all supported item types.
+This module provides MCP tools for generic Fabric item and folder operations.
 """
 
 from typing import Optional, TYPE_CHECKING
@@ -28,6 +27,10 @@ def register_item_tools(
     
     This function registers item-related tools:
     - list_items: List items in a workspace with optional type filter
+    - get_item: Get an item by ID or display name/type
+    - list_folders: List folders in a workspace
+    - create_folder: Create a folder in a workspace
+    - move_folder: Move a folder to a new parent
     - delete_item: Delete an item by name and type
     - rename_item: Rename an item by ID
     - move_item_to_folder: Move an item to a folder by ID
@@ -149,6 +152,247 @@ def register_item_tools(
         type_filter_msg = f" of type '{item_type}'" if item_type else ""
         logger.info(f"Found {len(items)} items{type_filter_msg} in workspace '{workspace_name}'")
         return result
+
+    @mcp.tool(title="Get Item")
+    @handle_tool_errors
+    def get_item(
+        workspace_name: str,
+        item_id: Optional[str] = None,
+        item_display_name: Optional[str] = None,
+        item_type: Optional[str] = None,
+    ) -> dict:
+        """Get a Fabric item by ID or display name/type.
+
+        Parameters:
+            workspace_name: The display name of the workspace.
+            item_id: ID of the item to fetch.
+            item_display_name: Display name of the item to fetch.
+            item_type: Type of the item when using display name.
+
+        Returns:
+            Dictionary with status and item metadata.
+        """
+        log_tool_invocation(
+            "get_item",
+            workspace_name=workspace_name,
+            item_id=item_id,
+            item_display_name=item_display_name,
+            item_type=item_type,
+        )
+
+        workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+
+        if item_id:
+            item = item_service.get_item_by_id(workspace_id, item_id)
+        else:
+            if not item_display_name or not item_type:
+                raise FabricValidationError(
+                    "item_display_name",
+                    item_display_name,
+                    "Provide item_display_name and item_type when item_id is not supplied.",
+                )
+            item = item_service.get_item_by_name(workspace_id, item_display_name, item_type)
+
+        return {
+            "status": "success",
+            "workspace_name": workspace_name,
+            "workspace_id": workspace_id,
+            "item": {
+                "id": item.id,
+                "display_name": item.display_name,
+                "type": item.type,
+                "description": item.description,
+                "folder_id": item.folder_id,
+                "created_date": item.created_date,
+                "modified_date": item.modified_date,
+            },
+        }
+
+    @mcp.tool(title="List Folders")
+    @handle_tool_errors
+    def list_folders(
+        workspace_name: str,
+        root_folder_id: Optional[str] = None,
+        root_folder_path: Optional[str] = None,
+        recursive: bool = True,
+    ) -> dict:
+        """List folders in a Fabric workspace.
+
+        Parameters:
+            workspace_name: The display name of the workspace.
+            root_folder_id: Optional folder ID to scope the listing.
+            root_folder_path: Optional folder path to scope the listing (e.g., "team/etl").
+                              Defaults to the workspace root when omitted.
+            recursive: Whether to include folders in subfolders (default True).
+
+        Returns:
+            Dictionary with status, folder_count, and list of folders.
+        """
+        log_tool_invocation(
+            "list_folders",
+            workspace_name=workspace_name,
+            root_folder_id=root_folder_id,
+            root_folder_path=root_folder_path,
+            recursive=recursive,
+        )
+
+        workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+
+        if root_folder_id and root_folder_path:
+            raise FabricValidationError(
+                "root_folder_path",
+                root_folder_path,
+                "Provide either root_folder_id or root_folder_path, not both.",
+            )
+
+        if root_folder_path:
+            root_folder_id = item_service.resolve_folder_id_from_path(
+                workspace_id, root_folder_path, create_missing=False
+            )
+
+        folders = item_service.list_folders(
+            workspace_id,
+            root_folder_id=root_folder_id,
+            recursive=recursive,
+        )
+
+        return {
+            "status": "success",
+            "workspace_name": workspace_name,
+            "workspace_id": workspace_id,
+            "folder_count": len(folders),
+            "folders": [
+                {
+                    "id": folder.get("id"),
+                    "display_name": folder.get("displayName"),
+                    "parent_folder_id": folder.get("parentFolderId"),
+                    "created_date": folder.get("createdDate"),
+                    "modified_date": folder.get("modifiedDate"),
+                }
+                for folder in folders
+            ],
+        }
+
+    @mcp.tool(title="Create Folder")
+    @handle_tool_errors
+    def create_folder(
+        workspace_name: str,
+        folder_name: str,
+        parent_folder_id: Optional[str] = None,
+        parent_folder_path: Optional[str] = None,
+    ) -> dict:
+        """Create a folder in a Fabric workspace.
+
+        Parameters:
+            workspace_name: The display name of the workspace.
+            folder_name: Display name for the new folder.
+            parent_folder_id: Optional parent folder ID.
+            parent_folder_path: Optional parent folder path (creates missing parents).
+
+        Returns:
+            Dictionary with status and folder metadata.
+        """
+        log_tool_invocation(
+            "create_folder",
+            workspace_name=workspace_name,
+            folder_name=folder_name,
+            parent_folder_id=parent_folder_id,
+            parent_folder_path=parent_folder_path,
+        )
+
+        if "/" in folder_name or "\\" in folder_name:
+            raise FabricValidationError(
+                "folder_name",
+                folder_name,
+                "Folder name cannot include path separators. Use parent_folder_path instead.",
+            )
+
+        workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+
+        if parent_folder_id and parent_folder_path:
+            raise FabricValidationError(
+                "parent_folder_path",
+                parent_folder_path,
+                "Provide either parent_folder_id or parent_folder_path, not both.",
+            )
+
+        if parent_folder_path:
+            parent_folder_id = item_service.resolve_folder_id_from_path(
+                workspace_id, parent_folder_path, create_missing=True
+            )
+
+        folder = item_service.create_folder(
+            workspace_id=workspace_id,
+            display_name=folder_name,
+            parent_folder_id=parent_folder_id,
+        )
+
+        return {
+            "status": "success",
+            "workspace_name": workspace_name,
+            "workspace_id": workspace_id,
+            "folder_id": folder.get("id"),
+            "folder_name": folder.get("displayName"),
+            "parent_folder_id": folder.get("parentFolderId"),
+            "message": f"Folder '{folder.get('displayName')}' created successfully",
+        }
+
+    @mcp.tool(title="Move Folder")
+    @handle_tool_errors
+    def move_folder(
+        workspace_name: str,
+        folder_id: str,
+        target_folder_id: Optional[str] = None,
+        target_folder_path: Optional[str] = None,
+    ) -> dict:
+        """Move a folder to a new parent.
+
+        Parameters:
+            workspace_name: The display name of the workspace.
+            folder_id: Folder ID to move.
+            target_folder_id: Target parent folder ID (None for workspace root).
+            target_folder_path: Target parent folder path (must exist).
+
+        Returns:
+            Dictionary with status and folder metadata.
+        """
+        log_tool_invocation(
+            "move_folder",
+            workspace_name=workspace_name,
+            folder_id=folder_id,
+            target_folder_id=target_folder_id,
+            target_folder_path=target_folder_path,
+        )
+
+        workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+
+        if target_folder_id and target_folder_path:
+            raise FabricValidationError(
+                "target_folder_path",
+                target_folder_path,
+                "Provide either target_folder_id or target_folder_path, not both.",
+            )
+
+        if target_folder_path:
+            target_folder_id = item_service.resolve_folder_id_from_path(
+                workspace_id, target_folder_path, create_missing=False
+            )
+
+        folder = item_service.move_folder(
+            workspace_id=workspace_id,
+            folder_id=folder_id,
+            target_folder_id=target_folder_id,
+        )
+
+        return {
+            "status": "success",
+            "workspace_name": workspace_name,
+            "workspace_id": workspace_id,
+            "folder_id": folder.get("id"),
+            "folder_name": folder.get("displayName"),
+            "parent_folder_id": folder.get("parentFolderId"),
+            "message": f"Folder '{folder.get('displayName')}' moved successfully",
+        }
 
     @mcp.tool(title="Delete Item from Workspace")
     @handle_tool_errors

@@ -329,6 +329,40 @@ class TestFabricItemService:
             call("GET", "workspaces/ws-1/items/item-1"),
         ]
 
+    def test_move_folder_success(self, item_service, mock_fabric_client):
+        """Move folder posts to move endpoint."""
+        folder_data = {
+            "id": "folder-1",
+            "displayName": "Folder",
+            "parentFolderId": "parent-1",
+        }
+        mock_fabric_client.make_api_request.return_value = MockResponseFactory.success(
+            folder_data
+        )
+
+        result = item_service.move_folder("ws-1", "folder-1", "parent-1")
+
+        assert result["id"] == "folder-1"
+        mock_fabric_client.make_api_request.assert_called_once_with(
+            "POST",
+            "workspaces/ws-1/folders/folder-1/move",
+            payload={"targetFolderId": "parent-1"},
+        )
+
+    def test_move_folder_validation(self, item_service):
+        """Empty IDs raise validation errors."""
+        with pytest.raises(FabricValidationError):
+            item_service.move_folder("ws-1", " ", "parent-1")
+        with pytest.raises(FabricValidationError):
+            item_service.move_folder("ws-1", "folder-1", " ")
+
+    def test_move_folder_missing_response(self, item_service, mock_fabric_client):
+        """Empty response raises FabricError."""
+        mock_fabric_client.make_api_request.return_value = MockResponseFactory.success({})
+
+        with pytest.raises(FabricError):
+            item_service.move_folder("ws-1", "folder-1", "parent-1")
+
     def test_delete_item_success(self, item_service, mock_fabric_client):
         """Delete item calls endpoint."""
         mock_fabric_client.make_api_request.return_value = MockResponseFactory.success({})
