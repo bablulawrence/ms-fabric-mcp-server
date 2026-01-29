@@ -62,6 +62,41 @@ async def test_list_items_with_root_folder_path(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_list_items_recursive_root_folder_path(
+    call_tool,
+    delete_item_if_exists,
+    workspace_name,
+):
+    parent_folder = unique_name("e2e_parent_folder")
+    folder_path = f"{parent_folder}/child"
+    pipeline_name = unique_name("e2e_pipeline_nested")
+    try:
+        create_result = await call_tool(
+            "create_blank_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            folder_path=folder_path,
+        )
+        assert create_result["status"] == "success"
+
+        list_result = await call_tool(
+            "list_items",
+            workspace_name=workspace_name,
+            root_folder_path=parent_folder,
+            recursive=True,
+            item_type="DataPipeline",
+        )
+        assert list_result["status"] == "success"
+        assert any(
+            item.get("display_name") == pipeline_name
+            for item in list_result.get("items", [])
+        )
+    finally:
+        await delete_item_if_exists(pipeline_name, "DataPipeline")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_delete_item_tool(call_tool, workspace_name, delete_item_if_exists):
     pipeline_name = unique_name("e2e_delete_item")
     try:
@@ -111,7 +146,12 @@ async def test_rename_item_tool(call_tool, workspace_name, delete_item_if_exists
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_move_item_to_folder_tool(call_tool, workspace_name, delete_item_if_exists):
+async def test_move_item_to_folder_tool(
+    call_tool,
+    workspace_name,
+    delete_item_if_exists,
+    poll_until,
+):
     pipeline_name = unique_name("e2e_move_item")
     folder_path = f"{unique_name('e2e_folder')}/target"
     target_pipeline = unique_name("e2e_folder_marker")
@@ -155,6 +195,23 @@ async def test_move_item_to_folder_tool(call_tool, workspace_name, delete_item_i
             target_folder_id=folder_id,
         )
         assert move_result["status"] == "success"
+
+        async def _find_moved_item():
+            listed = await call_tool(
+                "list_items",
+                workspace_name=workspace_name,
+                root_folder_path=folder_path,
+                item_type="DataPipeline",
+            )
+            if listed.get("status") != "success":
+                return listed
+            for item in listed.get("items", []):
+                if item.get("display_name") == pipeline_name:
+                    return listed
+            return None
+
+        found = await poll_until(_find_moved_item, timeout_seconds=120, interval_seconds=10)
+        assert found is not None
     finally:
         await delete_item_if_exists(pipeline_name, "DataPipeline")
         await delete_item_if_exists(target_pipeline, "DataPipeline")
