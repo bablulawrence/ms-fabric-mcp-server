@@ -1,6 +1,6 @@
 """Unit tests for FabricItemService."""
 
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -309,11 +309,25 @@ class TestFabricItemService:
             item_service.move_item_to_folder("ws-1", "item-1", " ")
 
     def test_move_item_to_folder_missing_response(self, item_service, mock_fabric_client):
-        """Empty response raises FabricError."""
-        mock_fabric_client.make_api_request.return_value = MockResponseFactory.success({})
+        """Empty response falls back to fetching the item."""
+        item_data = FabricDataFactory.item(item_id="item-1", item_type="Notebook")
+        mock_fabric_client.make_api_request.side_effect = [
+            MockResponseFactory.success({}),
+            MockResponseFactory.success(item_data),
+        ]
 
-        with pytest.raises(FabricError):
-            item_service.move_item_to_folder("ws-1", "item-1", "folder-1")
+        item = item_service.move_item_to_folder("ws-1", "item-1", "folder-1")
+
+        assert item.id == "item-1"
+        assert mock_fabric_client.make_api_request.call_args_list == [
+            call(
+                "POST",
+                "workspaces/ws-1/items/item-1/move",
+                payload={"targetFolderId": "folder-1"},
+                wait_for_lro=True,
+            ),
+            call("GET", "workspaces/ws-1/items/item-1"),
+        ]
 
     def test_delete_item_success(self, item_service, mock_fabric_client):
         """Delete item calls endpoint."""

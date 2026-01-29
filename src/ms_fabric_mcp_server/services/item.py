@@ -649,8 +649,15 @@ class FabricItemService:
             )
 
             item_data = response.json()
-            if not isinstance(item_data, dict) or not item_data:
-                raise FabricError("Failed to move item: empty response")
+            if (
+                not isinstance(item_data, dict)
+                or not item_data
+                or "id" not in item_data
+                or "displayName" not in item_data
+                or "type" not in item_data
+            ):
+                # Move responses can omit item payload; fetch the updated item.
+                return self.get_item_by_id(workspace_id, item_id)
 
             return FabricItem(
                 id=item_data["id"],
