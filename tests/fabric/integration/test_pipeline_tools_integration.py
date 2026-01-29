@@ -37,6 +37,60 @@ async def test_create_pipeline_and_add_activity(call_tool, delete_item_if_exists
 
 @pytest.mark.integration
 @pytest.mark.asyncio
+async def test_pipeline_definition_roundtrip(
+    call_tool,
+    delete_item_if_exists,
+    workspace_name,
+):
+    pipeline_name = unique_name("e2e_pipeline_definition")
+    try:
+        create_result = await call_tool(
+            "create_pipeline_with_definition",
+            workspace_name=workspace_name,
+            display_name=pipeline_name,
+            pipeline_content_json={"properties": {"activities": []}},
+        )
+        assert create_result["status"] == "success"
+
+        get_result = await call_tool(
+            "get_pipeline_definition",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+        )
+        assert get_result["status"] == "success"
+        definition = get_result.get("pipeline_content_json", {})
+        activities = definition.get("properties", {}).get("activities", [])
+        assert isinstance(activities, list)
+
+        updated_definition = {
+            **definition,
+            "properties": {
+                **definition.get("properties", {}),
+                "activities": activities
+                + [
+                    {
+                        "name": "WaitShort",
+                        "type": "Wait",
+                        "dependsOn": [],
+                        "typeProperties": {"waitTimeInSeconds": 1},
+                    }
+                ],
+            },
+        }
+
+        update_result = await call_tool(
+            "update_pipeline_definition",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            pipeline_content_json=updated_definition,
+        )
+        assert update_result["status"] == "success"
+    finally:
+        await delete_item_if_exists(pipeline_name, "DataPipeline")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
 async def test_add_copy_activity_to_pipeline(
     call_tool,
     delete_item_if_exists,
@@ -184,6 +238,81 @@ async def test_add_dataflow_activity_to_pipeline(
             dataflow_name=dataflow_name,
         )
         assert add_result["status"] == "success"
+    finally:
+        await delete_item_if_exists(pipeline_name, "DataPipeline")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_add_activity_dependency_tool(
+    call_tool,
+    delete_item_if_exists,
+    workspace_name,
+):
+    pipeline_name = unique_name("e2e_pipeline_dependency")
+    try:
+        create_result = await call_tool(
+            "create_blank_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            description="Integration test pipeline dependency",
+        )
+        assert create_result["status"] == "success"
+
+        activity_a = {
+            "name": "WaitA",
+            "type": "Wait",
+            "dependsOn": [],
+            "typeProperties": {"waitTimeInSeconds": 1},
+        }
+        activity_b = {
+            "name": "WaitB",
+            "type": "Wait",
+            "dependsOn": [],
+            "typeProperties": {"waitTimeInSeconds": 1},
+        }
+
+        add_a = await call_tool(
+            "add_activity_to_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            activity_json=activity_a,
+        )
+        assert add_a["status"] == "success"
+
+        add_b = await call_tool(
+            "add_activity_to_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            activity_json=activity_b,
+        )
+        assert add_b["status"] == "success"
+
+        dependency_result = await call_tool(
+            "add_activity_dependency",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            activity_name="WaitB",
+            depends_on=["WaitA"],
+        )
+        assert dependency_result["status"] == "success"
+        assert dependency_result.get("added_count", 0) >= 1
+
+        definition = await call_tool(
+            "get_pipeline_definition",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+        )
+        assert definition["status"] == "success"
+        activities = definition.get("pipeline_content_json", {}).get("properties", {}).get(
+            "activities", []
+        )
+        target = next(
+            (activity for activity in activities if activity.get("name") == "WaitB"), None
+        )
+        assert target is not None
+        depends_on = target.get("dependsOn", [])
+        assert any(dep.get("activity") == "WaitA" for dep in depends_on)
     finally:
         await delete_item_if_exists(pipeline_name, "DataPipeline")
 

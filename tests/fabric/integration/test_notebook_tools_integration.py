@@ -27,3 +27,21 @@ async def test_notebook_tool_flow(
     status_by_url = await call_tool("get_job_status_by_url", location_url=location_url)
     assert status_by_url["status"] == "success"
     assert status_by_url.get("job", {}).get("is_terminal")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_get_notebook_content(
+    call_tool,
+    executed_notebook_context,
+    workspace_name,
+):
+    notebook_name = executed_notebook_context["notebook_name"]
+
+    content_result = await call_tool(
+        "get_notebook_content",
+        workspace_name=workspace_name,
+        notebook_display_name=notebook_name,
+    )
+    assert content_result["status"] == "success"
+    assert content_result.get("definition") is not None

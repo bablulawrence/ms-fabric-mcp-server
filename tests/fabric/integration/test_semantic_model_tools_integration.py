@@ -85,3 +85,56 @@ async def test_semantic_model_tools_flow(
             assert add_rel_result["status"] == "success"
     finally:
         await delete_item_if_exists(semantic_model_name, "SemanticModel")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_get_semantic_model_details_and_definition(
+    call_tool,
+    delete_item_if_exists,
+    poll_until,
+    workspace_name,
+):
+    semantic_model_name = unique_name("e2e_semantic_model_details")
+    try:
+        create_result = await call_tool(
+            "create_semantic_model",
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+        )
+        assert create_result["status"] == "success"
+
+        async def _get_semantic_model():
+            result = await call_tool(
+                "list_items",
+                workspace_name=workspace_name,
+                item_type="SemanticModel",
+            )
+            if result.get("status") != "success":
+                return result
+            for item in result.get("items", []):
+                if item.get("display_name") == semantic_model_name:
+                    return result
+            return None
+
+        found = await poll_until(_get_semantic_model, timeout_seconds=120, interval_seconds=10)
+        assert found is not None
+
+        details_result = await call_tool(
+            "get_semantic_model_details",
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+        )
+        assert details_result["status"] == "success"
+        assert details_result.get("semantic_model_name") == semantic_model_name
+
+        definition_result = await call_tool(
+            "get_semantic_model_definition",
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+            format="TMSL",
+        )
+        assert definition_result["status"] == "success"
+        assert definition_result.get("definition") is not None
+    finally:
+        await delete_item_if_exists(semantic_model_name, "SemanticModel")
