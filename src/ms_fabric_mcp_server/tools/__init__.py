@@ -1,5 +1,5 @@
 # ABOUTME: Main entry point for registering Microsoft Fabric MCP tools.
-# ABOUTME: Provides register_fabric_tools() to add all 50 Fabric tools to an MCP server.
+# ABOUTME: Provides register_fabric_tools() to add all 52 Fabric tools to an MCP server.
 """Fabric MCP tools - Modular tool registration.
 
 This module provides the main entry point for registering Microsoft Fabric MCP tools.
@@ -40,12 +40,13 @@ logger = logging.getLogger(__name__)
 def register_fabric_tools(mcp: "FastMCP"):
     """Register all Fabric MCP tools (workspace, item, notebook, job, SQL, Livy, pipeline).
     
-    This is the main registration function that sets up all 50 Fabric tools.
+    This is the main registration function that sets up all 52 Fabric tools.
     It initializes the service hierarchy and registers all tool categories.
     
     Tool Categories:
     - Workspace tools (1): list_workspaces
-    - Item tools (8): list_items, get_item, list_folders, create_folder, move_folder,
+    - Item tools (10): list_items, get_item, list_folders, create_folder, move_folder,
+      delete_folder, create_lakehouse,
       delete_item, rename_item, move_item_to_folder
     - Notebook tools (6): import_notebook_to_fabric, get_notebook_content, attach_lakehouse_to_notebook, get_notebook_execution_details, list_notebook_executions, get_notebook_driver_logs
     - Job tools (4): run_on_demand_job, get_job_status, get_job_status_by_url, get_operation_result
@@ -130,7 +131,7 @@ def register_fabric_tools(mcp: "FastMCP"):
     register_semantic_model_tools(mcp, semantic_model_service)
     register_powerbi_tools(mcp, powerbi_service)
     
-    tool_count = 50 if sql_service else 47  # 3 SQL tools
+    tool_count = 52 if sql_service else 49  # 3 SQL tools
     logger.info(f"All Fabric tools registered successfully ({tool_count} tools)")
 
 

@@ -31,6 +31,8 @@ def register_item_tools(
     - list_folders: List folders in a workspace
     - create_folder: Create a folder in a workspace
     - move_folder: Move a folder to a new parent
+    - delete_folder: Delete a folder
+    - create_lakehouse: Create a lakehouse in a workspace
     - delete_item: Delete an item by name and type
     - rename_item: Rename an item by ID
     - move_item_to_folder: Move an item to a folder by ID
@@ -393,6 +395,106 @@ def register_item_tools(
             "parent_folder_id": folder.get("parentFolderId"),
             "message": f"Folder '{folder.get('displayName')}' moved successfully",
         }
+
+    @mcp.tool(title="Delete Folder")
+    @handle_tool_errors
+    def delete_folder(
+        workspace_name: str,
+        folder_id: Optional[str] = None,
+        folder_path: Optional[str] = None,
+    ) -> dict:
+        """Delete a folder from a workspace.
+
+        Parameters:
+            workspace_name: The display name of the workspace.
+            folder_id: Folder ID to delete.
+            folder_path: Folder path to delete (e.g., "team/etl").
+
+        Returns:
+            Dictionary with status and folder metadata.
+        """
+        log_tool_invocation(
+            "delete_folder",
+            workspace_name=workspace_name,
+            folder_id=folder_id,
+            folder_path=folder_path,
+        )
+
+        workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+
+        if folder_id and folder_path:
+            raise FabricValidationError(
+                "folder_path",
+                folder_path,
+                "Provide either folder_id or folder_path, not both.",
+            )
+        if not folder_id and not folder_path:
+            raise FabricValidationError(
+                "folder_id",
+                folder_id,
+                "Provide either folder_id or folder_path.",
+            )
+
+        if folder_path:
+            folder_id = item_service.resolve_folder_id_from_path(
+                workspace_id, folder_path, create_missing=False
+            )
+
+        folder = item_service.delete_folder(workspace_id=workspace_id, folder_id=folder_id)
+
+        return {
+            "status": "success",
+            "workspace_name": workspace_name,
+            "workspace_id": workspace_id,
+            "folder_id": folder.get("id", folder_id),
+            "message": "Folder deleted successfully",
+        }
+
+    @mcp.tool(title="Create Lakehouse")
+    @handle_tool_errors
+    def create_lakehouse(
+        workspace_name: str,
+        lakehouse_name: str,
+        description: Optional[str] = None,
+        enable_schemas: bool = True,
+    ) -> dict:
+        """Create a lakehouse in a Fabric workspace.
+
+        Parameters:
+            workspace_name: The display name of the workspace.
+            lakehouse_name: Display name for the new lakehouse.
+            description: Optional description for the lakehouse.
+            enable_schemas: Whether to enable schemas (default: True).
+
+        Returns:
+            Dictionary with status and lakehouse metadata.
+        """
+        log_tool_invocation(
+            "create_lakehouse",
+            workspace_name=workspace_name,
+            lakehouse_name=lakehouse_name,
+            enable_schemas=enable_schemas,
+        )
+
+        workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+        lakehouse = item_service.create_lakehouse(
+            workspace_id=workspace_id,
+            display_name=lakehouse_name,
+            description=description,
+            enable_schemas=enable_schemas,
+        )
+
+        return {
+            "status": "success",
+            "workspace_name": workspace_name,
+            "workspace_id": workspace_id,
+            "lakehouse_id": lakehouse.id,
+            "lakehouse_name": lakehouse.display_name,
+            "description": lakehouse.description,
+            "enable_schemas": lakehouse.enable_schemas,
+            "message": f"Lakehouse '{lakehouse.display_name}' created successfully",
+        }
+
 
     @mcp.tool(title="Delete Item from Workspace")
     @handle_tool_errors

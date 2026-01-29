@@ -335,3 +335,49 @@ async def test_get_item_tool(call_tool, workspace_name, delete_item_if_exists):
         assert by_id["item"]["display_name"] == pipeline_name
     finally:
         await delete_item_if_exists(pipeline_name, "DataPipeline")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_delete_folder_tool(call_tool, workspace_name):
+    folder_name = unique_name("e2e_delete_folder")
+
+    create_result = await call_tool(
+        "create_folder",
+        workspace_name=workspace_name,
+        folder_name=folder_name,
+    )
+    assert create_result["status"] == "success"
+
+    delete_result = await call_tool(
+        "delete_folder",
+        workspace_name=workspace_name,
+        folder_path=folder_name,
+    )
+    assert delete_result["status"] == "success"
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_create_lakehouse_tool(call_tool, workspace_name, delete_item_if_exists):
+    lakehouse_name = unique_name("e2e_lakehouse")
+    try:
+        create_result = await call_tool(
+            "create_lakehouse",
+            workspace_name=workspace_name,
+            lakehouse_name=lakehouse_name,
+            description="Test lakehouse",
+            enable_schemas=True,
+        )
+        assert create_result["status"] == "success"
+
+        item_result = await call_tool(
+            "get_item",
+            workspace_name=workspace_name,
+            item_display_name=lakehouse_name,
+            item_type="Lakehouse",
+        )
+        assert item_result["status"] == "success"
+        assert item_result["item"]["display_name"] == lakehouse_name
+    finally:
+        await delete_item_if_exists(lakehouse_name, "Lakehouse")

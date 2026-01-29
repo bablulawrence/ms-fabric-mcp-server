@@ -6,6 +6,7 @@ from unittest.mock import Mock
 import pytest
 
 from ms_fabric_mcp_server.models.item import FabricItem
+from ms_fabric_mcp_server.models.lakehouse import FabricLakehouse
 from ms_fabric_mcp_server.tools.item_tools import register_item_tools
 
 
@@ -206,6 +207,65 @@ class TestItemTools:
             workspace_id="ws-1",
             folder_id="folder-1",
             target_folder_id="target-1",
+        )
+
+    def test_delete_folder_by_path(self):
+        tools, tool_decorator = _capture_tools()
+        mcp = SimpleNamespace(tool=tool_decorator)
+
+        item_service = Mock()
+        workspace_service = Mock()
+        workspace_service.resolve_workspace_id.return_value = "ws-1"
+        item_service.resolve_folder_id_from_path.return_value = "folder-1"
+        item_service.delete_folder.return_value = {"id": "folder-1"}
+
+        register_item_tools(mcp, item_service, workspace_service)
+
+        result = tools["delete_folder"](
+            workspace_name="Workspace",
+            folder_path="Team/ETL",
+        )
+
+        assert result["status"] == "success"
+        item_service.resolve_folder_id_from_path.assert_called_once_with(
+            "ws-1", "Team/ETL", create_missing=False
+        )
+        item_service.delete_folder.assert_called_once_with(
+            workspace_id="ws-1",
+            folder_id="folder-1",
+        )
+
+    def test_create_lakehouse(self):
+        tools, tool_decorator = _capture_tools()
+        mcp = SimpleNamespace(tool=tool_decorator)
+
+        item_service = Mock()
+        workspace_service = Mock()
+        workspace_service.resolve_workspace_id.return_value = "ws-1"
+        item_service.create_lakehouse.return_value = FabricLakehouse(
+            id="lh-1",
+            display_name="Lakehouse",
+            description="desc",
+            workspace_id="ws-1",
+            enable_schemas=True,
+        )
+
+        register_item_tools(mcp, item_service, workspace_service)
+
+        result = tools["create_lakehouse"](
+            workspace_name="Workspace",
+            lakehouse_name="Lakehouse",
+            description="desc",
+            enable_schemas=True,
+        )
+
+        assert result["status"] == "success"
+        assert result["lakehouse_id"] == "lh-1"
+        item_service.create_lakehouse.assert_called_once_with(
+            workspace_id="ws-1",
+            display_name="Lakehouse",
+            description="desc",
+            enable_schemas=True,
         )
 
     def test_rename_item_includes_folder_id(self):

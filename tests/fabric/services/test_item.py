@@ -363,6 +363,23 @@ class TestFabricItemService:
         with pytest.raises(FabricError):
             item_service.move_folder("ws-1", "folder-1", "parent-1")
 
+    def test_delete_folder_success(self, item_service, mock_fabric_client):
+        """Delete folder calls endpoint."""
+        mock_fabric_client.make_api_request.return_value = MockResponseFactory.success({})
+
+        result = item_service.delete_folder("ws-1", "folder-1")
+
+        assert result["id"] == "folder-1"
+        mock_fabric_client.make_api_request.assert_called_once_with(
+            "DELETE",
+            "workspaces/ws-1/folders/folder-1",
+        )
+
+    def test_delete_folder_validation(self, item_service):
+        """Empty folder id raises validation error."""
+        with pytest.raises(FabricValidationError):
+            item_service.delete_folder("ws-1", " ")
+
     def test_delete_item_success(self, item_service, mock_fabric_client):
         """Delete item calls endpoint."""
         mock_fabric_client.make_api_request.return_value = MockResponseFactory.success({})

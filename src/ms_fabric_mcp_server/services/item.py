@@ -297,6 +297,30 @@ class FabricItemService:
             raise FabricError("Failed to move folder: empty response")
         return data
 
+    def delete_folder(self, workspace_id: str, folder_id: str) -> Dict[str, Any]:
+        """Delete a folder from a workspace."""
+        if not folder_id or not str(folder_id).strip():
+            raise FabricValidationError(
+                "folder_id",
+                str(folder_id),
+                "Folder ID cannot be empty",
+            )
+
+        response = self.client.make_api_request(
+            "DELETE",
+            f"workspaces/{workspace_id}/folders/{folder_id}",
+        )
+
+        try:
+            data = response.json()
+        except ValueError:
+            data = {}
+
+        if isinstance(data, dict) and data.get("id"):
+            return data
+
+        return {"id": folder_id}
+
     def resolve_folder_id_from_path(
         self,
         workspace_id: str,
