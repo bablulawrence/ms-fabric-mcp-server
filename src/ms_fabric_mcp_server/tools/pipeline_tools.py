@@ -38,6 +38,14 @@ def register_pipeline_tools(
     - add_activity_to_pipeline: Add any activity from JSON template to an existing pipeline
     - delete_activity_from_pipeline: Delete an activity from an existing pipeline
     - remove_activity_dependency: Remove dependsOn entries referencing an activity
+    - add_activity_dependency: Add dependsOn entries to an activity
+    - create_pipeline_with_definition: Create a pipeline from a provided definition
+    - get_pipeline_definition: Fetch and decode pipeline definition JSON
+    - update_pipeline_definition: Update pipeline definition JSON
+    - add_activity_dependency: Add dependencies to an activity
+    - create_pipeline_with_definition: Create a pipeline from a provided definition
+    - get_pipeline_definition: Fetch and decode pipeline definition JSON
+    - update_pipeline_definition: Update pipeline definition JSON
     
     Args:
         mcp: FastMCP server instance to register tools on.
@@ -70,7 +78,8 @@ def register_pipeline_tools(
     def create_blank_pipeline(
         workspace_name: str,
         pipeline_name: str,
-        description: Optional[str] = None
+        description: Optional[str] = None,
+        folder_path: Optional[str] = None,
     ) -> dict:
         """Create a blank Fabric pipeline with no activities.
         
@@ -82,6 +91,8 @@ def register_pipeline_tools(
             workspace_name: The display name of the workspace where the pipeline will be created.
             pipeline_name: Name for the new pipeline (must be unique in workspace).
             description: Optional description for the pipeline.
+            folder_path: Optional folder path (e.g., "pipelines/daily") to place the pipeline.
+                         Defaults to the workspace root when omitted.
             
         Returns:
             Dictionary with status, pipeline_id, pipeline_name, workspace_name, and message.
@@ -112,7 +123,8 @@ def register_pipeline_tools(
         log_tool_invocation(
             "create_blank_pipeline",
             workspace_name=workspace_name,
-            pipeline_name=pipeline_name
+            pipeline_name=pipeline_name,
+            folder_path=folder_path,
         )
         
         logger.info(f"Creating blank pipeline '{pipeline_name}' in workspace '{workspace_name}'")
@@ -125,7 +137,8 @@ def register_pipeline_tools(
         pipeline_id = pipeline_service.create_blank_pipeline(
             workspace_id=workspace_id,
             pipeline_name=pipeline_name,
-            description=description
+            description=description,
+            folder_path=folder_path,
         )
         
         result = {
@@ -646,6 +659,247 @@ def register_pipeline_tools(
         
         logger.info(
             f"{activity_type} activity '{activity_name}' added successfully to pipeline {pipeline_id}"
+        )
+        return result
+
+    @mcp.tool(title="Create Pipeline with Definition")
+    @handle_tool_errors
+    def create_pipeline_with_definition(
+        workspace_name: str,
+        display_name: str,
+        pipeline_content_json: dict,
+        platform: Optional[dict] = None,
+        description: Optional[str] = None,
+        folder_id: Optional[str] = None,
+        folder_path: Optional[str] = None,
+    ) -> dict:
+        """Create a pipeline from a supplied definition.
+
+        Parameters:
+            workspace_name: The display name of the workspace where the pipeline will be created.
+            display_name: Display name for the new pipeline.
+            pipeline_content_json: Pipeline definition JSON to upload.
+            platform: Optional .platform JSON definition.
+            description: Optional description for the pipeline.
+            folder_id: Optional folder ID to place the pipeline in.
+            folder_path: Optional folder path to place the pipeline in.
+                         Defaults to the workspace root when omitted.
+
+        Returns:
+            Dictionary with status, pipeline_id, workspace metadata, and message.
+        """
+        log_tool_invocation(
+            "create_pipeline_with_definition",
+            workspace_name=workspace_name,
+            display_name=display_name,
+            folder_id=folder_id,
+            folder_path=folder_path,
+        )
+
+        logger.info(
+            f"Creating pipeline '{display_name}' in workspace '{workspace_name}' from definition"
+        )
+
+        workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+        workspace = workspace_service.get_workspace_by_id(workspace_id)
+
+        pipeline_id = pipeline_service.create_pipeline_with_definition(
+            workspace_id=workspace_id,
+            display_name=display_name,
+            pipeline_content_json=pipeline_content_json,
+            platform=platform,
+            description=description,
+            folder_id=folder_id,
+            folder_path=folder_path,
+        )
+
+        result = {
+            "status": "success",
+            "pipeline_id": pipeline_id,
+            "pipeline_name": display_name,
+            "workspace_name": workspace.display_name,
+            "workspace_id": workspace_id,
+            "message": f"Pipeline '{display_name}' created successfully",
+        }
+
+        logger.info(
+            f"Pipeline '{display_name}' created successfully with ID {pipeline_id}"
+        )
+        return result
+
+    @mcp.tool(title="Get Pipeline Definition")
+    @handle_tool_errors
+    def get_pipeline_definition(
+        workspace_name: str,
+        pipeline_name: str,
+        format: Optional[str] = None,
+    ) -> dict:
+        """Get a Fabric pipeline definition (decoded JSON).
+
+        Parameters:
+            workspace_name: The display name of the workspace containing the pipeline.
+            pipeline_name: Name of the pipeline.
+            format: Optional format hint for the definition (pass-through).
+
+        Returns:
+            Dictionary with status, pipeline metadata, pipeline_content_json, and optional platform.
+        """
+        log_tool_invocation(
+            "get_pipeline_definition",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            format=format,
+        )
+
+        logger.info(
+            f"Fetching definition for pipeline '{pipeline_name}' in workspace '{workspace_name}'"
+        )
+
+        workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+        workspace = workspace_service.get_workspace_by_id(workspace_id)
+        pipeline = item_service.get_item_by_name(
+            workspace_id, pipeline_name, "DataPipeline"
+        )
+
+        definition_result = pipeline_service.get_pipeline_definition(
+            workspace_id=workspace_id,
+            pipeline_id=pipeline.id,
+            format=format,
+        )
+
+        result = {
+            "status": "success",
+            "pipeline_id": pipeline.id,
+            "pipeline_name": pipeline.display_name,
+            "workspace_name": workspace.display_name,
+            "workspace_id": workspace_id,
+            "pipeline_content_json": definition_result["pipeline_content_json"],
+        }
+
+        platform = definition_result.get("platform")
+        if platform is not None:
+            result["platform"] = platform
+
+        logger.info(
+            f"Pipeline definition fetched successfully for {pipeline.display_name} ({pipeline.id})"
+        )
+        return result
+
+    @mcp.tool(title="Update Pipeline Definition")
+    @handle_tool_errors
+    def update_pipeline_definition(
+        workspace_name: str,
+        pipeline_name: str,
+        pipeline_content_json: dict,
+        platform: Optional[dict] = None,
+        update_metadata: bool = False,
+    ) -> dict:
+        """Update a Fabric pipeline definition (decoded JSON input).
+
+        Parameters:
+            workspace_name: The display name of the workspace containing the pipeline.
+            pipeline_name: Name of the pipeline.
+            pipeline_content_json: Pipeline definition JSON to upload.
+            platform: Optional .platform JSON definition.
+            update_metadata: Whether to apply metadata updates (requires platform).
+
+        Returns:
+            Dictionary with status and pipeline metadata.
+        """
+        log_tool_invocation(
+            "update_pipeline_definition",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            update_metadata=update_metadata,
+        )
+
+        logger.info(
+            f"Updating definition for pipeline '{pipeline_name}' in workspace '{workspace_name}'"
+        )
+
+        workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+        workspace = workspace_service.get_workspace_by_id(workspace_id)
+        pipeline = item_service.get_item_by_name(
+            workspace_id, pipeline_name, "DataPipeline"
+        )
+
+        pipeline_service.update_pipeline_definition(
+            workspace_id=workspace_id,
+            pipeline_id=pipeline.id,
+            pipeline_content_json=pipeline_content_json,
+            platform=platform,
+            update_metadata=update_metadata,
+        )
+
+        result = {
+            "status": "success",
+            "pipeline_id": pipeline.id,
+            "pipeline_name": pipeline.display_name,
+            "workspace_name": workspace.display_name,
+            "workspace_id": workspace_id,
+            "message": f"Pipeline '{pipeline.display_name}' definition updated successfully",
+        }
+
+        logger.info(
+            f"Pipeline definition updated successfully for {pipeline.display_name} ({pipeline.id})"
+        )
+        return result
+
+    @mcp.tool(title="Add Activity Dependency")
+    @handle_tool_errors
+    def add_activity_dependency(
+        workspace_name: str,
+        pipeline_name: str,
+        activity_name: str,
+        depends_on: list[str],
+    ) -> dict:
+        """Add dependsOn dependencies to a pipeline activity.
+
+        Parameters:
+            workspace_name: The display name of the workspace containing the pipeline.
+            pipeline_name: Name of the pipeline.
+            activity_name: Name of the activity to update.
+            depends_on: List of activity names this activity depends on.
+
+        Returns:
+            Dictionary with status, pipeline metadata, and added dependency count.
+        """
+        log_tool_invocation(
+            "add_activity_dependency",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            activity_name=activity_name,
+            depends_on=depends_on,
+        )
+
+        logger.info(
+            f"Adding dependencies to '{activity_name}' in pipeline '{pipeline_name}' "
+            f"within workspace '{workspace_name}'"
+        )
+
+        workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+        workspace = workspace_service.get_workspace_by_id(workspace_id)
+
+        pipeline_id, added_count = pipeline_service.add_activity_dependency(
+            workspace_id=workspace_id,
+            pipeline_name=pipeline_name,
+            activity_name=activity_name,
+            depends_on=depends_on,
+        )
+
+        result = {
+            "status": "success",
+            "pipeline_id": pipeline_id,
+            "pipeline_name": pipeline_name,
+            "activity_name": activity_name,
+            "added_count": added_count,
+            "workspace_name": workspace.display_name,
+            "workspace_id": workspace_id,
+            "message": f"Added {added_count} dependencies to '{activity_name}' in pipeline '{pipeline_name}'",
+        }
+
+        logger.info(
+            f"Added {added_count} dependencies to '{activity_name}' in pipeline {pipeline_id}"
         )
         return result
 

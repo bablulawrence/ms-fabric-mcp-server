@@ -355,10 +355,37 @@ class TestFabricPipelineService:
         decoded = _decode_payload(payload)
         assert decoded["properties"]["activities"] == []
 
+    def test_create_blank_pipeline_with_folder_path(self, pipeline_service, mock_item_service):
+        """Folder path resolves to folderId on create."""
+        mock_item_service.create_item.return_value = FabricItem(
+            id="pipe-2",
+            display_name="BlankPipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        mock_item_service.resolve_folder_id_from_path.return_value = "folder-1"
+
+        pipeline_service.create_blank_pipeline(
+            workspace_id="ws-1",
+            pipeline_name="BlankPipe",
+            folder_path="Pipelines/Daily",
+        )
+
+        mock_item_service.resolve_folder_id_from_path.assert_called_once_with(
+            "ws-1", "Pipelines/Daily", create_missing=True
+        )
+        item_definition = mock_item_service.create_item.call_args.args[1]
+        assert item_definition["folderId"] == "folder-1"
+
     def test_create_blank_pipeline_validation_error(self, pipeline_service):
         """Empty pipeline name raises validation error."""
         with pytest.raises(FabricValidationError):
             pipeline_service.create_blank_pipeline("ws-1", " ")
+
+    def test_create_blank_pipeline_invalid_name(self, pipeline_service):
+        """Names with separators raise validation error."""
+        with pytest.raises(FabricValidationError):
+            pipeline_service.create_blank_pipeline("ws-1", "Bad/Name")
 
     def test_create_blank_pipeline_api_error(self, pipeline_service, mock_item_service):
         """API errors propagate."""
@@ -374,6 +401,285 @@ class TestFabricPipelineService:
         with pytest.raises(FabricError):
             pipeline_service.create_blank_pipeline("ws-1", "Pipe")
 
+    def test_create_pipeline_with_definition_success(self, pipeline_service, mock_client):
+        """Create pipeline with definition posts encoded parts and returns ID."""
+        response = Mock()
+        response.status_code = 201
+        response.json.return_value = {"id": "pipe-123", "displayName": "Pipe"}
+        mock_client.make_api_request.return_value = response
+
+        pipeline_id = pipeline_service.create_pipeline_with_definition(
+            workspace_id="ws-1",
+            display_name="Pipe",
+            pipeline_content_json={"properties": {"activities": []}},
+            platform={"metadata": {"key": "value"}},
+            description="desc",
+            folder_id="folder-1",
+        )
+
+        assert pipeline_id == "pipe-123"
+        args, kwargs = mock_client.make_api_request.call_args
+        assert args[0] == "POST"
+        assert args[1] == "workspaces/ws-1/dataPipelines"
+        payload = kwargs["payload"]
+        assert payload["displayName"] == "Pipe"
+        assert payload["description"] == "desc"
+        assert payload["folderId"] == "folder-1"
+        parts = payload["definition"]["parts"]
+        assert parts[0]["path"] == "pipeline-content.json"
+        assert _decode_payload(parts[0]["payload"]) == {"properties": {"activities": []}}
+        assert parts[1]["path"] == ".platform"
+        assert _decode_payload(parts[1]["payload"]) == {"metadata": {"key": "value"}}
+
+    def test_create_pipeline_with_definition_invalid_definition(self, pipeline_service):
+        """Non-dict definition raises validation error."""
+        with pytest.raises(FabricValidationError):
+            pipeline_service.create_pipeline_with_definition(
+                workspace_id="ws-1",
+                display_name="Pipe",
+                pipeline_content_json="not-a-dict",
+            )
+
+    def test_create_pipeline_with_definition_invalid_name(self, pipeline_service):
+        """Names with separators raise validation error."""
+        with pytest.raises(FabricValidationError):
+            pipeline_service.create_pipeline_with_definition(
+                workspace_id="ws-1",
+                display_name="Bad/Name",
+                pipeline_content_json={"properties": {"activities": []}},
+            )
+
+    def test_create_pipeline_with_definition_invalid_platform(self, pipeline_service):
+        """Non-dict platform raises validation error."""
+        with pytest.raises(FabricValidationError):
+            pipeline_service.create_pipeline_with_definition(
+                workspace_id="ws-1",
+                display_name="Pipe",
+                pipeline_content_json={"properties": {"activities": []}},
+                platform="not-a-dict",
+            )
+
+    def test_get_pipeline_definition_success(self, pipeline_service, mock_client):
+        """Fetches and decodes pipeline definition with optional platform."""
+        definition_payload = {"properties": {"activities": []}}
+        encoded_definition = pipeline_service._encode_definition(definition_payload)
+        platform_payload = {"metadata": {"key": "value"}}
+        encoded_platform = pipeline_service._encode_definition(platform_payload)
+
+        response = Mock()
+        response.json.return_value = {
+            "definition": {
+                "parts": [
+                    {"path": "pipeline-content.json", "payload": encoded_definition},
+                    {"path": ".platform", "payload": encoded_platform},
+                ]
+            }
+        }
+        mock_client.make_api_request.return_value = response
+
+        result = pipeline_service.get_pipeline_definition(
+            workspace_id="ws-1",
+            pipeline_id="pipe-1",
+            format="json",
+        )
+
+        assert result["pipeline_content_json"] == definition_payload
+        assert result["platform"] == platform_payload
+
+        args, kwargs = mock_client.make_api_request.call_args
+        assert args[0] == "POST"
+        assert "workspaces/ws-1/dataPipelines/pipe-1/getDefinition" in args[1]
+        assert kwargs["wait_for_lro"] is True
+
+    def test_get_pipeline_definition_missing_content(self, pipeline_service, mock_client):
+        """Missing pipeline-content.json raises FabricError."""
+        response = Mock()
+        response.json.return_value = {"definition": {"parts": []}}
+        mock_client.make_api_request.return_value = response
+
+        with pytest.raises(FabricError):
+            pipeline_service.get_pipeline_definition("ws-1", "pipe-1")
+
+    def test_get_pipeline_definition_platform_fallback(self, pipeline_service, mock_client):
+        """Invalid platform JSON returns raw string."""
+        definition_payload = {"properties": {"activities": []}}
+        encoded_definition = pipeline_service._encode_definition(definition_payload)
+        encoded_platform = base64.b64encode(b"not-json").decode("utf-8")
+
+        response = Mock()
+        response.json.return_value = {
+            "definition": {
+                "parts": [
+                    {"path": "pipeline-content.json", "payload": encoded_definition},
+                    {"path": ".platform", "payload": encoded_platform},
+                ]
+            }
+        }
+        mock_client.make_api_request.return_value = response
+
+        result = pipeline_service.get_pipeline_definition("ws-1", "pipe-1")
+        assert result["platform"] == "not-json"
+
+    def test_update_pipeline_definition_success(self, pipeline_service, mock_client):
+        """Update pipeline definition builds correct payload."""
+        pipeline_content = {"properties": {"activities": []}}
+        platform = {"metadata": {"key": "value"}}
+
+        pipeline_service.update_pipeline_definition(
+            workspace_id="ws-1",
+            pipeline_id="pipe-1",
+            pipeline_content_json=pipeline_content,
+            platform=platform,
+            update_metadata=True,
+        )
+
+        args, kwargs = mock_client.make_api_request.call_args
+        assert args[0] == "POST"
+        assert "workspaces/ws-1/dataPipelines/pipe-1/updateDefinition" in args[1]
+        assert "updateMetadata=true" in args[1]
+        payload = kwargs["payload"]["definition"]["parts"]
+        assert payload[0]["path"] == "pipeline-content.json"
+        assert _decode_payload(payload[0]["payload"]) == pipeline_content
+        assert payload[1]["path"] == ".platform"
+        assert _decode_payload(payload[1]["payload"]) == platform
+
+    def test_update_pipeline_definition_requires_platform_for_metadata(self, pipeline_service):
+        """update_metadata requires platform payload."""
+        with pytest.raises(FabricValidationError):
+            pipeline_service.update_pipeline_definition(
+                workspace_id="ws-1",
+                pipeline_id="pipe-1",
+                pipeline_content_json={"properties": {"activities": []}},
+                update_metadata=True,
+            )
+
+    def test_set_activity_dependency_add(self, pipeline_service, mock_item_service):
+        """Add dependency to activity."""
+        pipeline_item = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        mock_item_service.get_item_by_name.return_value = pipeline_item
+
+        definition = {
+            "properties": {
+                "activities": [
+                    {"name": "A", "dependsOn": []},
+                    {"name": "B", "dependsOn": []},
+                ]
+            }
+        }
+        pipeline_service.get_pipeline_definition = Mock(
+            return_value={"pipeline_content_json": definition}
+        )
+        pipeline_service.update_pipeline_definition = Mock()
+
+        pipeline_id, changed = pipeline_service.set_activity_dependency(
+            workspace_id="ws-1",
+            pipeline_name="Pipe",
+            activity_name="B",
+            depends_on=["A"],
+            mode="add",
+        )
+
+        assert pipeline_id == "pipe-1"
+        assert changed == 1
+        update_kwargs = pipeline_service.update_pipeline_definition.call_args.kwargs
+        updated = update_kwargs["pipeline_content_json"]
+        activity_b = next(
+            activity for activity in updated["properties"]["activities"] if activity["name"] == "B"
+        )
+        assert activity_b["dependsOn"][0]["activity"] == "A"
+
+    def test_set_activity_dependency_remove(self, pipeline_service, mock_item_service):
+        """Remove dependency from activity."""
+        pipeline_item = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        mock_item_service.get_item_by_name.return_value = pipeline_item
+
+        definition = {
+            "properties": {
+                "activities": [
+                    {
+                        "name": "A",
+                        "dependsOn": [
+                            {"activity": "B", "dependencyConditions": ["Succeeded"]}
+                        ],
+                    },
+                    {"name": "B", "dependsOn": []},
+                ]
+            }
+        }
+        pipeline_service.get_pipeline_definition = Mock(
+            return_value={"pipeline_content_json": definition}
+        )
+        pipeline_service.update_pipeline_definition = Mock()
+
+        _, changed = pipeline_service.set_activity_dependency(
+            workspace_id="ws-1",
+            pipeline_name="Pipe",
+            activity_name="A",
+            depends_on=["B"],
+            mode="remove",
+        )
+
+        assert changed == 1
+        updated = pipeline_service.update_pipeline_definition.call_args.kwargs[
+            "pipeline_content_json"
+        ]
+        activity_a = next(
+            activity for activity in updated["properties"]["activities"] if activity["name"] == "A"
+        )
+        assert activity_a["dependsOn"] == []
+
+    def test_set_activity_dependency_replace(self, pipeline_service, mock_item_service):
+        """Replace dependencies for activity."""
+        pipeline_item = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        mock_item_service.get_item_by_name.return_value = pipeline_item
+
+        definition = {
+            "properties": {
+                "activities": [
+                    {"name": "A", "dependsOn": [{"activity": "B"}]},
+                    {"name": "B", "dependsOn": []},
+                    {"name": "C", "dependsOn": []},
+                ]
+            }
+        }
+        pipeline_service.get_pipeline_definition = Mock(
+            return_value={"pipeline_content_json": definition}
+        )
+        pipeline_service.update_pipeline_definition = Mock()
+
+        _, changed = pipeline_service.set_activity_dependency(
+            workspace_id="ws-1",
+            pipeline_name="Pipe",
+            activity_name="A",
+            depends_on=["C"],
+            mode="replace",
+            dependency_conditions=["Succeeded", "Failed"],
+        )
+
+        assert changed == 1
+        updated = pipeline_service.update_pipeline_definition.call_args.kwargs[
+            "pipeline_content_json"
+        ]
+        activity_a = next(
+            activity for activity in updated["properties"]["activities"] if activity["name"] == "A"
+        )
+        assert activity_a["dependsOn"][0]["activity"] == "C"
+        assert activity_a["dependsOn"][0]["dependencyConditions"] == ["Succeeded", "Failed"]
     def test_add_copy_activity_to_pipeline_success(self, pipeline_service, mock_item_service, mock_client):
         """Adds copy activity and updates definition."""
         mock_item_service.get_item_by_name.return_value = FabricItem(
@@ -921,3 +1227,120 @@ class TestFabricPipelineService:
         updated = _decode_payload(payload)
         activities = {activity["name"]: activity for activity in updated["properties"]["activities"]}
         assert activities["B"]["dependsOn"] == []
+
+    def test_add_activity_dependency_success(
+        self, pipeline_service, mock_item_service, mock_client
+    ):
+        """Adds dependsOn entries to an activity."""
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        base_definition = {
+            "properties": {
+                "activities": [
+                    {"name": "A", "dependsOn": []},
+                    {"name": "B", "dependsOn": []},
+                    {"name": "C", "dependsOn": []},
+                ]
+            }
+        }
+        encoded = pipeline_service._encode_definition(base_definition)
+        mock_item_service.get_item_definition.return_value = {
+            "definition": {"parts": [{"path": "pipeline-content.json", "payload": encoded}]}
+        }
+
+        pipeline_id, added_count = pipeline_service.add_activity_dependency(
+            workspace_id="ws-1",
+            pipeline_name="Pipe",
+            activity_name="C",
+            depends_on=["A", "B"],
+        )
+
+        assert pipeline_id == "pipe-1"
+        assert added_count == 2
+        payload = mock_client.make_api_request.call_args.kwargs["payload"]
+        updated = _decode_payload(payload["definition"]["parts"][0]["payload"])
+        depends_on = updated["properties"]["activities"][2]["dependsOn"]
+        assert {"activity": "A", "dependencyConditions": ["Succeeded"]} in depends_on
+        assert {"activity": "B", "dependencyConditions": ["Succeeded"]} in depends_on
+
+    def test_add_activity_dependency_missing_target(self, pipeline_service, mock_item_service):
+        """Missing target activity raises validation error."""
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        base_definition = {"properties": {"activities": [{"name": "A"}]}}
+        encoded = pipeline_service._encode_definition(base_definition)
+        mock_item_service.get_item_definition.return_value = {
+            "definition": {"parts": [{"path": "pipeline-content.json", "payload": encoded}]}
+        }
+
+        with pytest.raises(FabricValidationError):
+            pipeline_service.add_activity_dependency(
+                workspace_id="ws-1",
+                pipeline_name="Pipe",
+                activity_name="C",
+                depends_on=["A"],
+            )
+
+    def test_add_activity_dependency_missing_dependency(self, pipeline_service, mock_item_service):
+        """Missing dependency activity raises validation error."""
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        base_definition = {"properties": {"activities": [{"name": "A"}, {"name": "C"}]}}
+        encoded = pipeline_service._encode_definition(base_definition)
+        mock_item_service.get_item_definition.return_value = {
+            "definition": {"parts": [{"path": "pipeline-content.json", "payload": encoded}]}
+        }
+
+        with pytest.raises(FabricValidationError):
+            pipeline_service.add_activity_dependency(
+                workspace_id="ws-1",
+                pipeline_name="Pipe",
+                activity_name="C",
+                depends_on=["Missing"],
+            )
+
+    def test_add_activity_dependency_no_new(self, pipeline_service, mock_item_service):
+        """No new dependencies raises validation error."""
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        base_definition = {
+            "properties": {
+                "activities": [
+                    {
+                        "name": "C",
+                        "dependsOn": [
+                            {"activity": "A", "dependencyConditions": ["Succeeded"]}
+                        ],
+                    },
+                    {"name": "A"},
+                ]
+            }
+        }
+        encoded = pipeline_service._encode_definition(base_definition)
+        mock_item_service.get_item_definition.return_value = {
+            "definition": {"parts": [{"path": "pipeline-content.json", "payload": encoded}]}
+        }
+
+        with pytest.raises(FabricValidationError):
+            pipeline_service.add_activity_dependency(
+                workspace_id="ws-1",
+                pipeline_name="Pipe",
+                activity_name="C",
+                depends_on=["A"],
+            )

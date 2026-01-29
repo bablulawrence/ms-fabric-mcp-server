@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from fastmcp import FastMCP
 
 from ..services import FabricItemService, FabricWorkspaceService
-from ..client.exceptions import FabricItemNotFoundError
+from ..client.exceptions import FabricItemNotFoundError, FabricValidationError
 from .base import handle_tool_errors, log_tool_invocation
 
 logger = logging.getLogger(__name__)
@@ -26,9 +26,11 @@ def register_item_tools(
 ):
     """Register item management MCP tools.
     
-    This function registers two item-related tools:
+    This function registers item-related tools:
     - list_items: List items in a workspace with optional type filter
     - delete_item: Delete an item by name and type
+    - rename_item: Rename an item by ID
+    - move_item_to_folder: Move an item to a folder by ID
     
     Args:
         mcp: FastMCP server instance to register tools on.
@@ -56,7 +58,10 @@ def register_item_tools(
     @handle_tool_errors
     def list_items(
         workspace_name: str,
-        item_type: Optional[str] = None
+        item_type: Optional[str] = None,
+        root_folder_id: Optional[str] = None,
+        root_folder_path: Optional[str] = None,
+        recursive: bool = True,
     ) -> dict:
         """List all items in a Fabric workspace, optionally filtered by type.
         
@@ -69,11 +74,15 @@ def register_item_tools(
             workspace_name: The display name of the workspace.
             item_type: Optional item type filter (e.g., "Notebook", "Lakehouse").
                       If not provided, all items are returned.
+            root_folder_id: Optional folder ID to scope the listing.
+            root_folder_path: Optional folder path to scope the listing (e.g., "team/etl").
+                              Defaults to the workspace root when omitted.
+            recursive: Whether to include items in subfolders (default True).
                       
         Returns:
             Dictionary with status, workspace_name, item_type_filter, item_count,
             and list of items. Each item contains: id, display_name, type, description,
-            created_date, modified_date.
+            folder_id, created_date, modified_date.
             
         Example:
             ```python
@@ -84,15 +93,39 @@ def register_item_tools(
             result = list_items("My Workspace", item_type="Notebook")
             ```
         """
-        log_tool_invocation("list_items", workspace_name=workspace_name, item_type=item_type)
+        log_tool_invocation(
+            "list_items",
+            workspace_name=workspace_name,
+            item_type=item_type,
+            root_folder_id=root_folder_id,
+            root_folder_path=root_folder_path,
+            recursive=recursive,
+        )
         logger.info(f"Listing items in workspace '{workspace_name}'" + 
                    (f" (type: {item_type})" if item_type else " (all types)"))
         
         # Resolve workspace ID
         workspace_id = workspace_service.resolve_workspace_id(workspace_name)
         
+        if root_folder_id and root_folder_path:
+            raise FabricValidationError(
+                "root_folder_path",
+                root_folder_path,
+                "Provide either root_folder_id or root_folder_path, not both.",
+            )
+
+        if root_folder_path:
+            root_folder_id = item_service.resolve_folder_id_from_path(
+                workspace_id, root_folder_path, create_missing=False
+            )
+
         # Get items
-        items = item_service.list_items(workspace_id, item_type)
+        items = item_service.list_items(
+            workspace_id,
+            item_type,
+            root_folder_id=root_folder_id,
+            recursive=recursive,
+        )
         
         result = {
             "status": "success",
@@ -105,6 +138,7 @@ def register_item_tools(
                     "display_name": item.display_name,
                     "type": item.type,
                     "description": item.description,
+                    "folder_id": item.folder_id,
                     "created_date": item.created_date,
                     "modified_date": item.modified_date,
                 }
@@ -176,4 +210,107 @@ def register_item_tools(
                 "message": error_msg
             }
     
-    logger.info("Item tools registered successfully (2 tools)")
+    @mcp.tool(title="Rename Item")
+    @handle_tool_errors
+    def rename_item(
+        workspace_name: str,
+        item_id: str,
+        new_display_name: str,
+        description: Optional[str] = None,
+    ) -> dict:
+        """Rename an item in a Fabric workspace.
+
+        Parameters:
+            workspace_name: The display name of the workspace.
+            item_id: ID of the item to rename.
+            new_display_name: New display name for the item.
+            description: Optional description to update.
+
+        Returns:
+            Dictionary with status and updated item metadata.
+        """
+        log_tool_invocation(
+            "rename_item",
+            workspace_name=workspace_name,
+            item_id=item_id,
+            new_display_name=new_display_name,
+        )
+        logger.info(
+            f"Renaming item '{item_id}' in workspace '{workspace_name}' to '{new_display_name}'"
+        )
+
+        workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+        item = item_service.rename_item(
+            workspace_id=workspace_id,
+            item_id=item_id,
+            new_display_name=new_display_name,
+            description=description,
+        )
+
+        return {
+            "status": "success",
+            "item": {
+                "id": item.id,
+                "display_name": item.display_name,
+                "type": item.type,
+                "description": item.description,
+                "folder_id": item.folder_id,
+                "created_date": item.created_date,
+                "modified_date": item.modified_date,
+            },
+            "workspace_id": workspace_id,
+            "workspace_name": workspace_name,
+            "message": f"Item '{item.id}' renamed successfully",
+        }
+
+    @mcp.tool(title="Move Item to Folder")
+    @handle_tool_errors
+    def move_item_to_folder(
+        workspace_name: str,
+        item_id: str,
+        target_folder_id: str,
+    ) -> dict:
+        """Move an item to a folder in a Fabric workspace.
+
+        Parameters:
+            workspace_name: The display name of the workspace.
+            item_id: ID of the item to move.
+            target_folder_id: Folder ID to move the item into.
+
+        Returns:
+            Dictionary with status and moved item metadata.
+        """
+        log_tool_invocation(
+            "move_item_to_folder",
+            workspace_name=workspace_name,
+            item_id=item_id,
+            target_folder_id=target_folder_id,
+        )
+        logger.info(
+            f"Moving item '{item_id}' to folder '{target_folder_id}' in workspace '{workspace_name}'"
+        )
+
+        workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+        item = item_service.move_item_to_folder(
+            workspace_id=workspace_id,
+            item_id=item_id,
+            target_folder_id=target_folder_id,
+        )
+
+        return {
+            "status": "success",
+            "item": {
+                "id": item.id,
+                "display_name": item.display_name,
+                "type": item.type,
+                "description": item.description,
+                "folder_id": item.folder_id,
+                "created_date": item.created_date,
+                "modified_date": item.modified_date,
+            },
+            "workspace_id": workspace_id,
+            "workspace_name": workspace_name,
+            "message": f"Item '{item.id}' moved successfully",
+        }
+
+    logger.info("Item tools registered successfully (4 tools)")

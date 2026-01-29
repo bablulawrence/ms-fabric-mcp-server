@@ -54,18 +54,21 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
         notebook_display_name: str,
         local_notebook_path: str,
         description: Optional[str] = None,
+        folder_path: Optional[str] = None,
     ) -> dict:
         """Upload a local .ipynb into a Fabric workspace identified by name.
         
         Imports a Jupyter notebook from the local filesystem into a Microsoft Fabric
-        workspace. The notebook file must be in .ipynb format. The notebook can be
-        organized into folders using forward slashes in the display name (e.g., "demos/hello_world").
+        workspace. The notebook file must be in .ipynb format. Use folder_path to
+        place the notebook into a workspace folder.
         
         Parameters:
             workspace_name: The display name of the target workspace (case-sensitive as shown in Fabric).
-            notebook_display_name: Desired name (optionally with folders, e.g. "demos/hello_world") inside Fabric.
+            notebook_display_name: Desired name inside Fabric (no folder separators).
             local_notebook_path: Path to the notebook file (absolute or repo-relative).
             description: Optional description for the notebook.
+            folder_path: Optional folder path (e.g., "demos/etl") to place the notebook.
+                         Defaults to the workspace root when omitted.
             
         Returns:
             Dictionary with status, message, and artifact_id if successful.
@@ -85,7 +88,8 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
             workspace_name=workspace_name,
             notebook_display_name=notebook_display_name,
             local_notebook_path=local_notebook_path,
-            description=description
+            description=description,
+            folder_path=folder_path,
         )
         logger.info(f"Importing notebook '{notebook_display_name}' to workspace '{workspace_name}'")
         
@@ -93,7 +97,8 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
             workspace_name=workspace_name,
             notebook_name=notebook_display_name,
             local_path=local_notebook_path,
-            description=description
+            description=description,
+            folder_path=folder_path,
         )
         
         if result.status == "success":

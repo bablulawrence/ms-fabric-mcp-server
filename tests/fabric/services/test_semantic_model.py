@@ -42,6 +42,7 @@ class TestFabricSemanticModelService:
         self, semantic_model_service, mock_workspace_service, mock_item_service
     ):
         mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.resolve_folder_id_from_path.return_value = "folder-1"
         mock_item_service.create_item.return_value = FabricItem(
             id="sm-1",
             display_name="Model",
@@ -49,17 +50,25 @@ class TestFabricSemanticModelService:
             workspace_id="ws-1",
         )
 
-        result = semantic_model_service.create_semantic_model("ws", "Model")
+        result = semantic_model_service.create_semantic_model(
+            "ws", "Model", folder_path="Models/Finance"
+        )
 
         assert result.id == "sm-1"
         args, kwargs = mock_item_service.create_item.call_args
         item_definition = args[1]
         assert item_definition["type"] == "SemanticModel"
+        assert item_definition["folderId"] == "folder-1"
         parts = item_definition["definition"]["parts"]
         pbism = _decode(parts[0]["payload"])
         bim = _decode(parts[1]["payload"])
         assert pbism["version"] == "4.2"
         assert bim["compatibilityLevel"] == 1604
+
+    def test_create_semantic_model_invalid_name(self, semantic_model_service):
+        """Names with separators raise validation error."""
+        with pytest.raises(FabricValidationError):
+            semantic_model_service.create_semantic_model("ws", "Bad/Name")
 
     def test_add_table_to_semantic_model_success(
         self, semantic_model_service, mock_workspace_service, mock_item_service

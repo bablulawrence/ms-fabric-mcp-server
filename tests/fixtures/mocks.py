@@ -87,16 +87,20 @@ class FabricDataFactory:
         item_id: str = "item-123",
         name: str = "Test Item",
         item_type: str = "Notebook",
-        workspace_id: str = "ws-123"
+        workspace_id: str = "ws-123",
+        folder_id: str | None = None,
     ) -> Dict[str, Any]:
         """Generate item data."""
-        return {
+        data = {
             "id": item_id,
             "displayName": name,
             "type": item_type,
             "workspaceId": workspace_id,
             "description": f"Test {item_type}"
         }
+        if folder_id:
+            data["folderId"] = folder_id
+        return data
     
     @staticmethod
     def item_list(count: int = 5, item_type: str = None) -> Dict[str, Any]:

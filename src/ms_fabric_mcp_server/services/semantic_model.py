@@ -48,6 +48,7 @@ class FabricSemanticModelService:
         self,
         workspace_name: str,
         semantic_model_name: str,
+        folder_path: Optional[str] = None,
     ) -> SemanticModelReference:
         """Create an empty Fabric semantic model."""
         logger.info(
@@ -60,9 +61,18 @@ class FabricSemanticModelService:
                 semantic_model_name,
                 "Semantic model name cannot be empty",
             )
+        if "/" in semantic_model_name or "\\" in semantic_model_name:
+            raise FabricValidationError(
+                "semantic_model_name",
+                semantic_model_name,
+                "Semantic model name cannot include path separators. Use folder_path instead.",
+            )
 
         try:
             workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
+            folder_id = self.item_service.resolve_folder_id_from_path(
+                workspace_id, folder_path, create_missing=True
+            )
 
             item_definition = {
                 "displayName": semantic_model_name,
@@ -100,6 +110,8 @@ class FabricSemanticModelService:
                     ],
                 },
             }
+            if folder_id:
+                item_definition["folderId"] = folder_id
 
             created_item = self.item_service.create_item(workspace_id, item_definition)
 

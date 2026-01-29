@@ -5,7 +5,8 @@
 import base64
 import json
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+from urllib.parse import urlencode
 
 from ..client.http_client import FabricClient
 from ..client.exceptions import (
@@ -587,12 +588,41 @@ class FabricPipelineService:
         except Exception as exc:
             logger.error(f"Failed to decode pipeline definition: {exc}")
             raise FabricError(f"Failed to decode pipeline definition: {exc}")
+
+    def _decode_base64_payload(self, payload: str) -> str:
+        """Decode a Base64 payload to a UTF-8 string."""
+        try:
+            return base64.b64decode(payload).decode("utf-8")
+        except Exception as exc:
+            logger.error(f"Failed to decode base64 payload: {exc}")
+            raise FabricError(f"Failed to decode base64 payload: {exc}")
+
+    def _build_endpoint(self, base: str, params: Optional[Dict[str, str]] = None) -> str:
+        if params:
+            return f"{base}?{urlencode(params)}"
+        return base
+
+    def _validate_pipeline_definition_inputs(self, workspace_id: str, pipeline_id: str) -> None:
+        if not workspace_id or not str(workspace_id).strip():
+            raise FabricValidationError(
+                "workspace_id",
+                str(workspace_id),
+                "Workspace ID cannot be empty",
+            )
+        if not pipeline_id or not str(pipeline_id).strip():
+            raise FabricValidationError(
+                "pipeline_id",
+                str(pipeline_id),
+                "Pipeline ID cannot be empty",
+            )
     
     def create_blank_pipeline(
         self,
         workspace_id: str,
         pipeline_name: str,
-        description: Optional[str] = None
+        description: Optional[str] = None,
+        folder_id: Optional[str] = None,
+        folder_path: Optional[str] = None,
     ) -> str:
         """Create a blank Fabric pipeline with no activities.
         
@@ -603,6 +633,8 @@ class FabricPipelineService:
             workspace_id: Workspace ID where pipeline will be created
             pipeline_name: Name for the new pipeline (must be unique in workspace)
             description: Optional description for the pipeline
+            folder_id: Optional folder ID to place the pipeline in
+            folder_path: Optional folder path to place the pipeline in
             
         Returns:
             Pipeline ID (GUID) of the created pipeline
@@ -630,8 +662,25 @@ class FabricPipelineService:
                 "empty",
                 "Pipeline name cannot be empty"
             )
+        if "/" in pipeline_name or "\\" in pipeline_name:
+            raise FabricValidationError(
+                "pipeline_name",
+                pipeline_name,
+                "Pipeline name cannot include path separators. Use folder_path instead.",
+            )
+        if folder_id and folder_path:
+            raise FabricValidationError(
+                "folder_path",
+                folder_path,
+                "Provide either folder_id or folder_path, not both.",
+            )
         
         try:
+            if folder_path:
+                folder_id = self.item_service.resolve_folder_id_from_path(
+                    workspace_id, folder_path, create_missing=True
+                )
+
             # Build blank pipeline definition
             pipeline_definition = {
                 "properties": {
@@ -657,6 +706,9 @@ class FabricPipelineService:
                     ]
                 }
             }
+
+            if folder_id:
+                item_definition["folderId"] = folder_id
             
             if description:
                 item_definition["description"] = description
@@ -674,6 +726,421 @@ class FabricPipelineService:
         except Exception as exc:
             logger.error(f"Failed to create blank pipeline: {exc}")
             raise FabricError(f"Failed to create blank pipeline: {exc}")
+
+    def create_pipeline_with_definition(
+        self,
+        workspace_id: str,
+        display_name: str,
+        pipeline_content_json: Dict[str, Any],
+        platform: Optional[Dict[str, Any]] = None,
+        description: Optional[str] = None,
+        folder_id: Optional[str] = None,
+        folder_path: Optional[str] = None,
+    ) -> str:
+        """Create a data pipeline using a supplied definition."""
+        logger.info(
+            f"Creating pipeline '{display_name}' with definition in workspace {workspace_id}"
+        )
+
+        if not display_name or not display_name.strip():
+            raise FabricValidationError(
+                "display_name",
+                "empty",
+                "Display name cannot be empty",
+            )
+        if "/" in display_name or "\\" in display_name:
+            raise FabricValidationError(
+                "display_name",
+                display_name,
+                "Display name cannot include path separators. Use folder_path instead.",
+            )
+        if not isinstance(pipeline_content_json, dict):
+            raise FabricValidationError(
+                "pipeline_content_json",
+                str(type(pipeline_content_json)),
+                "pipeline_content_json must be a dictionary",
+            )
+        if platform is not None and not isinstance(platform, dict):
+            raise FabricValidationError(
+                "platform",
+                str(type(platform)),
+                "platform must be a dictionary when provided",
+            )
+        if folder_id and folder_path:
+            raise FabricValidationError(
+                "folder_path",
+                folder_path,
+                "Provide either folder_id or folder_path, not both.",
+            )
+
+        try:
+            if folder_path:
+                folder_id = self.item_service.resolve_folder_id_from_path(
+                    workspace_id, folder_path, create_missing=True
+                )
+
+            parts = [
+                {
+                    "path": "pipeline-content.json",
+                    "payload": self._encode_definition(pipeline_content_json),
+                    "payloadType": "InlineBase64",
+                }
+            ]
+            if platform is not None:
+                parts.append(
+                    {
+                        "path": ".platform",
+                        "payload": self._encode_definition(platform),
+                        "payloadType": "InlineBase64",
+                    }
+                )
+
+            payload: Dict[str, Any] = {
+                "displayName": display_name,
+                "definition": {"parts": parts},
+            }
+            if description:
+                payload["description"] = description
+            if folder_id:
+                payload["folderId"] = folder_id
+
+            response = self.client.make_api_request(
+                "POST",
+                f"workspaces/{workspace_id}/dataPipelines",
+                payload=payload,
+                wait_for_lro=True,
+            )
+
+            if response.status_code not in (200, 201, 202):
+                raise FabricAPIError(
+                    response.status_code,
+                    "Unexpected response status for pipeline creation",
+                )
+
+            response_data = response.json()
+            if not isinstance(response_data, dict) or not response_data:
+                raise FabricError("Failed to create pipeline: empty response")
+
+            pipeline_id = response_data.get("id")
+            if not pipeline_id:
+                raise FabricError("Failed to create pipeline: missing id in response")
+
+            logger.info(f"Successfully created pipeline with ID: {pipeline_id}")
+            return pipeline_id
+
+        except FabricValidationError:
+            raise
+        except FabricAPIError:
+            raise
+        except Exception as exc:
+            logger.error(f"Failed to create pipeline with definition: {exc}")
+            raise FabricError(f"Failed to create pipeline with definition: {exc}")
+
+    def get_pipeline_definition(
+        self,
+        workspace_id: str,
+        pipeline_id: str,
+        format: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Get a DataPipeline definition using the DataPipeline-specific API."""
+        logger.info(
+            f"Fetching pipeline definition for pipeline '{pipeline_id}' in workspace {workspace_id}"
+        )
+        self._validate_pipeline_definition_inputs(workspace_id, pipeline_id)
+
+        try:
+            params: Dict[str, str] = {}
+            if format:
+                params["format"] = format
+            endpoint = self._build_endpoint(
+                f"workspaces/{workspace_id}/dataPipelines/{pipeline_id}/getDefinition",
+                params if params else None,
+            )
+            response = self.client.make_api_request(
+                "POST",
+                endpoint,
+                wait_for_lro=True,
+            )
+            definition = response.json()
+            if not isinstance(definition, dict):
+                raise FabricError("Failed to fetch pipeline definition: empty response")
+
+            parts = definition.get("definition", {}).get("parts", [])
+            pipeline_content_part = None
+            platform_part = None
+            for part in parts:
+                path = part.get("path")
+                if path == "pipeline-content.json":
+                    pipeline_content_part = part
+                elif path == ".platform":
+                    platform_part = part
+
+            if not pipeline_content_part:
+                raise FabricError("Pipeline definition missing pipeline-content.json part")
+
+            pipeline_content_payload = pipeline_content_part.get("payload", "")
+            pipeline_content_json = self._decode_definition(pipeline_content_payload)
+
+            platform = None
+            if platform_part:
+                platform_payload = platform_part.get("payload", "")
+                if platform_payload:
+                    decoded_platform = self._decode_base64_payload(platform_payload)
+                    try:
+                        platform = json.loads(decoded_platform)
+                    except Exception:
+                        platform = decoded_platform
+
+            return {
+                "pipeline_content_json": pipeline_content_json,
+                "platform": platform,
+            }
+
+        except FabricValidationError:
+            raise
+        except FabricAPIError:
+            raise
+        except Exception as exc:
+            logger.error(f"Failed to fetch pipeline definition: {exc}")
+            raise FabricError(f"Failed to fetch pipeline definition: {exc}")
+
+    def update_pipeline_definition(
+        self,
+        workspace_id: str,
+        pipeline_id: str,
+        pipeline_content_json: Dict[str, Any],
+        platform: Optional[Dict[str, Any]] = None,
+        update_metadata: bool = False,
+    ) -> None:
+        """Update a DataPipeline definition using the DataPipeline-specific API."""
+        logger.info(
+            f"Updating pipeline definition for pipeline '{pipeline_id}' in workspace {workspace_id}"
+        )
+        self._validate_pipeline_definition_inputs(workspace_id, pipeline_id)
+
+        if not isinstance(pipeline_content_json, dict):
+            raise FabricValidationError(
+                "pipeline_content_json",
+                str(type(pipeline_content_json)),
+                "pipeline_content_json must be a dictionary",
+            )
+        if platform is not None and not isinstance(platform, dict):
+            raise FabricValidationError(
+                "platform",
+                str(type(platform)),
+                "platform must be a dictionary when provided",
+            )
+        if update_metadata is True and platform is None:
+            raise FabricValidationError(
+                "update_metadata",
+                str(update_metadata),
+                "update_metadata requires platform to be provided",
+            )
+
+        try:
+            parts = [
+                {
+                    "path": "pipeline-content.json",
+                    "payload": self._encode_definition(pipeline_content_json),
+                    "payloadType": "InlineBase64",
+                }
+            ]
+            if platform is not None:
+                parts.append(
+                    {
+                        "path": ".platform",
+                        "payload": self._encode_definition(platform),
+                        "payloadType": "InlineBase64",
+                    }
+                )
+
+            payload = {"definition": {"parts": parts}}
+
+            params: Dict[str, str] = {}
+            if update_metadata:
+                params["updateMetadata"] = "true"
+            endpoint = self._build_endpoint(
+                f"workspaces/{workspace_id}/dataPipelines/{pipeline_id}/updateDefinition",
+                params if params else None,
+            )
+
+            self.client.make_api_request(
+                "POST",
+                endpoint,
+                payload=payload,
+                wait_for_lro=True,
+            )
+
+        except FabricValidationError:
+            raise
+        except FabricAPIError:
+            raise
+        except Exception as exc:
+            logger.error(f"Failed to update pipeline definition: {exc}")
+            raise FabricError(f"Failed to update pipeline definition: {exc}")
+
+    def set_activity_dependency(
+        self,
+        workspace_id: str,
+        pipeline_name: str,
+        activity_name: str,
+        depends_on: list[str],
+        mode: str = "add",
+        dependency_conditions: Optional[list[str]] = None,
+    ) -> tuple[str, int]:
+        """Add, remove, or replace dependencies for an activity."""
+        logger.info(
+            f"Setting dependencies for activity '{activity_name}' in pipeline '{pipeline_name}' "
+            f"(mode={mode})"
+        )
+
+        self._validate_activity_operation_inputs(workspace_id, pipeline_name, activity_name)
+
+        if depends_on is None:
+            depends_on = []
+        if not isinstance(depends_on, list):
+            raise FabricValidationError(
+                "depends_on",
+                str(type(depends_on)),
+                "depends_on must be a list of activity names",
+            )
+
+        mode = (mode or "").strip().lower()
+        if mode not in {"add", "remove", "replace"}:
+            raise FabricValidationError(
+                "mode",
+                mode,
+                "mode must be one of: add, remove, replace",
+            )
+
+        if mode in {"add", "remove"} and not depends_on:
+            raise FabricValidationError(
+                "depends_on",
+                "empty",
+                f"depends_on must not be empty when mode='{mode}'",
+            )
+
+        if dependency_conditions is None:
+            dependency_conditions = ["Succeeded"]
+        if mode != "remove":
+            if not isinstance(dependency_conditions, list) or not dependency_conditions:
+                raise FabricValidationError(
+                    "dependency_conditions",
+                    str(dependency_conditions),
+                    "dependency_conditions must be a non-empty list",
+                )
+
+        try:
+            pipeline = self.item_service.get_item_by_name(
+                workspace_id, pipeline_name, "DataPipeline"
+            )
+            definition_result = self.get_pipeline_definition(
+                workspace_id=workspace_id,
+                pipeline_id=pipeline.id,
+            )
+            definition = definition_result["pipeline_content_json"]
+            platform = definition_result.get("platform")
+            platform_payload = platform if isinstance(platform, dict) else None
+
+            activities = self._get_pipeline_activities(definition)
+            existing_names = {activity.get("name") for activity in activities if activity.get("name")}
+
+            target = next(
+                (activity for activity in activities if activity.get("name") == activity_name),
+                None,
+            )
+            if not target:
+                raise FabricValidationError(
+                    "activity_name",
+                    activity_name,
+                    "Activity not found in pipeline",
+                )
+
+            for dep in depends_on:
+                if dep == activity_name:
+                    raise FabricValidationError(
+                        "depends_on",
+                        dep,
+                        "Activity cannot depend on itself",
+                    )
+                if dep not in existing_names:
+                    raise FabricValidationError(
+                        "depends_on",
+                        dep,
+                        "Dependency activity not found in pipeline",
+                    )
+
+            current_depends = target.get("dependsOn")
+            if not isinstance(current_depends, list):
+                current_depends = []
+
+            current_by_name = {
+                dependency.get("activity"): dependency
+                for dependency in current_depends
+                if dependency.get("activity")
+            }
+
+            changed_count = 0
+            if mode == "add":
+                for dep in depends_on:
+                    if dep in current_by_name:
+                        continue
+                    current_depends.append(
+                        {
+                            "activity": dep,
+                            "dependencyConditions": dependency_conditions,
+                        }
+                    )
+                    changed_count += 1
+                target["dependsOn"] = current_depends
+            elif mode == "remove":
+                remove_set = set(depends_on)
+                original_len = len(current_depends)
+                current_depends = [
+                    dependency
+                    for dependency in current_depends
+                    if dependency.get("activity") not in remove_set
+                ]
+                target["dependsOn"] = current_depends
+                changed_count = original_len - len(current_depends)
+                if changed_count == 0:
+                    raise FabricValidationError(
+                        "depends_on",
+                        depends_on,
+                        "No dependencies were removed",
+                    )
+            else:
+                target["dependsOn"] = [
+                    {
+                        "activity": dep,
+                        "dependencyConditions": dependency_conditions,
+                    }
+                    for dep in depends_on
+                ]
+                changed_count = len(target["dependsOn"])
+
+            self.update_pipeline_definition(
+                workspace_id=workspace_id,
+                pipeline_id=pipeline.id,
+                pipeline_content_json=definition,
+                platform=platform_payload,
+                update_metadata=False,
+            )
+
+            logger.info(
+                f"Updated dependencies for activity '{activity_name}' in pipeline {pipeline.id}"
+            )
+            return pipeline.id, changed_count
+
+        except FabricValidationError:
+            raise
+        except FabricItemNotFoundError:
+            raise
+        except FabricAPIError:
+            raise
+        except Exception as exc:
+            logger.error(f"Failed to set activity dependency: {exc}")
+            raise FabricError(f"Failed to set activity dependency: {exc}")
     
     def add_copy_activity_to_pipeline(
         self,
@@ -1398,6 +1865,119 @@ class FabricPipelineService:
         except Exception as exc:
             logger.error(f"Failed to remove activity dependencies: {exc}")
             raise FabricError(f"Failed to remove activity dependencies: {exc}")
+
+    def add_activity_dependency(
+        self,
+        workspace_id: str,
+        pipeline_name: str,
+        activity_name: str,
+        depends_on: list[str],
+    ) -> tuple[str, int]:
+        """Add dependsOn references to a target activity."""
+        logger.info(
+            f"Adding dependencies to '{activity_name}' in pipeline '{pipeline_name}'"
+        )
+
+        self._validate_activity_operation_inputs(
+            workspace_id, pipeline_name, activity_name
+        )
+        if not depends_on or not isinstance(depends_on, list):
+            raise FabricValidationError(
+                "depends_on",
+                str(depends_on),
+                "depends_on must be a non-empty list",
+            )
+        if any(not str(name).strip() for name in depends_on):
+            raise FabricValidationError(
+                "depends_on",
+                str(depends_on),
+                "depends_on entries cannot be empty",
+            )
+
+        try:
+            pipeline, definition = self._get_pipeline_definition(
+                workspace_id, pipeline_name
+            )
+            activities = self._get_pipeline_activities(definition)
+            activity_names = {
+                activity.get("name") for activity in activities if activity.get("name")
+            }
+
+            if activity_name not in activity_names:
+                raise FabricValidationError(
+                    "activity_name",
+                    activity_name,
+                    "Activity not found in pipeline",
+                )
+
+            missing = [
+                name for name in depends_on if name not in activity_names
+            ]
+            if missing:
+                raise FabricValidationError(
+                    "depends_on",
+                    ", ".join(missing),
+                    "Dependency activities not found in pipeline",
+                )
+
+            if activity_name in depends_on:
+                raise FabricValidationError(
+                    "depends_on",
+                    activity_name,
+                    "Activity cannot depend on itself",
+                )
+
+            target_activity = next(
+                activity
+                for activity in activities
+                if activity.get("name") == activity_name
+            )
+            if "dependsOn" not in target_activity or not isinstance(
+                target_activity.get("dependsOn"), list
+            ):
+                target_activity["dependsOn"] = []
+
+            existing = {
+                dependency.get("activity")
+                for dependency in target_activity.get("dependsOn", [])
+                if dependency.get("activity")
+            }
+
+            added_count = 0
+            for dependency_name in depends_on:
+                if dependency_name in existing:
+                    continue
+                target_activity["dependsOn"].append(
+                    {
+                        "activity": dependency_name,
+                        "dependencyConditions": ["Succeeded"],
+                    }
+                )
+                added_count += 1
+
+            if added_count == 0:
+                raise FabricValidationError(
+                    "depends_on",
+                    ", ".join(depends_on),
+                    "No new dependencies to add",
+                )
+
+            self._update_pipeline_definition(workspace_id, pipeline.id, definition)
+
+            logger.info(
+                f"Added {added_count} dependencies to '{activity_name}' in pipeline {pipeline.id}"
+            )
+            return pipeline.id, added_count
+
+        except FabricValidationError:
+            raise
+        except FabricItemNotFoundError:
+            raise
+        except FabricAPIError:
+            raise
+        except Exception as exc:
+            logger.error(f"Failed to add activity dependencies: {exc}")
+            raise FabricError(f"Failed to add activity dependencies: {exc}")
 
     def _validate_notebook_activity_inputs(
         self,

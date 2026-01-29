@@ -145,10 +145,23 @@ class TestFabricNotebookService:
 
         assert "description" not in definition
 
+    def test_create_notebook_definition_with_folder(self, notebook_service):
+        """Notebook definition includes folderId when provided."""
+        notebook_service._encode_notebook_file = Mock(return_value="encoded")
+
+        definition = notebook_service._create_notebook_definition(
+            notebook_name="Test Notebook",
+            notebook_path="notebooks/test.ipynb",
+            folder_id="folder-1",
+        )
+
+        assert definition["folderId"] == "folder-1"
+
     def test_import_notebook_success(self, notebook_service, mock_item_service, mock_workspace_service):
         """Import notebook returns success result."""
         notebook_service._create_notebook_definition = Mock(return_value={"definition": {}})
         mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.resolve_folder_id_from_path.return_value = "folder-1"
         mock_item_service.create_item.return_value = FabricItem(
             id="nb-123",
             display_name="Test",
@@ -160,10 +173,17 @@ class TestFabricNotebookService:
             workspace_name="Workspace",
             notebook_name="Notebook",
             local_path="notebooks/test.ipynb",
+            folder_path="Notebooks/Finance",
         )
 
         assert result.status == "success"
         assert result.artifact_id == "nb-123"
+        notebook_service._create_notebook_definition.assert_called_once_with(
+            "Notebook",
+            "notebooks/test.ipynb",
+            None,
+            folder_id="folder-1",
+        )
         mock_item_service.create_item.assert_called_once()
 
     @pytest.mark.parametrize(
@@ -188,6 +208,15 @@ class TestFabricNotebookService:
 
         assert result.status == "error"
         assert result.message
+
+    def test_import_notebook_invalid_name(self, notebook_service):
+        """Notebook names with separators raise validation error."""
+        with pytest.raises(FabricValidationError):
+            notebook_service.import_notebook(
+                workspace_name="Workspace",
+                notebook_name="Bad/Name",
+                local_path="notebooks/test.ipynb",
+            )
 
     def test_import_notebook_unexpected_error(self, notebook_service):
         """Unexpected exceptions return error with prefix."""

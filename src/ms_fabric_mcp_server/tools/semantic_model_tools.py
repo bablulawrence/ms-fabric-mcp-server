@@ -30,17 +30,27 @@ def register_semantic_model_tools(
     def create_semantic_model(
         workspace_name: str,
         semantic_model_name: str,
+        folder_path: Optional[str] = None,
     ) -> dict:
-        """Create an empty Fabric semantic model."""
+        """Create an empty Fabric semantic model.
+
+        Parameters:
+            workspace_name: The display name of the workspace.
+            semantic_model_name: Name for the semantic model (no folder separators).
+            folder_path: Optional folder path (e.g., "models/finance") to place the model.
+                         Defaults to the workspace root when omitted.
+        """
         log_tool_invocation(
             "create_semantic_model",
             workspace_name=workspace_name,
             semantic_model_name=semantic_model_name,
+            folder_path=folder_path,
         )
 
         semantic_model = semantic_model_service.create_semantic_model(
             workspace_name=workspace_name,
             semantic_model_name=semantic_model_name,
+            folder_path=folder_path,
         )
 
         result = {

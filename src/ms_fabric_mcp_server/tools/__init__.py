@@ -1,5 +1,5 @@
 # ABOUTME: Main entry point for registering Microsoft Fabric MCP tools.
-# ABOUTME: Provides register_fabric_tools() to add all 40 Fabric tools to an MCP server.
+# ABOUTME: Provides register_fabric_tools() to add all 46 Fabric tools to an MCP server.
 """Fabric MCP tools - Modular tool registration.
 
 This module provides the main entry point for registering Microsoft Fabric MCP tools.
@@ -40,19 +40,20 @@ logger = logging.getLogger(__name__)
 def register_fabric_tools(mcp: "FastMCP"):
     """Register all Fabric MCP tools (workspace, item, notebook, job, SQL, Livy, pipeline).
     
-    This is the main registration function that sets up all 40 Fabric tools.
+    This is the main registration function that sets up all 46 Fabric tools.
     It initializes the service hierarchy and registers all tool categories.
     
     Tool Categories:
     - Workspace tools (1): list_workspaces
-    - Item tools (2): list_items, delete_item
+    - Item tools (4): list_items, delete_item, rename_item, move_item_to_folder
     - Notebook tools (6): import_notebook_to_fabric, get_notebook_content, attach_lakehouse_to_notebook, get_notebook_execution_details, list_notebook_executions, get_notebook_driver_logs
     - Job tools (4): run_on_demand_job, get_job_status, get_job_status_by_url, get_operation_result
     - SQL tools (3): get_sql_endpoint, execute_sql_query, execute_sql_statement
     - Livy tools (8): Session and statement management for Spark
-    - Pipeline tools (7): create_blank_pipeline, add_copy_activity_to_pipeline, add_notebook_activity_to_pipeline,
+    - Pipeline tools (11): create_blank_pipeline, add_copy_activity_to_pipeline, add_notebook_activity_to_pipeline,
       add_dataflow_activity_to_pipeline, add_activity_to_pipeline, delete_activity_from_pipeline,
-      remove_activity_dependency
+      remove_activity_dependency, add_activity_dependency, create_pipeline_with_definition,
+      get_pipeline_definition, update_pipeline_definition
     - Semantic model tools (7): create_semantic_model, add_table_to_semantic_model,
       add_relationship_to_semantic_model, get_semantic_model_details,
       get_semantic_model_definition, add_measures_to_semantic_model,
@@ -128,7 +129,7 @@ def register_fabric_tools(mcp: "FastMCP"):
     register_semantic_model_tools(mcp, semantic_model_service)
     register_powerbi_tools(mcp, powerbi_service)
     
-    tool_count = 40 if sql_service else 37  # 3 SQL tools
+    tool_count = 46 if sql_service else 43  # 3 SQL tools
     logger.info(f"All Fabric tools registered successfully ({tool_count} tools)")
 
 

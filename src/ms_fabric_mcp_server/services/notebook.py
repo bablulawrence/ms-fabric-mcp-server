@@ -149,7 +149,8 @@ class FabricNotebookService:
         self,
         notebook_name: str,
         notebook_path: str,
-        description: Optional[str] = None
+        description: Optional[str] = None,
+        folder_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create notebook definition for API request.
         
@@ -180,6 +181,8 @@ class FabricNotebookService:
         
         if description:
             definition["description"] = description
+        if folder_id:
+            definition["folderId"] = folder_id
         
         return definition
 
@@ -197,7 +200,8 @@ class FabricNotebookService:
         workspace_name: str,
         notebook_name: str,
         local_path: str,
-        description: Optional[str] = None
+        description: Optional[str] = None,
+        folder_path: Optional[str] = None,
     ) -> ImportNotebookResult:
         """Import local notebook to Fabric workspace.
         
@@ -226,14 +230,26 @@ class FabricNotebookService:
         logger.info(
             f"Importing notebook '{notebook_name}' to workspace '{workspace_name}'"
         )
+
+        if "/" in notebook_name or "\\" in notebook_name:
+            raise FabricValidationError(
+                "notebook_name",
+                notebook_name,
+                "Notebook name cannot include path separators. "
+                "Use folder_path to place notebooks in folders.",
+            )
         
         try:
             # Resolve workspace ID
             workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
             
+            folder_id = self.item_service.resolve_folder_id_from_path(
+                workspace_id, folder_path, create_missing=True
+            )
+
             # Create notebook definition
             notebook_definition = self._create_notebook_definition(
-                notebook_name, local_path, description
+                notebook_name, local_path, description, folder_id=folder_id
             )
             
             # Create the notebook item

@@ -60,10 +60,57 @@ class TestFabricItemService:
             "GET", "workspaces/ws-1/items"
         )
 
+    def test_list_items_with_folder_scope(self, item_service, mock_fabric_client):
+        """List items with folder scope includes folder and recursion params."""
+        items_data = FabricDataFactory.item_list(1, "Notebook")
+        mock_fabric_client.make_api_request.return_value = MockResponseFactory.success(items_data)
+
+        items = item_service.list_items(
+            "ws-1", "Notebook", root_folder_id="folder-1", recursive=False
+        )
+
+        assert len(items) == 1
+        mock_fabric_client.make_api_request.assert_called_once_with(
+            "GET", "workspaces/ws-1/items?type=Notebook&rootFolderId=folder-1&recursive=false"
+        )
+
     def test_list_items_invalid_type(self, item_service):
         """Invalid type filter raises validation error."""
         with pytest.raises(FabricValidationError):
             item_service.list_items("ws-1", "NotAType")
+
+    def test_resolve_folder_id_from_path_creates_missing(
+        self, item_service, mock_fabric_client
+    ):
+        """Resolve folder path creates missing folders when requested."""
+        existing = {
+            "value": [
+                {"id": "f-root", "displayName": "Root", "parentFolderId": None},
+            ],
+            "continuationToken": None,
+        }
+        created = {"id": "f-child", "displayName": "Child", "parentFolderId": "f-root"}
+        mock_fabric_client.make_api_request.side_effect = [
+            MockResponseFactory.success(existing),
+            MockResponseFactory.success(created, status_code=201),
+        ]
+
+        folder_id = item_service.resolve_folder_id_from_path(
+            "ws-1", "Root/Child", create_missing=True
+        )
+
+        assert folder_id == "f-child"
+        assert mock_fabric_client.make_api_request.call_count == 2
+
+    def test_resolve_folder_id_from_path_missing_raises(
+        self, item_service, mock_fabric_client
+    ):
+        """Missing folder path raises validation error when not creating."""
+        existing = {"value": [], "continuationToken": None}
+        mock_fabric_client.make_api_request.return_value = MockResponseFactory.success(existing)
+
+        with pytest.raises(FabricValidationError):
+            item_service.resolve_folder_id_from_path("ws-1", "Missing/Path", create_missing=False)
 
     def test_get_item_by_name_success(self, item_service, mock_fabric_client):
         """Get item by name returns matching item."""
@@ -219,6 +266,54 @@ class TestFabricItemService:
 
         with pytest.raises(FabricError):
             item_service.update_item("ws-1", "item-1", {"displayName": "Updated"})
+
+    def test_rename_item_success(self, item_service, mock_fabric_client):
+        """Rename item uses update endpoint."""
+        item_data = FabricDataFactory.item(item_id="item-1", item_type="Notebook")
+        mock_fabric_client.make_api_request.return_value = MockResponseFactory.success(item_data)
+
+        item = item_service.rename_item(
+            "ws-1", "item-1", new_display_name="Renamed", description="desc"
+        )
+
+        assert item.id == "item-1"
+        mock_fabric_client.make_api_request.assert_called_once_with(
+            "PATCH",
+            "workspaces/ws-1/items/item-1",
+            payload={"displayName": "Renamed", "description": "desc"},
+        )
+
+    def test_rename_item_validation(self, item_service):
+        """Empty name raises validation error."""
+        with pytest.raises(FabricValidationError):
+            item_service.rename_item("ws-1", "item-1", " ")
+
+    def test_move_item_to_folder_success(self, item_service, mock_fabric_client):
+        """Move item posts to move endpoint."""
+        item_data = FabricDataFactory.item(item_id="item-1", item_type="Notebook")
+        mock_fabric_client.make_api_request.return_value = MockResponseFactory.success(item_data)
+
+        item = item_service.move_item_to_folder("ws-1", "item-1", "folder-1")
+
+        assert item.id == "item-1"
+        mock_fabric_client.make_api_request.assert_called_once_with(
+            "POST",
+            "workspaces/ws-1/items/item-1/move",
+            payload={"targetFolderId": "folder-1"},
+            wait_for_lro=True,
+        )
+
+    def test_move_item_to_folder_validation(self, item_service):
+        """Empty folder id raises validation error."""
+        with pytest.raises(FabricValidationError):
+            item_service.move_item_to_folder("ws-1", "item-1", " ")
+
+    def test_move_item_to_folder_missing_response(self, item_service, mock_fabric_client):
+        """Empty response raises FabricError."""
+        mock_fabric_client.make_api_request.return_value = MockResponseFactory.success({})
+
+        with pytest.raises(FabricError):
+            item_service.move_item_to_folder("ws-1", "item-1", "folder-1")
 
     def test_delete_item_success(self, item_service, mock_fabric_client):
         """Delete item calls endpoint."""
