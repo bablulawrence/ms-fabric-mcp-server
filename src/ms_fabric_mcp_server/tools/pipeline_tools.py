@@ -31,7 +31,7 @@ def register_pipeline_tools(
     """Register pipeline management MCP tools.
     
     This function registers pipeline-related tools:
-    - create_blank_pipeline: Create a blank pipeline with no activities
+    - create_pipeline: Create a pipeline (blank or from definition)
     - add_copy_activity_to_pipeline: Add a Copy Activity to an existing pipeline
     - add_notebook_activity_to_pipeline: Add a Notebook Activity to an existing pipeline
     - add_dataflow_activity_to_pipeline: Add a Dataflow Activity to an existing pipeline
@@ -39,11 +39,6 @@ def register_pipeline_tools(
     - delete_activity_from_pipeline: Delete an activity from an existing pipeline
     - remove_activity_dependency: Remove dependsOn entries referencing an activity
     - add_activity_dependency: Add dependsOn entries to an activity
-    - create_pipeline_with_definition: Create a pipeline from a provided definition
-    - get_pipeline_definition: Fetch and decode pipeline definition JSON
-    - update_pipeline_definition: Update pipeline definition JSON
-    - add_activity_dependency: Add dependencies to an activity
-    - create_pipeline_with_definition: Create a pipeline from a provided definition
     - get_pipeline_definition: Fetch and decode pipeline definition JSON
     - update_pipeline_definition: Update pipeline definition JSON
     
@@ -73,84 +68,74 @@ def register_pipeline_tools(
         ```
     """
     
-    @mcp.tool(title="Create Blank Pipeline")
+    @mcp.tool(title="Create Pipeline")
     @handle_tool_errors
-    def create_blank_pipeline(
+    def create_pipeline(
         workspace_name: str,
         pipeline_name: str,
         description: Optional[str] = None,
         folder_path: Optional[str] = None,
+        pipeline_content_json: Optional[Dict[str, Any]] = None,
+        platform: Optional[Dict[str, Any]] = None,
     ) -> dict:
-        """Create a blank Fabric pipeline with no activities.
-        
-        Creates a Data Pipeline in the specified workspace with an empty activities
-        array, ready to be populated with activities later using the
-        add_copy_activity_to_pipeline tool.
-        
+        """Create a Fabric pipeline.
+
+        Creates either a blank pipeline (when no definition is provided) or
+        a pipeline based on a supplied definition.
+
         Parameters:
             workspace_name: The display name of the workspace where the pipeline will be created.
             pipeline_name: Name for the new pipeline (must be unique in workspace).
             description: Optional description for the pipeline.
             folder_path: Optional folder path (e.g., "pipelines/daily") to place the pipeline.
                          Defaults to the workspace root when omitted.
-            
+            pipeline_content_json: Optional pipeline definition JSON.
+            platform: Optional .platform JSON definition.
+
         Returns:
             Dictionary with status, pipeline_id, pipeline_name, workspace_name, and message.
-            
-        Example:
-            ```python
-            # Create a blank pipeline
-            result = create_blank_pipeline(
-                workspace_name="Analytics Workspace",
-                pipeline_name="My_Data_Integration_Pipeline",
-                description="Pipeline for data integration workflows"
-            )
-            
-            # Later, add activities to it
-            add_copy_activity_to_pipeline(
-                workspace_name="Analytics Workspace",
-                pipeline_name="My_Data_Integration_Pipeline",
-                source_type="AzurePostgreSqlSource",
-                source_connection_id=conn_id,
-                source_table_schema="public",
-                source_table_name="customers",
-                destination_lakehouse_id=lakehouse_id,
-                destination_connection_id=lakehouse_conn_id,
-                destination_table_name="customers"
-            )
-            ```
         """
         log_tool_invocation(
-            "create_blank_pipeline",
+            "create_pipeline",
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
             folder_path=folder_path,
         )
-        
-        logger.info(f"Creating blank pipeline '{pipeline_name}' in workspace '{workspace_name}'")
-        
-        # Resolve workspace ID
+
+        logger.info(f"Creating pipeline '{pipeline_name}' in workspace '{workspace_name}'")
+
         workspace_id = workspace_service.resolve_workspace_id(workspace_name)
         workspace = workspace_service.get_workspace_by_id(workspace_id)
-        
-        # Create the blank pipeline
-        pipeline_id = pipeline_service.create_blank_pipeline(
-            workspace_id=workspace_id,
-            pipeline_name=pipeline_name,
-            description=description,
-            folder_path=folder_path,
-        )
-        
+
+        if pipeline_content_json is None:
+            pipeline_id = pipeline_service.create_blank_pipeline(
+                workspace_id=workspace_id,
+                pipeline_name=pipeline_name,
+                description=description,
+                folder_path=folder_path,
+            )
+        else:
+            pipeline_id = pipeline_service.create_pipeline_with_definition(
+                workspace_id=workspace_id,
+                display_name=pipeline_name,
+                pipeline_content_json=pipeline_content_json,
+                platform=platform,
+                description=description,
+                folder_path=folder_path,
+            )
+
         result = {
             "status": "success",
             "pipeline_id": pipeline_id,
             "pipeline_name": pipeline_name,
             "workspace_name": workspace.display_name,
             "workspace_id": workspace_id,
-            "message": f"Blank pipeline '{pipeline_name}' created successfully"
+            "message": f"Pipeline '{pipeline_name}' created successfully",
         }
-        
-        logger.info(f"Blank pipeline created successfully: {pipeline_id} in workspace {workspace.display_name}")
+
+        logger.info(
+            f"Pipeline created successfully: {pipeline_id} in workspace {workspace.display_name}"
+        )
         return result
     
     @mcp.tool(title="Add Copy Activity to Pipeline")
@@ -662,71 +647,6 @@ def register_pipeline_tools(
         )
         return result
 
-    @mcp.tool(title="Create Pipeline with Definition")
-    @handle_tool_errors
-    def create_pipeline_with_definition(
-        workspace_name: str,
-        display_name: str,
-        pipeline_content_json: dict,
-        platform: Optional[dict] = None,
-        description: Optional[str] = None,
-        folder_id: Optional[str] = None,
-        folder_path: Optional[str] = None,
-    ) -> dict:
-        """Create a pipeline from a supplied definition.
-
-        Parameters:
-            workspace_name: The display name of the workspace where the pipeline will be created.
-            display_name: Display name for the new pipeline.
-            pipeline_content_json: Pipeline definition JSON to upload.
-            platform: Optional .platform JSON definition.
-            description: Optional description for the pipeline.
-            folder_id: Optional folder ID to place the pipeline in.
-            folder_path: Optional folder path to place the pipeline in.
-                         Defaults to the workspace root when omitted.
-
-        Returns:
-            Dictionary with status, pipeline_id, workspace metadata, and message.
-        """
-        log_tool_invocation(
-            "create_pipeline_with_definition",
-            workspace_name=workspace_name,
-            display_name=display_name,
-            folder_id=folder_id,
-            folder_path=folder_path,
-        )
-
-        logger.info(
-            f"Creating pipeline '{display_name}' in workspace '{workspace_name}' from definition"
-        )
-
-        workspace_id = workspace_service.resolve_workspace_id(workspace_name)
-        workspace = workspace_service.get_workspace_by_id(workspace_id)
-
-        pipeline_id = pipeline_service.create_pipeline_with_definition(
-            workspace_id=workspace_id,
-            display_name=display_name,
-            pipeline_content_json=pipeline_content_json,
-            platform=platform,
-            description=description,
-            folder_id=folder_id,
-            folder_path=folder_path,
-        )
-
-        result = {
-            "status": "success",
-            "pipeline_id": pipeline_id,
-            "pipeline_name": display_name,
-            "workspace_name": workspace.display_name,
-            "workspace_id": workspace_id,
-            "message": f"Pipeline '{display_name}' created successfully",
-        }
-
-        logger.info(
-            f"Pipeline '{display_name}' created successfully with ID {pipeline_id}"
-        )
-        return result
-
     @mcp.tool(title="Get Pipeline Definition")
     @handle_tool_errors
     def get_pipeline_definition(
@@ -1030,4 +950,4 @@ def register_pipeline_tools(
         )
         return result
     
-    logger.info("Pipeline tools registered successfully (7 tools)")
+    logger.info("Pipeline tools registered successfully (10 tools)")

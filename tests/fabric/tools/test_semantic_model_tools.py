@@ -28,16 +28,10 @@ class TestSemanticModelTools:
         semantic_service.delete_measures_from_semantic_model.return_value = SemanticModelReference(
             workspace_id="ws-1", id="sm-1"
         )
-        semantic_service.list_semantic_model_tables.return_value = [
-            {"name": "Table", "columns": [{"name": "id", "data_type": "int64"}]}
-        ]
         semantic_service.delete_table_from_semantic_model.return_value = (
             SemanticModelReference(workspace_id="ws-1", id="sm-1"),
             1,
         )
-        semantic_service.list_semantic_model_relationships.return_value = [
-            {"name": "rel-1", "from_table": "A", "from_column": "id", "to_table": "B", "to_column": "id"}
-        ]
         semantic_service.delete_relationship_from_semantic_model.return_value = (
             SemanticModelReference(workspace_id="ws-1", id="sm-1"),
             1,
@@ -95,19 +89,9 @@ class TestSemanticModelTools:
             semantic_model_name="Model",
         )["status"] == "success"
 
-        assert tools["list_semantic_model_tables"](
-            workspace_name="Workspace",
-            semantic_model_name="Model",
-        )["status"] == "success"
-
         assert tools["delete_table_from_semantic_model"](
             workspace_name="Workspace",
             table_name="Table",
-            semantic_model_name="Model",
-        )["status"] == "success"
-
-        assert tools["list_semantic_model_relationships"](
-            workspace_name="Workspace",
             semantic_model_name="Model",
         )["status"] == "success"
 

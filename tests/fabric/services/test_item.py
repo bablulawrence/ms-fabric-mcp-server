@@ -314,7 +314,7 @@ class TestFabricItemService:
         mock_fabric_client.make_api_request.assert_called_once_with(
             "POST",
             "workspaces/ws-1/items/item-1/move",
-            payload={},
+            payload=None,
             wait_for_lro=True,
         )
 

@@ -193,17 +193,17 @@ Copy `.env.example` to `.env` and customize as needed.
 
 ## Available Tools
 
-The server provides **56 core tools**, with **3 additional SQL tools** when installed with `[sql]` extras (59 total).
+The server provides **53 core tools**, with **3 additional SQL tools** when installed with `[sql]` extras (56 total).
 
 | Tool Group | Count | Tools |
 |------------|-------|-------|
 | **Workspace** | 1 | `list_workspaces` |
 | **Item** | 10 | `list_items`, `get_item`, `list_folders`, `create_folder`, `move_folder`, `delete_folder`, `create_lakehouse`, `delete_item`, `rename_item`, `move_item_to_folder` |
-| **Notebook** | 6 | `import_notebook_to_fabric`, `get_notebook_content`, `attach_lakehouse_to_notebook`, `get_notebook_execution_details`, `list_notebook_executions`, `get_notebook_driver_logs` |
+| **Notebook** | 6 | `create_notebook`, `get_notebook_definition`, `update_notebook_content`, `get_notebook_run_details`, `list_notebook_runs`, `get_notebook_driver_logs` |
 | **Job** | 4 | `run_on_demand_job`, `get_job_status`, `get_job_status_by_url`, `get_operation_result` |
 | **Livy** | 8 | `livy_create_session`, `livy_list_sessions`, `livy_get_session_status`, `livy_close_session`, `livy_run_statement`, `livy_get_statement_status`, `livy_cancel_statement`, `livy_get_session_log` |
-| **Pipeline** | 11 | `create_blank_pipeline`, `add_copy_activity_to_pipeline`, `add_notebook_activity_to_pipeline`, `add_dataflow_activity_to_pipeline`, `add_activity_to_pipeline`, `delete_activity_from_pipeline`, `remove_activity_dependency`, `add_activity_dependency`, `create_pipeline_with_definition`, `get_pipeline_definition`, `update_pipeline_definition` |
-| **Semantic Model** | 11 | `create_semantic_model`, `add_table_to_semantic_model`, `add_relationship_to_semantic_model`, `get_semantic_model_details`, `get_semantic_model_definition`, `add_measures_to_semantic_model`, `delete_measures_from_semantic_model`, `list_semantic_model_tables`, `delete_table_from_semantic_model`, `list_semantic_model_relationships`, `delete_relationship_from_semantic_model` |
+| **Pipeline** | 10 | `create_pipeline`, `add_copy_activity_to_pipeline`, `add_notebook_activity_to_pipeline`, `add_dataflow_activity_to_pipeline`, `add_activity_to_pipeline`, `delete_activity_from_pipeline`, `remove_activity_dependency`, `add_activity_dependency`, `get_pipeline_definition`, `update_pipeline_definition` |
+| **Semantic Model** | 9 | `create_semantic_model`, `add_table_to_semantic_model`, `add_relationship_to_semantic_model`, `get_semantic_model_details`, `get_semantic_model_definition`, `add_measures_to_semantic_model`, `delete_measures_from_semantic_model`, `delete_table_from_semantic_model`, `delete_relationship_from_semantic_model` |
 | **Power BI** | 2 | `refresh_semantic_model`, `execute_dax_query` |
 | **Lakehouse Files** | 3 | `list_lakehouse_files`, `upload_lakehouse_file`, `delete_lakehouse_file` |
 | **SQL** *(optional)* | 3 | `get_sql_endpoint`, `execute_sql_query`, `execute_sql_statement` |
@@ -223,7 +223,7 @@ sudo apt-get update
 sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
 ```
 
-If `pyodbc` is not available, the server starts with 52 tools (SQL tools disabled).
+If `pyodbc` is not available, the server starts with 53 tools (SQL tools disabled).
 
 ## Development
 

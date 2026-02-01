@@ -73,7 +73,7 @@ async def test_list_items_with_root_folder_path(
     pipeline_name = unique_name("e2e_pipeline")
     try:
         create_result = await call_tool(
-            "create_blank_pipeline",
+            "create_pipeline",
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
             folder_path=folder_path,
@@ -106,7 +106,7 @@ async def test_list_items_recursive_root_folder_path(
     pipeline_name = unique_name("e2e_pipeline_nested")
     try:
         create_result = await call_tool(
-            "create_blank_pipeline",
+            "create_pipeline",
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
             folder_path=folder_path,
@@ -135,7 +135,7 @@ async def test_delete_item_tool(call_tool, workspace_name, delete_item_if_exists
     pipeline_name = unique_name("e2e_delete_item")
     try:
         create_result = await call_tool(
-            "create_blank_pipeline",
+            "create_pipeline",
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
         )
@@ -144,7 +144,7 @@ async def test_delete_item_tool(call_tool, workspace_name, delete_item_if_exists
         delete_result = await call_tool(
             "delete_item",
             workspace_name=workspace_name,
-            item_display_name=pipeline_name,
+            item_name=pipeline_name,
             item_type="DataPipeline",
         )
         assert delete_result["status"] == "success"
@@ -159,7 +159,7 @@ async def test_rename_item_tool(call_tool, workspace_name, delete_item_if_exists
     new_name = unique_name("e2e_renamed_item")
     try:
         create_result = await call_tool(
-            "create_blank_pipeline",
+            "create_pipeline",
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
         )
@@ -192,7 +192,7 @@ async def test_move_item_to_folder_tool(
     try:
         # Create a pipeline in the target folder to obtain folder_id
         target_result = await call_tool(
-            "create_blank_pipeline",
+            "create_pipeline",
             workspace_name=workspace_name,
             pipeline_name=target_pipeline,
             folder_path=folder_path,
@@ -214,7 +214,7 @@ async def test_move_item_to_folder_tool(
         assert folder_id
 
         create_result = await call_tool(
-            "create_blank_pipeline",
+            "create_pipeline",
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
         )
@@ -309,7 +309,7 @@ async def test_get_item_tool(call_tool, workspace_name, delete_item_if_exists):
     pipeline_name = unique_name("e2e_get_item")
     try:
         create_result = await call_tool(
-            "create_blank_pipeline",
+            "create_pipeline",
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
         )
@@ -320,7 +320,7 @@ async def test_get_item_tool(call_tool, workspace_name, delete_item_if_exists):
         by_name = await call_tool(
             "get_item",
             workspace_name=workspace_name,
-            item_display_name=pipeline_name,
+            item_name=pipeline_name,
             item_type="DataPipeline",
         )
         assert by_name["status"] == "success"
@@ -374,7 +374,7 @@ async def test_create_lakehouse_tool(call_tool, workspace_name, delete_item_if_e
         item_result = await call_tool(
             "get_item",
             workspace_name=workspace_name,
-            item_display_name=lakehouse_name,
+            item_name=lakehouse_name,
             item_type="Lakehouse",
         )
         assert item_result["status"] == "success"

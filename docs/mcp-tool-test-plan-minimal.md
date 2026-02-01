@@ -108,36 +108,36 @@ Expected: Target workspace and lakehouse are present; item listing succeeds.
 ### 2) Notebook + Job Flow (Full)
 
 **Happy Path:**
-1. `import_notebook_to_fabric` (local fixture: `tests/fixtures/minimal_notebook.ipynb`)
-2. `get_notebook_content`
-3. `attach_lakehouse_to_notebook`
+1. `create_notebook` (local fixture: `tests/fixtures/minimal_notebook.ipynb`)
+2. `get_notebook_definition`
+3. `update_notebook_content`
 4. `run_on_demand_job` (Notebook, RunNotebook)
 5. Poll `get_job_status_by_url` until `is_terminal == true`
-6. `get_notebook_execution_details`
+6. `get_notebook_run_details`
 7. `get_notebook_driver_logs` (stdout)
 
 Expected: Notebook imports, runs successfully, and execution details are retrievable.
 
 **Negative Tests:**
-1. `get_notebook_content` with non-existent notebook name
+1. `get_notebook_definition` with non-existent notebook name
    - Expected: Error indicating notebook not found
-2. `attach_lakehouse_to_notebook` with non-existent lakehouse name
+2. `update_notebook_content` with non-existent lakehouse name
    - Expected: Error indicating lakehouse not found
 
 Notes:
 - Job can remain `NotStarted` for several minutes; keep polling.
 - `get_job_status_by_url` can lag and stay `NotStarted` while the run is active; use
-  `list_notebook_executions` or `get_notebook_execution_details` as the source of truth
+  `list_notebook_runs` or `get_notebook_run_details` as the source of truth
   until terminal.
 - Driver logs require Spark app id; only available after execution starts.
 - Driver logs are noisy; the notebook output may be buried under Spark warnings.
-- `list_notebook_executions` can be used to confirm Livy session state.
+- `list_notebook_runs` can be used to confirm Livy session state.
 - If the job does not start after 10+ minutes, check capacity state.
 
 ### 3) Pipeline Flow
 
 **Happy Path:**
-1. `create_blank_pipeline`
+1. `create_pipeline`
 2. `add_activity_to_pipeline` (Wait activity)
 3. `add_copy_activity_to_pipeline` (**REQUIRED** - must be tested with copy inputs from `.env.integration`)
    - Use environment variables:
@@ -306,7 +306,7 @@ in this environment.
 ## Notebook + Livy + Pipeline Polling Tips
 Notebook:
 - `get_job_status_by_url` can remain `NotStarted` while the run is active; use
-  `list_notebook_executions` to confirm `InProgress`/`Success`.
+  `list_notebook_runs` to confirm `InProgress`/`Success`.
 - Only call `get_notebook_driver_logs` after execution starts (Spark app ID present).
 - Use backoff polling and cap total wait time (10-20 minutes).
 
@@ -356,8 +356,8 @@ At the end of the test run, **ask the user for permission** before deleting any 
 | Flow | Test Case | Expected Error |
 |------|-----------|----------------|
 | Discovery | `list_items` with invalid workspace | Workspace not found |
-| Notebook | `get_notebook_content` with invalid name | Notebook not found |
-| Notebook | `attach_lakehouse_to_notebook` with invalid lakehouse | Lakehouse not found |
+| Notebook | `get_notebook_definition` with invalid name | Notebook not found |
+| Notebook | `update_notebook_content` with invalid lakehouse | Lakehouse not found |
 | Pipeline | `add_activity_to_pipeline` to invalid pipeline | Pipeline not found |
 | Pipeline | `add_notebook_activity_to_pipeline` with invalid notebook | Notebook not found |
 | Semantic Model | `add_table_to_semantic_model` with invalid data type | Unsupported data type |

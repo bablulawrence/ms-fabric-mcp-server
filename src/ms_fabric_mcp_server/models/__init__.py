@@ -24,8 +24,8 @@ from ms_fabric_mcp_server.models.semantic_model import (
 # Result models
 from ms_fabric_mcp_server.models.results import (
     FabricOperationResult,
-    ImportNotebookResult,
-    AttachLakehouseResult,
+    CreateNotebookResult,
+    UpdateNotebookResult,
     ExecuteNotebookResult,
     CreateItemResult,
     QueryResult,
@@ -50,8 +50,8 @@ __all__ = [
     "DataType",
     # Results
     "FabricOperationResult",
-    "ImportNotebookResult",
-    "AttachLakehouseResult",
+    "CreateNotebookResult",
+    "UpdateNotebookResult",
     "ExecuteNotebookResult",
     "CreateItemResult",
     "QueryResult",

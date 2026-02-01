@@ -20,7 +20,7 @@ async def test_notebook_execution_tools(
 
     async def _get_executions():
         history = await call_tool(
-            "list_notebook_executions",
+            "list_notebook_runs",
             workspace_name=workspace_name,
             notebook_name=notebook_name,
             limit=5,
@@ -37,7 +37,7 @@ async def test_notebook_execution_tools(
 
     async def _get_details():
         details = await call_tool(
-            "get_notebook_execution_details",
+            "get_notebook_run_details",
             workspace_name=workspace_name,
             notebook_name=notebook_name,
             job_instance_id=job_instance_id,

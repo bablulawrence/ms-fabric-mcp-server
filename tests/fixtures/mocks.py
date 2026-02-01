@@ -250,8 +250,12 @@ class ServiceMockFactory:
         service.client = mock_client
         service.workspace_service = mock_workspace_service
         service.item_service = mock_item_service
-        service.import_notebook = Mock()
+        service.create_notebook = Mock()
         service.get_notebook_definition = Mock()
+        service.update_notebook_content = Mock()
+        service.get_notebook_run_details = Mock()
+        service.list_notebook_runs = Mock()
+        service.get_notebook_driver_logs = Mock()
         return service
     
     @staticmethod

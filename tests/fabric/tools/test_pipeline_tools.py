@@ -46,7 +46,7 @@ class TestPipelineTools:
 
         register_pipeline_tools(mcp, pipeline_service, workspace_service, item_service)
 
-        assert tools["create_blank_pipeline"](
+        assert tools["create_pipeline"](
             workspace_name="Workspace", pipeline_name="Pipe"
         )["status"] == "success"
 
@@ -80,9 +80,9 @@ class TestPipelineTools:
             activity_json={"name": "Wait", "type": "Wait", "typeProperties": {}},
         )["status"] == "success"
 
-        assert tools["create_pipeline_with_definition"](
+        assert tools["create_pipeline"](
             workspace_name="Workspace",
-            display_name="Pipe2",
+            pipeline_name="Pipe2",
             pipeline_content_json={"properties": {"activities": []}},
         )["status"] == "success"
 

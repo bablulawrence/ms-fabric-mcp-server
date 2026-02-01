@@ -581,17 +581,17 @@ def sql_dependencies_available(tool_registry):
 @pytest.fixture
 def delete_item_if_exists(call_tool, workspace_name):
     """Delete an item and ignore not-found errors."""
-    async def _delete(item_display_name: str, item_type: str):
+    async def _delete(item_name: str, item_type: str):
         result = await call_tool(
             "delete_item",
             workspace_name=workspace_name,
-            item_display_name=item_display_name,
+            item_name=item_name,
             item_type=item_type,
         )
         if result.get("status") == "error":
             message = (result.get("message") or "").lower()
             if "not found" not in message:
-                raise AssertionError(f"Failed to delete {item_type} '{item_display_name}': {result}")
+                raise AssertionError(f"Failed to delete {item_type} '{item_name}': {result}")
         return result
 
     return _delete
@@ -610,9 +610,9 @@ async def executed_notebook_context(
 
     async def _get_content():
         result = await call_tool_session(
-            "get_notebook_content",
+            "get_notebook_definition",
             workspace_name=workspace_name_session,
-            notebook_display_name=notebook_name,
+            notebook_name=notebook_name,
         )
         if result.get("status") == "success":
             return result
@@ -643,11 +643,14 @@ async def executed_notebook_context(
         return None
 
     try:
+        notebook_path = PROJECT_ROOT / "tests" / "fixtures" / "minimal_notebook.ipynb"
+        notebook_content = json.loads(notebook_path.read_text())
+
         import_result = await call_tool_session(
-            "import_notebook_to_fabric",
+            "create_notebook",
             workspace_name=workspace_name_session,
-            notebook_display_name=notebook_name,
-            local_notebook_path=str(PROJECT_ROOT / "tests" / "fixtures" / "minimal_notebook.ipynb"),
+            notebook_name=notebook_name,
+            notebook_content=notebook_content,
         )
         assert import_result["status"] == "success"
 
@@ -656,10 +659,11 @@ async def executed_notebook_context(
         assert content_result["status"] == "success"
 
         attach_result = await call_tool_session(
-            "attach_lakehouse_to_notebook",
+            "update_notebook_content",
             workspace_name=workspace_name_session,
             notebook_name=notebook_name,
-            lakehouse_name=lakehouse_name_session,
+            notebook_content=notebook_content,
+            default_lakehouse_name=lakehouse_name_session,
         )
         assert attach_result["status"] == "success"
 
@@ -692,7 +696,7 @@ async def executed_notebook_context(
         result = await call_tool_session(
             "delete_item",
             workspace_name=workspace_name_session,
-            item_display_name=notebook_name,
+            item_name=notebook_name,
             item_type="Notebook",
         )
         if result.get("status") == "error":

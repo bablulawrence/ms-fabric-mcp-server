@@ -168,38 +168,6 @@ def register_semantic_model_tools(
         )
         return result
 
-    @mcp.tool(title="List Semantic Model Tables")
-    @handle_tool_errors
-    def list_semantic_model_tables(
-        workspace_name: str,
-        semantic_model_name: Optional[str] = None,
-        semantic_model_id: Optional[str] = None,
-    ) -> dict:
-        """List tables in a semantic model.
-
-        Parameters:
-            workspace_name: The display name of the workspace.
-            semantic_model_name: Name of the semantic model to query.
-            semantic_model_id: Semantic model ID (optional).
-        """
-        log_tool_invocation(
-            "list_semantic_model_tables",
-            workspace_name=workspace_name,
-            semantic_model_name=semantic_model_name,
-            semantic_model_id=semantic_model_id,
-        )
-
-        tables = semantic_model_service.list_semantic_model_tables(
-            workspace_name=workspace_name,
-            semantic_model_name=semantic_model_name,
-            semantic_model_id=semantic_model_id,
-        )
-
-        return {
-            "status": "success",
-            "tables": tables,
-        }
-
     @mcp.tool(title="Delete Table from Semantic Model")
     @handle_tool_errors
     def delete_table_from_semantic_model(
@@ -244,32 +212,6 @@ def register_semantic_model_tools(
             "workspace_id": model.workspace_id,
             "table_name": table_name,
             "removed_relationships": removed_relationships,
-        }
-
-    @mcp.tool(title="List Semantic Model Relationships")
-    @handle_tool_errors
-    def list_semantic_model_relationships(
-        workspace_name: str,
-        semantic_model_name: Optional[str] = None,
-        semantic_model_id: Optional[str] = None,
-    ) -> dict:
-        """List relationships in a semantic model."""
-        log_tool_invocation(
-            "list_semantic_model_relationships",
-            workspace_name=workspace_name,
-            semantic_model_name=semantic_model_name,
-            semantic_model_id=semantic_model_id,
-        )
-
-        relationships = semantic_model_service.list_semantic_model_relationships(
-            workspace_name=workspace_name,
-            semantic_model_name=semantic_model_name,
-            semantic_model_id=semantic_model_id,
-        )
-
-        return {
-            "status": "success",
-            "relationships": relationships,
         }
 
     @mcp.tool(title="Delete Relationship from Semantic Model")

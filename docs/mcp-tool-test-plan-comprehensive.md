@@ -150,46 +150,46 @@ Expected: All item types listed correctly with proper filtering.
 ### 2) Notebook + Job Flow (Full Lifecycle)
 
 **Happy Path:**
-1. `import_notebook_to_fabric` (local fixture: `tests/fixtures/minimal_notebook.ipynb`)
-2. `get_notebook_content` - verify content matches imported notebook
-3. `attach_lakehouse_to_notebook` - attach default lakehouse
-4. `get_notebook_content` - verify lakehouse attachment in metadata
+1. `create_notebook` (local fixture: `tests/fixtures/minimal_notebook.ipynb`)
+2. `get_notebook_definition` - verify content matches imported notebook
+3. `update_notebook_content` - attach default lakehouse
+4. `get_notebook_definition` - verify lakehouse attachment in metadata
 5. `run_on_demand_job` (Notebook, RunNotebook)
 6. Poll `get_job_status_by_url` until `is_terminal == true`
 7. `get_job_status` (using workspace/item/job_instance_id)
-8. `list_notebook_executions` - verify execution appears in history
-9. `get_notebook_execution_details` - get Livy session details
+8. `list_notebook_runs` - verify execution appears in history
+9. `get_notebook_run_details` - get Livy session details
 10. `get_notebook_driver_logs` (stdout) - attempt to get logs
 11. `get_notebook_driver_logs` (stderr) - attempt to get stderr
 
 Expected: Full notebook lifecycle completes successfully.
 
 **Negative Tests:**
-1. `import_notebook_to_fabric` with non-existent local file
+1. `create_notebook` with non-existent local file
    - Expected: File not found error
-2. `import_notebook_to_fabric` with invalid notebook JSON
+2. `create_notebook` with invalid notebook JSON
    - Expected: Parse/validation error
-3. `import_notebook_to_fabric` with duplicate name (import same notebook twice)
+3. `create_notebook` with duplicate name (import same notebook twice)
    - Expected: Error indicating item already exists
-4. `get_notebook_content` with non-existent notebook name
+4. `get_notebook_definition` with non-existent notebook name
    - Expected: Notebook not found error
-5. `attach_lakehouse_to_notebook` with non-existent notebook
+5. `update_notebook_content` with non-existent notebook
    - Expected: Notebook not found error
-6. `attach_lakehouse_to_notebook` with non-existent lakehouse
+6. `update_notebook_content` with non-existent lakehouse
    - Expected: Lakehouse not found error
 7. `run_on_demand_job` with non-existent notebook
    - Expected: Item not found error
 8. `get_job_status` with invalid job_instance_id
    - Expected: Job not found error
-9. `get_notebook_execution_details` with invalid job_instance_id
+9. `get_notebook_run_details` with invalid job_instance_id
    - Expected: Execution not found error
 10. `get_notebook_driver_logs` before job starts (no Spark app)
     - Expected: 404 or appropriate error
 
 **Edge Cases:**
-1. `import_notebook_to_fabric` with folder path (e.g., `"folder/notebook_name"`)
+1. `create_notebook` with folder path (e.g., `"folder/notebook_name"`)
    - Expected: Notebook created in folder structure
-2. `attach_lakehouse_to_notebook` - attach different lakehouse (if second available)
+2. `update_notebook_content` - attach different lakehouse (if second available)
    - Expected: Lakehouse attachment updated
 
 Notes:
@@ -202,7 +202,7 @@ Notes:
 ### 3) Pipeline Flow (All Activity Types)
 
 **Happy Path:**
-1. `create_blank_pipeline`
+1. `create_pipeline`
 2. `add_activity_to_pipeline` (Wait activity - 5 seconds)
 3. `add_activity_to_pipeline` (Second Wait activity - depends on first)
 4. `add_copy_activity_to_pipeline` (SQL fallback mode)
@@ -227,7 +227,7 @@ Expected: Pipeline created with all activity types and proper dependencies.
 3. `add_copy_activity_to_pipeline` with custom `source_sql_query`
 
 **Negative Tests:**
-1. `create_blank_pipeline` with duplicate name
+1. `create_pipeline` with duplicate name
    - Expected: Error indicating pipeline already exists
 2. `add_activity_to_pipeline` to non-existent pipeline
    - Expected: Pipeline not found error
@@ -534,7 +534,7 @@ Notes:
 
 If `FABRIC_TEST_SECONDARY_WORKSPACE_NAME` is configured:
 
-1. `attach_lakehouse_to_notebook` with lakehouse from different workspace
+1. `update_notebook_content` with lakehouse from different workspace
    - Use `lakehouse_workspace_name` parameter
 2. `add_notebook_activity_to_pipeline` with notebook from different workspace
    - Use `notebook_workspace_name` parameter

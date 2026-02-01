@@ -31,7 +31,7 @@ async def test_notebook_tool_flow(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_get_notebook_content(
+async def test_get_notebook_definition(
     call_tool,
     executed_notebook_context,
     workspace_name,
@@ -39,9 +39,9 @@ async def test_get_notebook_content(
     notebook_name = executed_notebook_context["notebook_name"]
 
     content_result = await call_tool(
-        "get_notebook_content",
+        "get_notebook_definition",
         workspace_name=workspace_name,
-        notebook_display_name=notebook_name,
+        notebook_name=notebook_name,
     )
     assert content_result["status"] == "success"
     assert content_result.get("definition") is not None

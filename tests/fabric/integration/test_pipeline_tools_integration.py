@@ -1,5 +1,7 @@
 """Integration tests for pipeline tools."""
 
+import json
+
 import pytest
 
 from tests.conftest import unique_name
@@ -11,7 +13,7 @@ async def test_create_pipeline_and_add_activity(call_tool, delete_item_if_exists
     pipeline_name = unique_name("e2e_pipeline")
     try:
         create_result = await call_tool(
-            "create_blank_pipeline",
+            "create_pipeline",
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
             description="Integration test pipeline",
@@ -45,9 +47,9 @@ async def test_pipeline_definition_roundtrip(
     pipeline_name = unique_name("e2e_pipeline_definition")
     try:
         create_result = await call_tool(
-            "create_pipeline_with_definition",
+            "create_pipeline",
             workspace_name=workspace_name,
-            display_name=pipeline_name,
+            pipeline_name=pipeline_name,
             pipeline_content_json={"properties": {"activities": []}},
         )
         assert create_result["status"] == "success"
@@ -104,7 +106,7 @@ async def test_add_copy_activity_to_pipeline(
     pipeline_name = unique_name("e2e_pipeline_copy")
     try:
         create_result = await call_tool(
-            "create_blank_pipeline",
+            "create_pipeline",
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
             description="Integration test pipeline copy",
@@ -143,7 +145,7 @@ async def test_add_copy_activity_to_pipeline_sql_mode(
     pipeline_name = unique_name("e2e_pipeline_copy_sql")
     try:
         create_result = await call_tool(
-            "create_blank_pipeline",
+            "create_pipeline",
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
             description="Integration test pipeline copy (sql mode)",
@@ -183,18 +185,19 @@ async def test_add_notebook_activity_to_pipeline(
     notebook_name = unique_name("e2e_notebook")
     try:
         create_result = await call_tool(
-            "create_blank_pipeline",
+            "create_pipeline",
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
             description="Integration test pipeline notebook activity",
         )
         assert create_result["status"] == "success"
 
+        notebook_content = json.loads(notebook_fixture_path.read_text())
         import_result = await call_tool(
-            "import_notebook_to_fabric",
+            "create_notebook",
             workspace_name=workspace_name,
-            notebook_display_name=notebook_name,
-            local_notebook_path=str(notebook_fixture_path),
+            notebook_name=notebook_name,
+            notebook_content=notebook_content,
         )
         assert import_result["status"] == "success"
 
@@ -224,7 +227,7 @@ async def test_add_dataflow_activity_to_pipeline(
     pipeline_name = unique_name("e2e_pipeline_dataflow")
     try:
         create_result = await call_tool(
-            "create_blank_pipeline",
+            "create_pipeline",
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
             description="Integration test pipeline dataflow activity",
@@ -252,7 +255,7 @@ async def test_add_activity_dependency_tool(
     pipeline_name = unique_name("e2e_pipeline_dependency")
     try:
         create_result = await call_tool(
-            "create_blank_pipeline",
+            "create_pipeline",
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
             description="Integration test pipeline dependency",
@@ -327,7 +330,7 @@ async def test_remove_dependencies_and_delete_activity(
     pipeline_name = unique_name("e2e_pipeline_delete_dep")
     try:
         create_result = await call_tool(
-            "create_blank_pipeline",
+            "create_pipeline",
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
             description="Integration test pipeline delete activity",
@@ -415,7 +418,7 @@ async def test_remove_dependency_from_specific_activity(
     pipeline_name = unique_name("e2e_pipeline_delete_dep_specific")
     try:
         create_result = await call_tool(
-            "create_blank_pipeline",
+            "create_pipeline",
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
             description="Integration test pipeline delete activity (specific)",

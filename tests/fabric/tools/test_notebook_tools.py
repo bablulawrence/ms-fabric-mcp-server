@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from ms_fabric_mcp_server.models.results import AttachLakehouseResult, ImportNotebookResult
+from ms_fabric_mcp_server.models.results import CreateNotebookResult, UpdateNotebookResult
 from ms_fabric_mcp_server.tools.notebook_tools import register_notebook_tools
 from tests.fabric.tools.utils import capture_tools
 
@@ -14,26 +14,24 @@ class TestNotebookTools:
     def test_notebook_tools_smoke(self):
         tools, mcp = capture_tools()
         notebook_service = Mock()
-        notebook_service.import_notebook.return_value = ImportNotebookResult(
+        notebook_service.create_notebook.return_value = CreateNotebookResult(
             status="success",
-            message="imported",
-            artifact_id="nb-1",
+            message="created",
+            notebook_id="nb-1",
         )
-        notebook_service.get_notebook_content.return_value = {"cells": []}
-        notebook_service.attach_lakehouse_to_notebook.return_value = AttachLakehouseResult(
+        notebook_service.get_notebook_definition.return_value = {"cells": []}
+        notebook_service.update_notebook_content.return_value = UpdateNotebookResult(
             status="success",
-            message="attached",
+            message="updated",
             notebook_id="nb-1",
             notebook_name="Notebook",
-            lakehouse_id="lh-1",
-            lakehouse_name="Lakehouse",
             workspace_id="ws-1",
         )
-        notebook_service.get_notebook_execution_details.return_value = {
+        notebook_service.get_notebook_run_details.return_value = {
             "status": "success",
             "execution_summary": {"state": "Success"},
         }
-        notebook_service.list_notebook_executions.return_value = {
+        notebook_service.list_notebook_runs.return_value = {
             "status": "success",
             "sessions": [],
             "total_count": 0,
@@ -45,36 +43,36 @@ class TestNotebookTools:
 
         register_notebook_tools(mcp, notebook_service)
 
-        result = tools["import_notebook_to_fabric"](
+        result = tools["create_notebook"](
             workspace_name="Workspace",
-            notebook_display_name="Notebook",
-            local_notebook_path="notebooks/test.ipynb",
+            notebook_name="Notebook",
+            notebook_content={"cells": []},
         )
         assert result["status"] == "success"
-        assert result["artifact_id"] == "nb-1"
+        assert result["notebook_id"] == "nb-1"
 
-        content = tools["get_notebook_content"](
+        content = tools["get_notebook_definition"](
             workspace_name="Workspace",
-            notebook_display_name="Notebook",
+            notebook_name="Notebook",
         )
         assert content["status"] == "success"
 
-        attached = tools["attach_lakehouse_to_notebook"](
+        updated = tools["update_notebook_content"](
             workspace_name="Workspace",
             notebook_name="Notebook",
-            lakehouse_name="Lakehouse",
+            notebook_content={"cells": []},
         )
-        assert attached["status"] == "success"
-        assert attached["notebook_id"] == "nb-1"
+        assert updated["status"] == "success"
+        assert updated["notebook_id"] == "nb-1"
 
-        exec_details = tools["get_notebook_execution_details"](
+        exec_details = tools["get_notebook_run_details"](
             workspace_name="Workspace",
             notebook_name="Notebook",
             job_instance_id="job-1",
         )
         assert exec_details["status"] == "success"
 
-        history = tools["list_notebook_executions"](
+        history = tools["list_notebook_runs"](
             workspace_name="Workspace",
             notebook_name="Notebook",
             limit=5,

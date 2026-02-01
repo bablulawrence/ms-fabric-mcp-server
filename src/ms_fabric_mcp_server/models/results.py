@@ -26,61 +26,46 @@ class FabricOperationResult(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class ImportNotebookResult(FabricOperationResult):
-    """Result of notebook import operation.
+class CreateNotebookResult(FabricOperationResult):
+    """Result of notebook creation operation.
     
     Attributes:
         status: Operation status
         message: Result message
-        artifact_id: Fabric artifact ID if notebook was created successfully
+        notebook_id: Fabric artifact ID if notebook was created successfully
     
     Example:
         ```python
-        result = ImportNotebookResult(
+        result = CreateNotebookResult(
             status="success",
-            message="Notebook imported successfully",
-            artifact_id="abc-123-def"
+            message="Notebook created successfully",
+            notebook_id="abc-123-def"
         )
         ```
     """
     
-    artifact_id: Optional[str] = Field(default=None, description="Fabric artifact ID if created")
+    notebook_id: Optional[str] = Field(
+        default=None,
+        description="Fabric notebook ID if created",
+    )
     
     model_config = ConfigDict(from_attributes=True)
 
+class UpdateNotebookResult(FabricOperationResult):
+    """Result of notebook update operation.
 
-class AttachLakehouseResult(FabricOperationResult):
-    """Result of attaching a default lakehouse to a notebook.
-    
     Attributes:
         status: Operation status
         message: Result message
         notebook_id: Fabric notebook ID
         notebook_name: Display name of the notebook
-        lakehouse_id: ID of the attached lakehouse
-        lakehouse_name: Display name of the attached lakehouse
         workspace_id: Workspace ID containing the notebook
-    
-    Example:
-        ```python
-        result = AttachLakehouseResult(
-            status="success",
-            message="Lakehouse attached successfully",
-            notebook_id="abc-123",
-            notebook_name="My Notebook",
-            lakehouse_id="def-456",
-            lakehouse_name="My Lakehouse",
-            workspace_id="ghi-789"
-        )
-        ```
     """
-    
+
     notebook_id: Optional[str] = Field(default=None, description="Fabric notebook ID")
     notebook_name: Optional[str] = Field(default=None, description="Display name of the notebook")
-    lakehouse_id: Optional[str] = Field(default=None, description="ID of the attached lakehouse")
-    lakehouse_name: Optional[str] = Field(default=None, description="Display name of the attached lakehouse")
     workspace_id: Optional[str] = Field(default=None, description="Workspace ID containing the notebook")
-    
+
     model_config = ConfigDict(from_attributes=True)
 
 

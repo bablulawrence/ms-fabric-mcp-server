@@ -699,9 +699,9 @@ class FabricItemService:
         )
 
         try:
-            payload: Dict[str, Any] = {}
+            payload: Optional[Dict[str, Any]] = None
             if target_folder_id is not None:
-                payload["targetFolderId"] = target_folder_id
+                payload = {"targetFolderId": target_folder_id}
 
             response = self.client.make_api_request(
                 "POST",

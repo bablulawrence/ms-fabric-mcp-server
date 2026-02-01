@@ -160,7 +160,7 @@ def register_item_tools(
     def get_item(
         workspace_name: str,
         item_id: Optional[str] = None,
-        item_display_name: Optional[str] = None,
+        item_name: Optional[str] = None,
         item_type: Optional[str] = None,
     ) -> dict:
         """Get a Fabric item by ID or display name/type.
@@ -168,7 +168,7 @@ def register_item_tools(
         Parameters:
             workspace_name: The display name of the workspace.
             item_id: ID of the item to fetch.
-            item_display_name: Display name of the item to fetch.
+            item_name: Display name of the item to fetch.
             item_type: Type of the item when using display name.
 
         Returns:
@@ -178,7 +178,7 @@ def register_item_tools(
             "get_item",
             workspace_name=workspace_name,
             item_id=item_id,
-            item_display_name=item_display_name,
+            item_name=item_name,
             item_type=item_type,
         )
 
@@ -187,13 +187,13 @@ def register_item_tools(
         if item_id:
             item = item_service.get_item_by_id(workspace_id, item_id)
         else:
-            if not item_display_name or not item_type:
+            if not item_name or not item_type:
                 raise FabricValidationError(
-                    "item_display_name",
-                    item_display_name,
-                    "Provide item_display_name and item_type when item_id is not supplied.",
+                    "item_name",
+                    item_name,
+                    "Provide item_name and item_type when item_id is not supplied.",
                 )
-            item = item_service.get_item_by_name(workspace_id, item_display_name, item_type)
+            item = item_service.get_item_by_name(workspace_id, item_name, item_type)
 
         return {
             "status": "success",
@@ -500,7 +500,7 @@ def register_item_tools(
     @handle_tool_errors
     def delete_item(
         workspace_name: str,
-        item_display_name: str,
+        item_name: str,
         item_type: str
     ) -> dict:
         """Delete an item from a Fabric workspace.
@@ -511,7 +511,7 @@ def register_item_tools(
         
         Parameters:
             workspace_name: The display name of the workspace.
-            item_display_name: Name of the item to delete.
+            item_name: Name of the item to delete.
             item_type: Type of the item to delete (e.g., "Notebook", "Lakehouse").
                       Supported types: Notebook, Lakehouse, Warehouse, Pipeline,
                       DataPipeline, Report, SemanticModel, Dashboard, Dataflow, Dataset.
@@ -523,33 +523,33 @@ def register_item_tools(
             ```python
             result = delete_item(
                 workspace_name="My Workspace",
-                item_display_name="Old Notebook",
+                item_name="Old Notebook",
                 item_type="Notebook"
             )
             ```
         """
         log_tool_invocation("delete_item", workspace_name=workspace_name,
-                          item_display_name=item_display_name, item_type=item_type)
-        logger.info(f"Deleting {item_type} '{item_display_name}' from workspace '{workspace_name}'")
+                          item_name=item_name, item_type=item_type)
+        logger.info(f"Deleting {item_type} '{item_name}' from workspace '{workspace_name}'")
         
         try:
             # Resolve workspace ID
             workspace_id = workspace_service.resolve_workspace_id(workspace_name)
             
             # Find the item
-            item = item_service.get_item_by_name(workspace_id, item_display_name, item_type)
+            item = item_service.get_item_by_name(workspace_id, item_name, item_type)
             
             # Delete the item
             item_service.delete_item(workspace_id, item.id)
             
-            logger.info(f"Successfully deleted {item_type} '{item_display_name}'")
+            logger.info(f"Successfully deleted {item_type} '{item_name}'")
             return {
                 "status": "success",
-                "message": f"Successfully deleted {item_type} '{item_display_name}'"
+                "message": f"Successfully deleted {item_type} '{item_name}'"
             }
             
         except FabricItemNotFoundError:
-            error_msg = f"{item_type} '{item_display_name}' not found in workspace '{workspace_name}'"
+            error_msg = f"{item_type} '{item_name}' not found in workspace '{workspace_name}'"
             logger.error(error_msg)
             return {
                 "status": "error",
@@ -615,6 +615,7 @@ def register_item_tools(
         workspace_name: str,
         item_id: str,
         target_folder_id: Optional[str] = None,
+        target_folder_path: Optional[str] = None,
     ) -> dict:
         """Move an item to a folder in a Fabric workspace.
 
@@ -622,6 +623,7 @@ def register_item_tools(
             workspace_name: The display name of the workspace.
             item_id: ID of the item to move.
             target_folder_id: Folder ID to move the item into. Omit to move to root.
+            target_folder_path: Folder path to move the item into. Omit to move to root.
 
         Returns:
             Dictionary with status and moved item metadata.
@@ -631,12 +633,23 @@ def register_item_tools(
             workspace_name=workspace_name,
             item_id=item_id,
             target_folder_id=target_folder_id,
+            target_folder_path=target_folder_path,
         )
         logger.info(
             f"Moving item '{item_id}' to folder '{target_folder_id}' in workspace '{workspace_name}'"
         )
 
         workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+        if target_folder_id and target_folder_path:
+            raise FabricValidationError(
+                "target_folder_path",
+                target_folder_path,
+                "Provide either target_folder_id or target_folder_path, not both.",
+            )
+        if target_folder_path:
+            target_folder_id = item_service.resolve_folder_id_from_path(
+                workspace_id, target_folder_path, create_missing=False
+            )
         item = item_service.move_item_to_folder(
             workspace_id=workspace_id,
             item_id=item_id,
@@ -659,4 +672,4 @@ def register_item_tools(
             "message": f"Item '{item.id}' moved successfully",
         }
 
-    logger.info("Item tools registered successfully (4 tools)")
+    logger.info("Item tools registered successfully (10 tools)")
