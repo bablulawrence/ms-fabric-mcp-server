@@ -614,14 +614,14 @@ def register_item_tools(
     def move_item_to_folder(
         workspace_name: str,
         item_id: str,
-        target_folder_id: str,
+        target_folder_id: Optional[str] = None,
     ) -> dict:
         """Move an item to a folder in a Fabric workspace.
 
         Parameters:
             workspace_name: The display name of the workspace.
             item_id: ID of the item to move.
-            target_folder_id: Folder ID to move the item into.
+            target_folder_id: Folder ID to move the item into. Omit to move to root.
 
         Returns:
             Dictionary with status and moved item metadata.

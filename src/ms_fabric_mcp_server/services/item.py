@@ -684,10 +684,10 @@ class FabricItemService:
         self,
         workspace_id: str,
         item_id: str,
-        target_folder_id: str,
+        target_folder_id: Optional[str] = None,
     ) -> FabricItem:
         """Move an item to a folder in a workspace."""
-        if not target_folder_id or not str(target_folder_id).strip():
+        if target_folder_id is not None and not str(target_folder_id).strip():
             raise FabricValidationError(
                 "target_folder_id",
                 str(target_folder_id),
@@ -699,10 +699,14 @@ class FabricItemService:
         )
 
         try:
+            payload: Dict[str, Any] = {}
+            if target_folder_id is not None:
+                payload["targetFolderId"] = target_folder_id
+
             response = self.client.make_api_request(
                 "POST",
                 f"workspaces/{workspace_id}/items/{item_id}/move",
-                payload={"targetFolderId": target_folder_id},
+                payload=payload,
                 wait_for_lro=True,
             )
 

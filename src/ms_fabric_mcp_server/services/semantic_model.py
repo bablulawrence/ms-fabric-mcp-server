@@ -366,6 +366,188 @@ class FabricSemanticModelService:
         self._update_definition(workspace_id, semantic_model.id, definition, bim)
         return SemanticModelReference(workspace_id, semantic_model.id)
 
+    def list_semantic_model_tables(
+        self,
+        workspace_name: str,
+        semantic_model_name: Optional[str] = None,
+        semantic_model_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List tables in a semantic model with column metadata."""
+        workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
+        semantic_model = self._resolve_semantic_model(
+            workspace_id, semantic_model_name, semantic_model_id
+        )
+        definition = self._get_definition_with_retry(
+            workspace_id, semantic_model.id, format="TMSL"
+        )
+        bim = self._get_bim(definition)
+        model = bim.get("model", {})
+        tables = model.get("tables", [])
+
+        results: List[Dict[str, Any]] = []
+        for table in tables:
+            columns = [
+                {
+                    "name": column.get("name"),
+                    "data_type": column.get("dataType"),
+                }
+                for column in table.get("columns", [])
+            ]
+            results.append(
+                {
+                    "name": table.get("name"),
+                    "columns": columns,
+                }
+            )
+        return results
+
+    def list_semantic_model_relationships(
+        self,
+        workspace_name: str,
+        semantic_model_name: Optional[str] = None,
+        semantic_model_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List relationships in a semantic model."""
+        workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
+        semantic_model = self._resolve_semantic_model(
+            workspace_id, semantic_model_name, semantic_model_id
+        )
+        definition = self._get_definition_with_retry(
+            workspace_id, semantic_model.id, format="TMSL"
+        )
+        bim = self._get_bim(definition)
+        model = bim.get("model", {})
+        relationships = model.get("relationships", [])
+
+        return [
+            {
+                "name": rel.get("name"),
+                "from_table": rel.get("fromTable"),
+                "from_column": rel.get("fromColumn"),
+                "to_table": rel.get("toTable"),
+                "to_column": rel.get("toColumn"),
+                "cardinality": rel.get("cardinality"),
+                "cross_filter_direction": rel.get("crossFilteringBehavior"),
+                "is_active": rel.get("isActive"),
+            }
+            for rel in relationships
+        ]
+
+    def delete_table_from_semantic_model(
+        self,
+        workspace_name: str,
+        semantic_model_name: Optional[str],
+        semantic_model_id: Optional[str],
+        table_name: str,
+        remove_relationships: bool = True,
+    ) -> Tuple[SemanticModelReference, int]:
+        """Delete a table from a semantic model."""
+        if not table_name or not table_name.strip():
+            raise FabricValidationError(
+                "table_name", table_name, "Table name cannot be empty"
+            )
+
+        workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
+        semantic_model = self._resolve_semantic_model(
+            workspace_id, semantic_model_name, semantic_model_id
+        )
+        definition = self._get_definition_with_retry(
+            workspace_id, semantic_model.id, format="TMSL"
+        )
+        bim = self._get_bim(definition)
+        model = bim.setdefault("model", {})
+        tables = model.setdefault("tables", [])
+
+        table = self._find_list_item(tables, "name", table_name)
+        if not table:
+            raise FabricValidationError(
+                "table_name",
+                table_name,
+                f"Table '{table_name}' not found in semantic model",
+            )
+
+        model["tables"] = [t for t in tables if t is not table]
+
+        removed_relationships = 0
+        if remove_relationships:
+            relationships = model.get("relationships", [])
+            kept: List[Dict[str, Any]] = []
+            for relationship in relationships:
+                if relationship.get("fromTable") == table_name or relationship.get(
+                    "toTable"
+                ) == table_name:
+                    removed_relationships += 1
+                    continue
+                kept.append(relationship)
+            model["relationships"] = kept
+
+        self._update_definition(workspace_id, semantic_model.id, definition, bim)
+        return SemanticModelReference(workspace_id, semantic_model.id), removed_relationships
+
+    def delete_relationship_from_semantic_model(
+        self,
+        workspace_name: str,
+        semantic_model_name: Optional[str],
+        semantic_model_id: Optional[str],
+        relationship_name: Optional[str] = None,
+        from_table: Optional[str] = None,
+        from_column: Optional[str] = None,
+        to_table: Optional[str] = None,
+        to_column: Optional[str] = None,
+    ) -> Tuple[SemanticModelReference, int]:
+        """Delete relationship(s) from a semantic model."""
+        if relationship_name:
+            match_by_name = True
+        else:
+            match_by_name = False
+            required = [from_table, from_column, to_table, to_column]
+            if not all(required):
+                raise FabricValidationError(
+                    "relationship",
+                    "",
+                    "Provide relationship_name or from_table/from_column/to_table/to_column",
+                )
+
+        workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
+        semantic_model = self._resolve_semantic_model(
+            workspace_id, semantic_model_name, semantic_model_id
+        )
+        definition = self._get_definition_with_retry(
+            workspace_id, semantic_model.id, format="TMSL"
+        )
+        bim = self._get_bim(definition)
+        model = bim.setdefault("model", {})
+        relationships = model.setdefault("relationships", [])
+
+        kept: List[Dict[str, Any]] = []
+        removed = 0
+        for relationship in relationships:
+            if match_by_name:
+                if relationship.get("name") == relationship_name:
+                    removed += 1
+                    continue
+            else:
+                if (
+                    relationship.get("fromTable") == from_table
+                    and relationship.get("fromColumn") == from_column
+                    and relationship.get("toTable") == to_table
+                    and relationship.get("toColumn") == to_column
+                ):
+                    removed += 1
+                    continue
+            kept.append(relationship)
+
+        if removed == 0:
+            raise FabricValidationError(
+                "relationship",
+                relationship_name or "",
+                "Relationship not found in semantic model",
+            )
+
+        model["relationships"] = kept
+        self._update_definition(workspace_id, semantic_model.id, definition, bim)
+        return SemanticModelReference(workspace_id, semantic_model.id), removed
+
     def delete_measures_from_semantic_model(
         self,
         workspace_name: str,

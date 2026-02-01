@@ -507,3 +507,222 @@ class TestFabricSemanticModelService:
                 table_name="Sales",
                 measure_names=["Missing Measure"],
             )
+
+    def test_list_semantic_model_tables(
+        self, semantic_model_service, mock_workspace_service, mock_item_service
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="sm-1", display_name="Model", type="SemanticModel", workspace_id="ws-1"
+        )
+        definition = {
+            "definition": {
+                "parts": [
+                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "model.bim",
+                        "payload": _encode(
+                            {
+                                "model": {
+                                    "tables": [
+                                        {
+                                            "name": "Customers",
+                                            "columns": [
+                                                {"name": "id", "dataType": "int64"},
+                                                {"name": "name", "dataType": "string"},
+                                            ],
+                                        }
+                                    ]
+                                }
+                            }
+                        ),
+                        "payloadType": "InlineBase64",
+                    },
+                ]
+            }
+        }
+        mock_item_service.get_item_definition.return_value = definition
+
+        tables = semantic_model_service.list_semantic_model_tables(
+            workspace_name="Workspace",
+            semantic_model_name="Model",
+        )
+
+        assert tables == [
+            {
+                "name": "Customers",
+                "columns": [
+                    {"name": "id", "data_type": "int64"},
+                    {"name": "name", "data_type": "string"},
+                ],
+            }
+        ]
+
+    def test_list_semantic_model_relationships(
+        self, semantic_model_service, mock_workspace_service, mock_item_service
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="sm-1", display_name="Model", type="SemanticModel", workspace_id="ws-1"
+        )
+        definition = {
+            "definition": {
+                "parts": [
+                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "model.bim",
+                        "payload": _encode(
+                            {
+                                "model": {
+                                    "relationships": [
+                                        {
+                                            "name": "rel-1",
+                                            "fromTable": "fact",
+                                            "fromColumn": "id",
+                                            "toTable": "dim",
+                                            "toColumn": "id",
+                                            "cardinality": "manyToOne",
+                                            "crossFilteringBehavior": "oneDirection",
+                                            "isActive": True,
+                                        }
+                                    ]
+                                }
+                            }
+                        ),
+                        "payloadType": "InlineBase64",
+                    },
+                ]
+            }
+        }
+        mock_item_service.get_item_definition.return_value = definition
+
+        relationships = semantic_model_service.list_semantic_model_relationships(
+            workspace_name="Workspace",
+            semantic_model_name="Model",
+        )
+
+        assert relationships == [
+            {
+                "name": "rel-1",
+                "from_table": "fact",
+                "from_column": "id",
+                "to_table": "dim",
+                "to_column": "id",
+                "cardinality": "manyToOne",
+                "cross_filter_direction": "oneDirection",
+                "is_active": True,
+            }
+        ]
+
+    def test_delete_table_from_semantic_model_removes_relationships(
+        self, semantic_model_service, mock_workspace_service, mock_item_service
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="sm-1", display_name="Model", type="SemanticModel", workspace_id="ws-1"
+        )
+        definition = {
+            "definition": {
+                "parts": [
+                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "model.bim",
+                        "payload": _encode(
+                            {
+                                "model": {
+                                    "tables": [
+                                        {"name": "fact", "columns": []},
+                                        {"name": "dim", "columns": []},
+                                    ],
+                                    "relationships": [
+                                        {
+                                            "name": "rel-1",
+                                            "fromTable": "fact",
+                                            "fromColumn": "id",
+                                            "toTable": "dim",
+                                            "toColumn": "id",
+                                        }
+                                    ],
+                                }
+                            }
+                        ),
+                        "payloadType": "InlineBase64",
+                    },
+                ]
+            }
+        }
+        mock_item_service.get_item_definition.return_value = definition
+
+        _, removed = semantic_model_service.delete_table_from_semantic_model(
+            workspace_name="Workspace",
+            semantic_model_name="Model",
+            semantic_model_id=None,
+            table_name="fact",
+            remove_relationships=True,
+        )
+
+        assert removed == 1
+        args, kwargs = mock_item_service.update_item_definition.call_args
+        update_payload = args[2]
+        model_payload = update_payload["definition"]["parts"][1]["payload"]
+        bim = _decode(model_payload)
+        model = bim["model"]
+        assert [t["name"] for t in model["tables"]] == ["dim"]
+        assert model["relationships"] == []
+
+    def test_delete_relationship_by_name(
+        self, semantic_model_service, mock_workspace_service, mock_item_service
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="sm-1", display_name="Model", type="SemanticModel", workspace_id="ws-1"
+        )
+        definition = {
+            "definition": {
+                "parts": [
+                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "model.bim",
+                        "payload": _encode(
+                            {
+                                "model": {
+                                    "relationships": [
+                                        {
+                                            "name": "rel-1",
+                                            "fromTable": "a",
+                                            "fromColumn": "id",
+                                            "toTable": "b",
+                                            "toColumn": "id",
+                                        }
+                                    ]
+                                }
+                            }
+                        ),
+                        "payloadType": "InlineBase64",
+                    },
+                ]
+            }
+        }
+        mock_item_service.get_item_definition.return_value = definition
+
+        _, removed = semantic_model_service.delete_relationship_from_semantic_model(
+            workspace_name="Workspace",
+            semantic_model_name="Model",
+            semantic_model_id=None,
+            relationship_name="rel-1",
+        )
+
+        assert removed == 1
+        args, kwargs = mock_item_service.update_item_definition.call_args
+        update_payload = args[2]
+        model_payload = update_payload["definition"]["parts"][1]["payload"]
+        bim = _decode(model_payload)
+        assert bim["model"]["relationships"] == []
+
+    def test_delete_relationship_by_keys_validation(self, semantic_model_service):
+        with pytest.raises(FabricValidationError):
+            semantic_model_service.delete_relationship_from_semantic_model(
+                workspace_name="Workspace",
+                semantic_model_name="Model",
+                semantic_model_id=None,
+            )

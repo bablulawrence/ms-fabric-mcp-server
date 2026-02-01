@@ -1,5 +1,5 @@
 # ABOUTME: Main entry point for registering Microsoft Fabric MCP tools.
-# ABOUTME: Provides register_fabric_tools() to add all 55 Fabric tools to an MCP server.
+# ABOUTME: Provides register_fabric_tools() to add all 59 Fabric tools to an MCP server.
 """Fabric MCP tools - Modular tool registration.
 
 This module provides the main entry point for registering Microsoft Fabric MCP tools.
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 def register_fabric_tools(mcp: "FastMCP"):
     """Register all Fabric MCP tools (workspace, item, notebook, job, SQL, Livy, pipeline).
     
-    This is the main registration function that sets up all 55 Fabric tools.
+    This is the main registration function that sets up all 59 Fabric tools.
     It initializes the service hierarchy and registers all tool categories.
     
     Tool Categories:
@@ -58,10 +58,12 @@ def register_fabric_tools(mcp: "FastMCP"):
       add_dataflow_activity_to_pipeline, add_activity_to_pipeline, delete_activity_from_pipeline,
       remove_activity_dependency, add_activity_dependency, create_pipeline_with_definition,
       get_pipeline_definition, update_pipeline_definition
-    - Semantic model tools (7): create_semantic_model, add_table_to_semantic_model,
+    - Semantic model tools (11): create_semantic_model, add_table_to_semantic_model,
       add_relationship_to_semantic_model, get_semantic_model_details,
       get_semantic_model_definition, add_measures_to_semantic_model,
-      delete_measures_from_semantic_model
+      delete_measures_from_semantic_model, list_semantic_model_tables,
+      delete_table_from_semantic_model, list_semantic_model_relationships,
+      delete_relationship_from_semantic_model
     - Power BI tools (2): refresh_semantic_model, execute_dax_query
     - Lakehouse file tools (3): list_lakehouse_files, upload_lakehouse_file,
       delete_lakehouse_file
@@ -142,7 +144,7 @@ def register_fabric_tools(mcp: "FastMCP"):
         item_service,
     )
     
-    tool_count = 55 if sql_service else 52  # 3 SQL tools
+    tool_count = 59 if sql_service else 56  # 3 SQL tools
     logger.info(f"All Fabric tools registered successfully ({tool_count} tools)")
 
 
