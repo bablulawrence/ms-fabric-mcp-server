@@ -1,7 +1,7 @@
 """Unit tests for FabricSQLService."""
 
 import struct
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -198,6 +198,28 @@ class TestFabricSQLService:
 
         assert result.status == "error"
         assert "Query execution failed" in result.message
+
+    def test_execute_query_retries_transient_error(self, sql_service):
+        """execute_query retries once on transient ODBC errors."""
+        service, *_ = sql_service
+        cursor = Mock()
+        cursor.description = [("id",)]
+        cursor.fetchall.return_value = [(1,)]
+        cursor.execute.side_effect = [RuntimeError("HYT00: timeout"), None]
+        connection = Mock()
+        connection.cursor.return_value = cursor
+        service._connection = connection
+        service._sql_endpoint = None
+        service._database = None
+
+        with patch("ms_fabric_mcp_server.services.sql.time.sleep") as sleep_mock, patch(
+            "ms_fabric_mcp_server.services.sql.random.uniform", return_value=5.0
+        ):
+            result = service.execute_query("SELECT 1")
+
+        assert result.status == "success"
+        assert cursor.execute.call_count == 2
+        sleep_mock.assert_called_once()
 
     def test_execute_statement_requires_connection(self, sql_service):
         """execute_statement raises when not connected."""

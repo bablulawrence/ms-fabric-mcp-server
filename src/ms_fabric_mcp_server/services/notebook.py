@@ -374,7 +374,7 @@ class FabricNotebookService:
         self,
         workspace_name: str,
         notebook_name: str,
-        notebook_content: Dict[str, Any],
+        notebook_content: Optional[Dict[str, Any]] = None,
         default_lakehouse_name: Optional[str] = None,
         lakehouse_workspace_name: Optional[str] = None,
     ) -> UpdateNotebookResult:
@@ -398,7 +398,11 @@ class FabricNotebookService:
             if existing_content is None:
                 raise FabricError("Could not find notebook content in definition")
 
-            updated_content = copy.deepcopy(notebook_content)
+            if notebook_content is None:
+                updated_content = copy.deepcopy(existing_content)
+            else:
+                updated_content = copy.deepcopy(notebook_content)
+
             existing_dependencies = (
                 existing_content.get("metadata", {}).get("dependencies")
                 if isinstance(existing_content, dict)
@@ -424,8 +428,8 @@ class FabricNotebookService:
                 )
             elif existing_dependencies is not None:
                 updated_content.setdefault("metadata", {})
-                updated_content["metadata"]["dependencies"] = copy.deepcopy(
-                    existing_dependencies
+                updated_content["metadata"].setdefault(
+                    "dependencies", copy.deepcopy(existing_dependencies)
                 )
 
             encoded_content = self._encode_notebook_content(updated_content)

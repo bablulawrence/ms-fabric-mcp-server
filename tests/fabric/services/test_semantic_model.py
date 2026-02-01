@@ -190,13 +190,60 @@ class TestFabricSemanticModelService:
         columns = [SemanticModelColumn(name="id", data_type=DataType.INT64)]
 
         with pytest.raises(FabricValidationError):
-            semantic_model_service.add_table_to_semantic_model(
-                workspace_name="Workspace",
-                semantic_model_name="Model",
-                lakehouse_name="Lake",
-                table_name="Customers",
-                columns=columns,
-            )
+                semantic_model_service.add_table_to_semantic_model(
+                    workspace_name="Workspace",
+                    semantic_model_name="Model",
+                    lakehouse_name="Lake",
+                    table_name="Customers",
+                    columns=columns,
+                )
+
+    def test_add_table_reuses_directlake_expression(
+        self, semantic_model_service, mock_workspace_service, mock_item_service
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.side_effect = [
+            FabricItem(id="sm-1", display_name="Model", type="SemanticModel", workspace_id="ws-1"),
+            FabricItem(id="lh-1", display_name="Lake", type="Lakehouse", workspace_id="ws-1"),
+        ]
+        existing_expression = {
+            "name": "DirectLakeExisting",
+            "expression": [
+                "let",
+                "    Source = AzureStorage.DataLake(\"https://onelake.dfs.fabric.microsoft.com/ws-1/lh-1\", [HierarchicalNavigation=true])",
+                "in",
+                "    Source",
+            ],
+            "kind": "m",
+        }
+        definition = {
+            "definition": {
+                "parts": [
+                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
+                    {"path": "model.bim", "payload": _encode({"model": {"expressions": [existing_expression]}}), "payloadType": "InlineBase64"},
+                ]
+            }
+        }
+        mock_item_service.get_item_definition.return_value = definition
+
+        columns = [SemanticModelColumn(name="id", data_type=DataType.INT64)]
+
+        semantic_model_service.add_table_to_semantic_model(
+            workspace_name="Workspace",
+            semantic_model_name="Model",
+            lakehouse_name="Lake",
+            table_name="Customers",
+            columns=columns,
+        )
+
+        args, kwargs = mock_item_service.update_item_definition.call_args
+        update_payload = args[2]
+        model_payload = update_payload["definition"]["parts"][1]["payload"]
+        bim = _decode(model_payload)
+        model = bim["model"]
+        assert len(model["expressions"]) == 1
+        table = next(t for t in model["tables"] if t["name"] == "Customers")
+        assert table["partitions"][0]["source"]["expressionSource"] == "DirectLakeExisting"
 
     def test_add_relationship_to_semantic_model_success(
         self, semantic_model_service, mock_workspace_service, mock_item_service

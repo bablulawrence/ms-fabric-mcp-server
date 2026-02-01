@@ -65,6 +65,14 @@ class TestNotebookTools:
         assert updated["status"] == "success"
         assert updated["notebook_id"] == "nb-1"
 
+        updated_metadata_only = tools["update_notebook_content"](
+            workspace_name="Workspace",
+            notebook_name="Notebook",
+            notebook_content=None,
+            default_lakehouse_name="Lakehouse",
+        )
+        assert updated_metadata_only["status"] == "success"
+
         exec_details = tools["get_notebook_run_details"](
             workspace_name="Workspace",
             notebook_name="Notebook",

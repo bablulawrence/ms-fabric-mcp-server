@@ -304,7 +304,7 @@ class TestFabricItemService:
         )
 
     def test_move_item_to_root_success(self, item_service, mock_fabric_client):
-        """Move item to root omits target folder id."""
+        """Move item to root sends null target folder id."""
         item_data = FabricDataFactory.item(item_id="item-1", item_type="Notebook")
         mock_fabric_client.make_api_request.return_value = MockResponseFactory.success(item_data)
 
@@ -314,7 +314,7 @@ class TestFabricItemService:
         mock_fabric_client.make_api_request.assert_called_once_with(
             "POST",
             "workspaces/ws-1/items/item-1/move",
-            payload=None,
+            payload={"targetFolderId": None},
             wait_for_lro=True,
         )
 

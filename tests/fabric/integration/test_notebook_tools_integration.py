@@ -92,6 +92,15 @@ async def test_update_notebook_content(
         )
         assert definition_result is not None
 
+        attach_result = await call_tool(
+            "update_notebook_content",
+            workspace_name=workspace_name,
+            notebook_name=notebook_name,
+            notebook_content=None,
+            default_lakehouse_name=lakehouse_name,
+        )
+        assert attach_result["status"] == "success"
+
         updated_content = {
             **notebook_content,
             "cells": notebook_content.get("cells", [])
@@ -109,7 +118,6 @@ async def test_update_notebook_content(
             workspace_name=workspace_name,
             notebook_name=notebook_name,
             notebook_content=updated_content,
-            default_lakehouse_name=lakehouse_name,
         )
         assert update_result["status"] == "success"
 

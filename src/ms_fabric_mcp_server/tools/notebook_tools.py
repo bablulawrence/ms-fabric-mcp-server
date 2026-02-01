@@ -141,11 +141,15 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
     def update_notebook_content(
         workspace_name: str,
         notebook_name: str,
-        notebook_content: dict,
+        notebook_content: Optional[dict] = None,
         default_lakehouse_name: Optional[str] = None,
         lakehouse_workspace_name: Optional[str] = None,
     ) -> dict:
-        """Update notebook content in Fabric."""
+        """Update notebook content in Fabric.
+
+        If notebook_content is omitted, the existing notebook definition is loaded
+        and only metadata changes (e.g., default lakehouse) are applied.
+        """
         log_tool_invocation(
             "update_notebook_content",
             workspace_name=workspace_name,

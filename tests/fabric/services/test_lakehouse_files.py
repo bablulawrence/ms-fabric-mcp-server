@@ -65,6 +65,24 @@ class TestFabricLakehouseFileService:
         assert "directory=Files%2Fraw" in request_url
         assert "Files%2FFiles%2Fraw" not in request_url
 
+    def test_list_files_strips_duplicate_files_prefix(self, mock_fabric_client):
+        service = FabricLakehouseFileService(mock_fabric_client)
+        mock_fabric_client.get_auth_token = Mock(return_value="token")
+        session = Mock()
+        mock_fabric_client._session = session
+
+        response = Mock()
+        response.status_code = 200
+        response.ok = True
+        response.json.return_value = {"paths": []}
+        session.request.return_value = response
+
+        service.list_files("ws-1", "lh-1", path="Files/Files/raw", recursive=True)
+
+        request_url = session.request.call_args.kwargs["url"]
+        assert "directory=Files%2Fraw" in request_url
+        assert "Files%2FFiles%2Fraw" not in request_url
+
     def test_upload_file_writes_and_flushes(self, mock_fabric_client, tmp_path: Path):
         service = FabricLakehouseFileService(mock_fabric_client)
         mock_fabric_client.get_auth_token = Mock(return_value="token")
@@ -135,6 +153,38 @@ class TestFabricLakehouseFileService:
         assert "/Files/raw/sample.csv" in create_url
         assert "/Files/Files/raw/sample.csv" not in create_url
 
+    def test_upload_file_strips_duplicate_files_prefix(self, mock_fabric_client, tmp_path: Path):
+        service = FabricLakehouseFileService(mock_fabric_client)
+        mock_fabric_client.get_auth_token = Mock(return_value="token")
+        session = Mock()
+        mock_fabric_client._session = session
+
+        sample = tmp_path / "sample.csv"
+        sample.write_text("a,b\n1,2\n")
+
+        responses = []
+        for _ in range(3):
+            response = Mock()
+            response.status_code = 200
+            response.ok = True
+            response.json.return_value = {}
+            responses.append(response)
+
+        session.request.side_effect = responses
+
+        result = service.upload_file(
+            workspace_id="ws-1",
+            lakehouse_id="lh-1",
+            local_file_path=str(sample),
+            destination_path="Files/Files/raw/sample.csv",
+            create_missing_directories=False,
+        )
+
+        assert result["path"] == "raw/sample.csv"
+        create_url = session.request.call_args_list[0].kwargs["url"]
+        assert "/Files/raw/sample.csv" in create_url
+        assert "/Files/Files/raw/sample.csv" not in create_url
+
     def test_delete_file_recursive(self, mock_fabric_client):
         service = FabricLakehouseFileService(mock_fabric_client)
         mock_fabric_client.get_auth_token = Mock(return_value="token")
@@ -174,6 +224,29 @@ class TestFabricLakehouseFileService:
             workspace_id="ws-1",
             lakehouse_id="lh-1",
             path="Files/raw",
+            recursive=False,
+        )
+
+        delete_url = session.request.call_args.kwargs["url"]
+        assert "/Files/raw" in delete_url
+        assert "/Files/Files/raw" not in delete_url
+
+    def test_delete_file_strips_duplicate_files_prefix(self, mock_fabric_client):
+        service = FabricLakehouseFileService(mock_fabric_client)
+        mock_fabric_client.get_auth_token = Mock(return_value="token")
+        session = Mock()
+        mock_fabric_client._session = session
+
+        response = Mock()
+        response.status_code = 200
+        response.ok = True
+        response.json.return_value = {}
+        session.request.return_value = response
+
+        service.delete_file(
+            workspace_id="ws-1",
+            lakehouse_id="lh-1",
+            path="Files/Files/raw",
             recursive=False,
         )
 

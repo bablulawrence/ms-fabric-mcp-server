@@ -595,6 +595,47 @@ class TestFabricNotebookService:
         decoded = json.loads(base64.b64decode(encoded).decode("utf-8"))
         assert decoded["metadata"]["dependencies"] == {"foo": "bar"}
 
+    def test_update_notebook_content_uses_existing_definition(
+        self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
+    ):
+        """Update notebook content can reuse existing definition when content omitted."""
+        mock_workspace_service.resolve_workspace_id.side_effect = ["workspace-123", "workspace-123"]
+
+        notebook = FabricItem(id="nb-1", display_name="Notebook", type="Notebook", workspace_id="workspace-123")
+        lakehouse = FabricItem(id="lh-1", display_name="Lakehouse", type="Lakehouse", workspace_id="workspace-123")
+        mock_item_service.get_item_by_name.side_effect = [notebook, lakehouse]
+
+        existing_payload = {"cells": [], "metadata": {"dependencies": {"foo": "bar"}}}
+        definition_response = {
+            "definition": {
+                "parts": [
+                    {
+                        "path": "notebook.ipynb",
+                        "payload": _encode_ipynb(existing_payload),
+                        "payloadType": "InlineBase64",
+                    }
+                ]
+            }
+        }
+
+        get_def = _make_response(200, definition_response)
+        update_def = MockResponseFactory.success({})
+        mock_fabric_client.make_api_request.side_effect = [get_def, update_def]
+
+        result = notebook_service.update_notebook_content(
+            workspace_name="Workspace",
+            notebook_name="Notebook",
+            notebook_content=None,
+            default_lakehouse_name="Lakehouse",
+        )
+
+        assert result.status == "success"
+        update_call = mock_fabric_client.make_api_request.call_args_list[1]
+        payload = update_call.kwargs["payload"]
+        encoded = payload["definition"]["parts"][0]["payload"]
+        decoded = json.loads(base64.b64decode(encoded).decode("utf-8"))
+        assert decoded["metadata"]["dependencies"]["lakehouse"]["default_lakehouse"] == "lh-1"
+
     def test_update_notebook_content_missing_lakehouse(
         self, notebook_service, mock_item_service, mock_workspace_service
     ):

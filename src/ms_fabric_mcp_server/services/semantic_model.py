@@ -180,7 +180,9 @@ class FabricSemanticModelService:
             expressions = model.setdefault("expressions", [])
             tables = model.setdefault("tables", [])
 
-            expression_name = f"DirectLake - {lakehouse_name}"
+            expression_name = self._find_directlake_expression_name(
+                expressions, workspace_id, lakehouse_id
+            ) or f"DirectLake - {lakehouse_name}"
             if not self._find_list_item(expressions, "name", expression_name):
                 expressions.append(
                     {
@@ -694,6 +696,29 @@ class FabricSemanticModelService:
         self.item_service.update_item_definition(
             workspace_id, semantic_model_id, update_payload
         )
+
+    def _find_directlake_expression_name(
+        self,
+        expressions: List[Dict[str, Any]],
+        workspace_id: str,
+        lakehouse_id: str,
+    ) -> Optional[str]:
+        directlake_path = (
+            f"https://onelake.dfs.fabric.microsoft.com/{workspace_id}/{lakehouse_id}"
+        )
+        for expression in expressions:
+            expr_body = expression.get("expression")
+            if not expr_body:
+                continue
+            if isinstance(expr_body, list):
+                joined = "\n".join(str(line) for line in expr_body)
+            else:
+                joined = str(expr_body)
+            if directlake_path in joined:
+                name = expression.get("name")
+                if name:
+                    return name
+        return None
 
     def _find_list_item(
         self, items: List[Dict[str, Any]], key: str, value: Any

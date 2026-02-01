@@ -246,6 +246,21 @@ async def test_move_item_to_folder_tool(
 
         found = await poll_until(_find_moved_item, timeout_seconds=120, interval_seconds=10)
         assert found is not None
+
+        move_root_result = await call_tool(
+            "move_item_to_folder",
+            workspace_name=workspace_name,
+            item_id=pipeline_id,
+        )
+        assert move_root_result["status"] == "success"
+
+        root_item = await call_tool(
+            "get_item",
+            workspace_name=workspace_name,
+            item_id=pipeline_id,
+        )
+        assert root_item["status"] == "success"
+        assert root_item.get("item", {}).get("folder_id") in (None, "")
     finally:
         await delete_item_if_exists(pipeline_name, "DataPipeline")
         await delete_item_if_exists(target_pipeline, "DataPipeline")

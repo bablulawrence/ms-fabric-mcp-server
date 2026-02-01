@@ -3,6 +3,8 @@
 """Fabric SQL Warehouse Service for connecting and executing queries."""
 
 import logging
+import random
+import time
 import struct
 from itertools import chain, repeat
 from typing import Any, Dict, List, Optional
@@ -101,6 +103,7 @@ class FabricSQLService:
         self.item_service = item_service
         self._connection = None
         self._sql_endpoint = None
+        self._database = None
         
         # Enable OpenTelemetry auto-instrumentation if available
         if OTEL_AVAILABLE:
@@ -307,6 +310,7 @@ class FabricSQLService:
             logger.info(f"Connecting to SQL endpoint: {sql_endpoint}, database: {database}")
             self._connection = pyodbc.connect(cnx_str, attrs_before=attrs)
             self._sql_endpoint = sql_endpoint
+            self._database = database
             logger.info("Successfully connected to Fabric SQL Warehouse")
             
         except Exception as exc:
@@ -342,51 +346,66 @@ class FabricSQLService:
                 "Not connected to SQL endpoint. Call connect() first."
             )
         
-        try:
-            logger.info(f"Executing query: {query[:100]}...")
-            cursor = self._connection.cursor()
-            
-            # Auto-instrumentation will create CLIENT spans for DB operations
-            cursor.execute(query)
-            
-            # Get column names
-            columns = (
-                [column[0] for column in cursor.description]
-                if cursor.description else []
-            )
-            
-            # Fetch all rows
-            rows = cursor.fetchall()
-            
-            # Convert rows to list of dictionaries
-            data = []
-            for row in rows:
-                row_dict = {}
-                for i, column in enumerate(columns):
-                    row_dict[column] = row[i]
-                data.append(row_dict)
-            
-            result = QueryResult(
-                status="success",
-                data=data,
-                columns=columns,
-                row_count=len(data),
-                message=f"Query executed successfully. Returned {len(data)} rows."
-            )
-            
-            logger.info(f"Query executed successfully. Returned {len(data)} rows.")
-            return result
-            
-        except Exception as exc:
-            logger.error(f"Query execution failed: {exc}")
-            error_result = QueryResult(
-                status="error",
-                data=[],
-                columns=[],
-                row_count=0,
-                message=f"Query execution failed: {exc}"
-            )
-            return error_result
+        for attempt in range(2):
+            try:
+                logger.info(f"Executing query: {query[:100]}...")
+                cursor = self._connection.cursor()
+
+                # Auto-instrumentation will create CLIENT spans for DB operations
+                cursor.execute(query)
+
+                # Get column names
+                columns = (
+                    [column[0] for column in cursor.description]
+                    if cursor.description else []
+                )
+
+                # Fetch all rows
+                rows = cursor.fetchall()
+
+                # Convert rows to list of dictionaries
+                data = []
+                for row in rows:
+                    row_dict = {}
+                    for i, column in enumerate(columns):
+                        row_dict[column] = row[i]
+                    data.append(row_dict)
+
+                result = QueryResult(
+                    status="success",
+                    data=data,
+                    columns=columns,
+                    row_count=len(data),
+                    message=f"Query executed successfully. Returned {len(data)} rows.",
+                )
+
+                logger.info(f"Query executed successfully. Returned {len(data)} rows.")
+                return result
+
+            except Exception as exc:
+                if attempt == 0 and self._is_transient_odbc_error(exc):
+                    delay = random.uniform(5, 10)
+                    logger.warning(
+                        f"Transient SQL error detected; retrying in {delay:.1f}s: {exc}"
+                    )
+                    time.sleep(delay)
+                    if self._sql_endpoint and self._database:
+                        try:
+                            self.connect(self._sql_endpoint, self._database)
+                        except Exception as reconnect_exc:
+                            logger.warning(
+                                f"Retry reconnect failed: {reconnect_exc}"
+                            )
+                    continue
+
+                logger.error(f"Query execution failed: {exc}")
+                return QueryResult(
+                    status="error",
+                    data=[],
+                    columns=[],
+                    row_count=0,
+                    message=f"Query execution failed: {exc}",
+                )
     
     def execute_statement(self, statement: str) -> Dict[str, Any]:
         """Execute a DML SQL statement (INSERT, UPDATE, DELETE, MERGE).
@@ -465,6 +484,19 @@ class FabricSQLService:
         if not first_token:
             return False
         return first_token[0].upper() in {"INSERT", "UPDATE", "DELETE", "MERGE"}
+
+    @staticmethod
+    def _is_transient_odbc_error(exc: Exception) -> bool:
+        message = str(exc).lower()
+        transient_codes = ("hyt00", "hyt01", "08s01")
+        if "cursor closed" in message:
+            return True
+        if any(code in message for code in transient_codes):
+            return True
+        for arg in getattr(exc, "args", ()) or ():
+            if isinstance(arg, str) and any(code in arg.lower() for code in transient_codes):
+                return True
+        return False
     
     def execute_sql_query(
         self,

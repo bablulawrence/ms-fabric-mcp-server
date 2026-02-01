@@ -209,7 +209,7 @@ class FabricLakehouseFileService:
         normalized = trimmed.replace("\\", "/").lstrip("/")
         parts = [part for part in normalized.split("/") if part and part != "."]
 
-        if parts and parts[0].lower() == "files":
+        while parts and parts[0].lower() == "files":
             parts = parts[1:]
 
         if any(part == ".." for part in parts):
