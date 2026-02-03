@@ -15,6 +15,7 @@ async def test_powerbi_tools_flow(
     lakehouse_name,
     semantic_model_table,
     semantic_model_columns,
+    semantic_model_schema,
 ):
     if not semantic_model_table or not semantic_model_columns:
         pytest.skip("Missing semantic model table/columns inputs")
@@ -51,6 +52,7 @@ async def test_powerbi_tools_flow(
             lakehouse_name=lakehouse_name,
             table_name=semantic_model_table,
             columns=semantic_model_columns,
+            table_schema=semantic_model_schema,
         )
         assert add_table_result["status"] == "success"
 
@@ -79,7 +81,7 @@ async def test_powerbi_tools_flow(
             workspace_name=workspace_name,
             semantic_model_name=semantic_model_name,
         )
-        assert refresh_result["status"] == "success"
+        assert refresh_result["status"] == "success", f"Refresh failed: {refresh_result}"
 
         dax_result = await call_tool(
             "execute_dax_query",

@@ -12,11 +12,19 @@ from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
 from typing import Dict, Any
 
+from dotenv import load_dotenv
+
 # Ensure local src/ is used instead of any installed package.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_PATH = PROJECT_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
+
+# Load .env.integration for local integration tests (if it exists).
+# In CI, environment variables are set directly in the workflow, so we don't override.
+_ENV_INTEGRATION_PATH = PROJECT_ROOT / ".env.integration"
+if _ENV_INTEGRATION_PATH.exists():
+    load_dotenv(_ENV_INTEGRATION_PATH, override=False)
 
 
 # ============================================================================
