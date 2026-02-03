@@ -6,18 +6,16 @@ This module provides MCP tools for Microsoft Fabric pipeline operations includin
 creating pipelines with Copy Activities for data ingestion.
 """
 
-from typing import Any, Dict, Optional, TYPE_CHECKING
 import logging
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
 
-from ..services import (
-    FabricPipelineService,
-    FabricWorkspaceService,
-    FabricItemService,
-)
-from .base import handle_tool_errors, format_success_response, format_error_response, log_tool_invocation
+from ..services import (FabricItemService, FabricPipelineService,
+                        FabricWorkspaceService)
+from .base import (format_error_response, format_success_response,
+                   handle_tool_errors, log_tool_invocation)
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +27,7 @@ def register_pipeline_tools(
     item_service: FabricItemService,
 ):
     """Register pipeline management MCP tools.
-    
+
     This function registers pipeline-related tools:
     - create_pipeline: Create a pipeline (blank or from definition)
     - add_copy_activity_to_pipeline: Add a Copy Activity to an existing pipeline
@@ -41,13 +39,14 @@ def register_pipeline_tools(
     - add_activity_dependency: Add dependsOn entries to an activity
     - get_pipeline_definition: Fetch and decode pipeline definition JSON
     - update_pipeline_definition: Update pipeline definition JSON
-    
+    - get_pipeline_activity_runs: Get per-activity execution details for a pipeline run
+
     Args:
         mcp: FastMCP server instance to register tools on.
         pipeline_service: Initialized FabricPipelineService instance.
         workspace_service: Initialized FabricWorkspaceService instance.
         item_service: Initialized FabricItemService instance.
-        
+
     Example:
         ```python
         from ms_fabric_mcp_server import FabricConfig, FabricClient
@@ -57,17 +56,17 @@ def register_pipeline_tools(
             FabricItemService
         )
         from ms_fabric_mcp_server.tools import register_pipeline_tools
-        
+
         config = FabricConfig.from_environment()
         client = FabricClient(config)
         workspace_service = FabricWorkspaceService(client)
         item_service = FabricItemService(client)
         pipeline_service = FabricPipelineService(client, workspace_service, item_service)
-        
+
         register_pipeline_tools(mcp, pipeline_service, workspace_service, item_service)
         ```
     """
-    
+
     @mcp.tool(title="Create Pipeline")
     @handle_tool_errors
     def create_pipeline(
@@ -102,7 +101,9 @@ def register_pipeline_tools(
             folder_path=folder_path,
         )
 
-        logger.info(f"Creating pipeline '{pipeline_name}' in workspace '{workspace_name}'")
+        logger.info(
+            f"Creating pipeline '{pipeline_name}' in workspace '{workspace_name}'"
+        )
 
         workspace_id = workspace_service.resolve_workspace_id(workspace_name)
         workspace = workspace_service.get_workspace_by_id(workspace_id)
@@ -137,7 +138,7 @@ def register_pipeline_tools(
             f"Pipeline created successfully: {pipeline_id} in workspace {workspace.display_name}"
         )
         return result
-    
+
     @mcp.tool(title="Add Copy Activity to Pipeline")
     @handle_tool_errors
     def add_copy_activity_to_pipeline(
@@ -157,19 +158,19 @@ def register_pipeline_tools(
         apply_v_order: bool = True,
         timeout: str = "0.12:00:00",
         retry: int = 0,
-        retry_interval_seconds: int = 30
+        retry_interval_seconds: int = 30,
     ) -> dict:
         """Add a Copy Activity to an existing Fabric pipeline.
-        
+
         Retrieves an existing pipeline, adds a Copy Activity to it, and updates
         the pipeline definition. The Copy Activity will be appended to any existing
         activities in the pipeline.
-        
+
         **Use this tool when:**
         - You have an existing pipeline and want to add a new Copy Activity
         - You're building complex pipelines with multiple data copy operations
         - You want to incrementally build a pipeline
-        
+
         Parameters:
             workspace_name: The display name of the workspace containing the pipeline.
             pipeline_name: Name of the existing pipeline to update.
@@ -188,17 +189,17 @@ def register_pipeline_tools(
             timeout: Activity timeout (default: "0.12:00:00").
             retry: Number of retry attempts (default: 0).
             retry_interval_seconds: Retry interval in seconds (default: 30).
-            
+
         Returns:
             Dictionary with status, pipeline_id, pipeline_name, activity_name, workspace_name, and message.
-            
+
         Example:
             ```python
             # First, get the lakehouse and connection IDs
             lakehouses = list_items(workspace_name="Analytics", item_type="Lakehouse")
             lakehouse_id = lakehouses["items"][0]["id"]
             lakehouse_conn_id = "a216973e-47d7-4224-bb56-2c053bac6831"
-            
+
             # Add a Copy Activity to an existing pipeline
             result = add_copy_activity_to_pipeline(
                 workspace_name="Analytics Workspace",
@@ -213,7 +214,7 @@ def register_pipeline_tools(
                 activity_name="CopyOrdersData",
                 table_action_option="Overwrite"
             )
-            
+
             # Add another Copy Activity to the same pipeline
             result = add_copy_activity_to_pipeline(
                 workspace_name="Analytics Workspace",
@@ -227,7 +228,7 @@ def register_pipeline_tools(
                 destination_table_name="customers",
                 activity_name="CopyCustomersData"
             )
-            
+
             # SQL fallback mode (use when direct Lakehouse copy fails with
             # "datasource type Lakehouse is invalid" error):
             result = add_copy_activity_to_pipeline(
@@ -252,19 +253,20 @@ def register_pipeline_tools(
             source_type=source_type,
             source_table=f"{source_table_schema}.{source_table_name}",
             destination_table=destination_table_name,
-            activity_name=activity_name or f"CopyDataToLakehouse_{destination_table_name}",
+            activity_name=activity_name
+            or f"CopyDataToLakehouse_{destination_table_name}",
             source_access_mode=source_access_mode,
         )
-        
+
         logger.info(
             f"Adding Copy Activity to pipeline '{pipeline_name}' in workspace '{workspace_name}' "
             f"to copy {source_table_schema}.{source_table_name} ({source_type}) to {destination_table_name}"
         )
-        
+
         # Resolve workspace ID
         workspace_id = workspace_service.resolve_workspace_id(workspace_name)
         workspace = workspace_service.get_workspace_by_id(workspace_id)
-        
+
         # Add the Copy Activity to the pipeline
         pipeline_id = pipeline_service.add_copy_activity_to_pipeline(
             workspace_id=workspace_id,
@@ -283,11 +285,13 @@ def register_pipeline_tools(
             apply_v_order=apply_v_order,
             timeout=timeout,
             retry=retry,
-            retry_interval_seconds=retry_interval_seconds
+            retry_interval_seconds=retry_interval_seconds,
         )
-        
-        final_activity_name = activity_name or f"CopyDataToLakehouse_{destination_table_name}"
-        
+
+        final_activity_name = (
+            activity_name or f"CopyDataToLakehouse_{destination_table_name}"
+        )
+
         result = {
             "status": "success",
             "pipeline_id": pipeline_id,
@@ -295,9 +299,9 @@ def register_pipeline_tools(
             "activity_name": final_activity_name,
             "workspace_name": workspace.display_name,
             "workspace_id": workspace_id,
-            "message": f"Copy Activity '{final_activity_name}' added successfully to pipeline '{pipeline_name}'"
+            "message": f"Copy Activity '{final_activity_name}' added successfully to pipeline '{pipeline_name}'",
         }
-        
+
         logger.info(
             f"Copy Activity '{final_activity_name}' added successfully to pipeline {pipeline_id}"
         )
@@ -486,44 +490,42 @@ def register_pipeline_tools(
             f"Dataflow Activity '{activity_name}' added successfully to pipeline {pipeline_id}"
         )
         return result
-    
+
     @mcp.tool(title="Add Activity to Pipeline from JSON")
     @handle_tool_errors
     def add_activity_to_pipeline(
-        workspace_name: str,
-        pipeline_name: str,
-        activity_json: dict
+        workspace_name: str, pipeline_name: str, activity_json: dict
     ) -> dict:
         """Add a generic activity to an existing Fabric pipeline from a JSON template.
-        
+
         Retrieves an existing pipeline, adds an activity from the provided JSON template,
         and updates the pipeline definition. This is a more general-purpose tool compared
         to add_copy_activity_to_pipeline, allowing you to add any type of Fabric pipeline
         activity by providing its complete JSON definition.
-        
+
         **Use this tool when:**
         - You have a custom activity JSON template to add
         - You want to add activity types beyond Copy (e.g., Notebook, Script, Web, etc.)
         - You need full control over the activity definition
         - You're working with complex activity configurations
-        
+
         **Activity JSON Requirements:**
         - Must be a valid dictionary/object
         - Must include a "name" field (string)
         - Must include a "type" field (e.g., "Copy", "Notebook", "Script", "Web", etc.)
         - Should include all required properties for the specific activity type
         - Common fields: "dependsOn", "policy", "typeProperties"
-        
+
         Parameters:
             workspace_name: The display name of the workspace containing the pipeline.
             pipeline_name: Name of the existing pipeline to update.
             activity_json: Complete JSON dictionary representing the activity definition.
                           Must include "name", "type", and all required properties.
-            
+
         Returns:
-            Dictionary with status, pipeline_id, pipeline_name, activity_name, 
+            Dictionary with status, pipeline_id, pipeline_name, activity_name,
             activity_type, workspace_name, and message.
-            
+
         Example:
             ```python
             # Example 1: Add a Copy Activity from JSON template
@@ -568,13 +570,13 @@ def register_pipeline_tools(
                     }
                 }
             }
-            
+
             result = add_activity_to_pipeline(
                 workspace_name="Analytics Workspace",
                 pipeline_name="My_Pipeline",
                 activity_json=copy_activity
             )
-            
+
             # Example 2: Add a Notebook Activity
             notebook_activity = {
                 "name": "RunTransformation",
@@ -596,7 +598,7 @@ def register_pipeline_tools(
                     }
                 }
             }
-            
+
             result = add_activity_to_pipeline(
                 workspace_name="Analytics Workspace",
                 pipeline_name="My_Pipeline",
@@ -609,28 +611,28 @@ def register_pipeline_tools(
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
             activity_name=activity_json.get("name", "UnnamedActivity"),
-            activity_type=activity_json.get("type", "Unknown")
+            activity_type=activity_json.get("type", "Unknown"),
         )
-        
+
         activity_name = activity_json.get("name", "UnnamedActivity")
         activity_type = activity_json.get("type", "Unknown")
-        
+
         logger.info(
             f"Adding {activity_type} activity '{activity_name}' to pipeline '{pipeline_name}' "
             f"in workspace '{workspace_name}'"
         )
-        
+
         # Resolve workspace ID
         workspace_id = workspace_service.resolve_workspace_id(workspace_name)
         workspace = workspace_service.get_workspace_by_id(workspace_id)
-        
+
         # Add the activity from JSON to the pipeline
         pipeline_id = pipeline_service.add_activity_from_json(
             workspace_id=workspace_id,
             pipeline_name=pipeline_name,
-            activity_json=activity_json
+            activity_json=activity_json,
         )
-        
+
         result = {
             "status": "success",
             "pipeline_id": pipeline_id,
@@ -639,9 +641,9 @@ def register_pipeline_tools(
             "activity_type": activity_type,
             "workspace_name": workspace.display_name,
             "workspace_id": workspace_id,
-            "message": f"{activity_type} activity '{activity_name}' added successfully to pipeline '{pipeline_name}'"
+            "message": f"{activity_type} activity '{activity_name}' added successfully to pipeline '{pipeline_name}'",
         }
-        
+
         logger.info(
             f"{activity_type} activity '{activity_name}' added successfully to pipeline {pipeline_id}"
         )
@@ -949,5 +951,99 @@ def register_pipeline_tools(
             f"from pipeline {pipeline_id}"
         )
         return result
-    
-    logger.info("Pipeline tools registered successfully (10 tools)")
+
+    @mcp.tool(title="Get Pipeline Activity Runs")
+    @handle_tool_errors
+    def get_pipeline_activity_runs(
+        workspace_name: str,
+        job_instance_id: str,
+        status_filter: Optional[str] = None,
+        activity_name: Optional[str] = None,
+    ) -> dict:
+        """Get activity runs for a pipeline job execution.
+
+        Retrieves per-activity execution details for a given pipeline run, including
+        timing, status, and output metrics (row counts for Copy activities).
+
+        **Use this tool when:**
+        - A pipeline run completed and you need to see which activities succeeded/failed
+        - You want to diagnose why a pipeline failed by examining activity errors
+        - You need row counts or timing details for Copy activities
+
+        Parameters:
+            workspace_name: The display name of the workspace containing the pipeline.
+            job_instance_id: The job instance ID from run_on_demand_job or get_job_status.
+            status_filter: Optional filter by status: "Succeeded", "Failed", "InProgress", "Cancelled".
+            activity_name: Optional filter to a specific activity by name.
+
+        Returns:
+            Dictionary with status, activity_count, pipeline_name, and activities list.
+            Each activity contains: activity_name, activity_type, status, duration_ms,
+            start_time, end_time, rows_read (Copy only), rows_written (Copy only),
+            error_message (if failed).
+
+        Example:
+            ```python
+            # After running a pipeline
+            job_result = run_on_demand_job(
+                workspace_name="Analytics",
+                item_name="Copy_Data_Pipeline",
+                item_type="DataPipeline",
+                job_type="Pipeline"
+            )
+
+            # Check activity details
+            activities = get_pipeline_activity_runs(
+                workspace_name="Analytics",
+                job_instance_id=job_result["job_instance_id"]
+            )
+
+            # Filter to failed activities only
+            failed = get_pipeline_activity_runs(
+                workspace_name="Analytics",
+                job_instance_id=job_result["job_instance_id"],
+                status_filter="Failed"
+            )
+            ```
+        """
+        log_tool_invocation(
+            "get_pipeline_activity_runs",
+            workspace_name=workspace_name,
+            job_instance_id=job_instance_id,
+            status_filter=status_filter,
+            activity_name=activity_name,
+        )
+
+        logger.info(
+            f"Getting activity runs for job '{job_instance_id}' "
+            f"in workspace '{workspace_name}'"
+        )
+
+        workspace_id = workspace_service.resolve_workspace_id(workspace_name)
+        workspace = workspace_service.get_workspace_by_id(workspace_id)
+
+        result_data = pipeline_service.get_pipeline_activity_runs(
+            workspace_id=workspace_id,
+            job_instance_id=job_instance_id,
+            status_filter=status_filter,
+            activity_name_filter=activity_name,
+        )
+
+        result = {
+            "status": "success",
+            "message": f"Retrieved {result_data['activity_count']} activity runs",
+            "workspace_name": workspace.display_name,
+            "workspace_id": workspace_id,
+            "job_instance_id": job_instance_id,
+            "pipeline_name": result_data.get("pipeline_name"),
+            "activity_count": result_data["activity_count"],
+            "activities": result_data["activities"],
+        }
+
+        logger.info(
+            f"Retrieved {result_data['activity_count']} activity runs "
+            f"for job {job_instance_id}"
+        )
+        return result
+
+    logger.info("Pipeline tools registered successfully (11 tools)")
