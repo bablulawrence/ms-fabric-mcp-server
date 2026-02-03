@@ -659,7 +659,7 @@ async def executed_notebook_context(
         assert content_result["status"] == "success"
 
         attach_result = await call_tool_session(
-            "update_notebook_content",
+            "update_notebook_definition",
             workspace_name=workspace_name_session,
             notebook_name=notebook_name,
             notebook_content=notebook_content,

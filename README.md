@@ -199,7 +199,7 @@ The server provides **54 core tools**, with **3 additional SQL tools** when inst
 |------------|-------|-------|
 | **Workspace** | 1 | `list_workspaces` |
 | **Item** | 10 | `list_items`, `get_item`, `list_folders`, `create_folder`, `move_folder`, `delete_folder`, `create_lakehouse`, `delete_item`, `rename_item`, `move_item_to_folder` |
-| **Notebook** | 6 | `create_notebook`, `get_notebook_definition`, `update_notebook_content`, `get_notebook_run_details`, `list_notebook_runs`, `get_notebook_driver_logs` |
+| **Notebook** | 6 | `create_notebook`, `get_notebook_definition`, `update_notebook_definition`, `get_notebook_run_details`, `list_notebook_runs`, `get_notebook_driver_logs` |
 | **Job** | 4 | `run_on_demand_job`, `get_job_status`, `get_job_status_by_url`, `get_operation_result` |
 | **Livy** | 8 | `livy_create_session`, `livy_list_sessions`, `livy_get_session_status`, `livy_close_session`, `livy_run_statement`, `livy_get_statement_status`, `livy_cancel_statement`, `livy_get_session_log` |
 | **Pipeline** | 11 | `create_pipeline`, `add_copy_activity_to_pipeline`, `add_notebook_activity_to_pipeline`, `add_dataflow_activity_to_pipeline`, `add_activity_to_pipeline`, `delete_activity_from_pipeline`, `remove_activity_dependency`, `add_activity_dependency`, `get_pipeline_definition`, `update_pipeline_definition`, `get_pipeline_activity_runs` |

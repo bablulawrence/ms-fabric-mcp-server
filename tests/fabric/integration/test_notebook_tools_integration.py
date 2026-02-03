@@ -54,7 +54,7 @@ async def test_get_notebook_definition(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_update_notebook_content(
+async def test_update_notebook_definition(
     call_tool,
     delete_item_if_exists,
     poll_until,
@@ -93,7 +93,7 @@ async def test_update_notebook_content(
         assert definition_result is not None
 
         attach_result = await call_tool(
-            "update_notebook_content",
+            "update_notebook_definition",
             workspace_name=workspace_name,
             notebook_name=notebook_name,
             notebook_content=None,
@@ -114,7 +114,7 @@ async def test_update_notebook_content(
         }
 
         update_result = await call_tool(
-            "update_notebook_content",
+            "update_notebook_definition",
             workspace_name=workspace_name,
             notebook_name=notebook_name,
             notebook_content=updated_content,

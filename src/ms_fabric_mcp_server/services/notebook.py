@@ -370,7 +370,7 @@ class FabricNotebookService:
         logger.warning(f"No .ipynb content found for notebook {notebook_name}")
         return definition_response
 
-    def update_notebook_content(
+    def update_notebook_definition(
         self,
         workspace_name: str,
         notebook_name: str,
@@ -378,7 +378,7 @@ class FabricNotebookService:
         default_lakehouse_name: Optional[str] = None,
         lakehouse_workspace_name: Optional[str] = None,
     ) -> UpdateNotebookResult:
-        """Update notebook content using the updateDefinition endpoint."""
+        """Update notebook definition using the updateDefinition endpoint."""
         logger.info(
             f"Updating notebook '{notebook_name}' in workspace '{workspace_name}'"
         )

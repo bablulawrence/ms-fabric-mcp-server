@@ -152,7 +152,7 @@ Expected: All item types listed correctly with proper filtering.
 **Happy Path:**
 1. `create_notebook` (local fixture: `tests/fixtures/minimal_notebook.ipynb`)
 2. `get_notebook_definition` - verify content matches imported notebook
-3. `update_notebook_content` - attach default lakehouse
+3. `update_notebook_definition` - attach default lakehouse
 4. `get_notebook_definition` - verify lakehouse attachment in metadata
 5. `run_on_demand_job` (Notebook, RunNotebook)
 6. Poll `get_job_status_by_url` until `is_terminal == true`
@@ -173,9 +173,9 @@ Expected: Full notebook lifecycle completes successfully.
    - Expected: Error indicating item already exists
 4. `get_notebook_definition` with non-existent notebook name
    - Expected: Notebook not found error
-5. `update_notebook_content` with non-existent notebook
+5. `update_notebook_definition` with non-existent notebook
    - Expected: Notebook not found error
-6. `update_notebook_content` with non-existent lakehouse
+6. `update_notebook_definition` with non-existent lakehouse
    - Expected: Lakehouse not found error
 7. `run_on_demand_job` with non-existent notebook
    - Expected: Item not found error
@@ -189,7 +189,7 @@ Expected: Full notebook lifecycle completes successfully.
 **Edge Cases:**
 1. `create_notebook` with folder path (e.g., `"folder/notebook_name"`)
    - Expected: Notebook created in folder structure
-2. `update_notebook_content` - attach different lakehouse (if second available)
+2. `update_notebook_definition` - attach different lakehouse (if second available)
    - Expected: Lakehouse attachment updated
 
 Notes:
@@ -534,7 +534,7 @@ Notes:
 
 If `FABRIC_TEST_SECONDARY_WORKSPACE_NAME` is configured:
 
-1. `update_notebook_content` with lakehouse from different workspace
+1. `update_notebook_definition` with lakehouse from different workspace
    - Use `lakehouse_workspace_name` parameter
 2. `add_notebook_activity_to_pipeline` with notebook from different workspace
    - Use `notebook_workspace_name` parameter

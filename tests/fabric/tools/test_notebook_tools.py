@@ -20,7 +20,7 @@ class TestNotebookTools:
             notebook_id="nb-1",
         )
         notebook_service.get_notebook_definition.return_value = {"cells": []}
-        notebook_service.update_notebook_content.return_value = UpdateNotebookResult(
+        notebook_service.update_notebook_definition.return_value = UpdateNotebookResult(
             status="success",
             message="updated",
             notebook_id="nb-1",
@@ -57,7 +57,7 @@ class TestNotebookTools:
         )
         assert content["status"] == "success"
 
-        updated = tools["update_notebook_content"](
+        updated = tools["update_notebook_definition"](
             workspace_name="Workspace",
             notebook_name="Notebook",
             notebook_content={"cells": []},
@@ -65,7 +65,7 @@ class TestNotebookTools:
         assert updated["status"] == "success"
         assert updated["notebook_id"] == "nb-1"
 
-        updated_metadata_only = tools["update_notebook_content"](
+        updated_metadata_only = tools["update_notebook_definition"](
             workspace_name="Workspace",
             notebook_name="Notebook",
             notebook_content=None,

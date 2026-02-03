@@ -50,7 +50,7 @@ def register_fabric_tools(mcp: "FastMCP"):
     - Item tools (10): list_items, get_item, list_folders, create_folder, move_folder,
       delete_folder, create_lakehouse,
       delete_item, rename_item, move_item_to_folder
-    - Notebook tools (6): create_notebook, get_notebook_definition, update_notebook_content,
+    - Notebook tools (6): create_notebook, get_notebook_definition, update_notebook_definition,
       get_notebook_run_details, list_notebook_runs, get_notebook_driver_logs
     - Job tools (4): run_on_demand_job, get_job_status, get_job_status_by_url, get_operation_result
     - SQL tools (3): get_sql_endpoint, execute_sql_query, execute_sql_statement

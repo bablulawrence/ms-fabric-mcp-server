@@ -136,22 +136,22 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
         logger.info("Successfully retrieved notebook definition")
         return result
 
-    @mcp.tool(title="Update Notebook Content")
+    @mcp.tool(title="Update Notebook Definition")
     @handle_tool_errors
-    def update_notebook_content(
+    def update_notebook_definition(
         workspace_name: str,
         notebook_name: str,
         notebook_content: Optional[dict] = None,
         default_lakehouse_name: Optional[str] = None,
         lakehouse_workspace_name: Optional[str] = None,
     ) -> dict:
-        """Update notebook content in Fabric.
+        """Update notebook definition in Fabric.
 
         If notebook_content is omitted, the existing notebook definition is loaded
         and only metadata changes (e.g., default lakehouse) are applied.
         """
         log_tool_invocation(
-            "update_notebook_content",
+            "update_notebook_definition",
             workspace_name=workspace_name,
             notebook_name=notebook_name,
             default_lakehouse_name=default_lakehouse_name,
@@ -161,7 +161,7 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
             f"Updating notebook '{notebook_name}' in workspace '{workspace_name}'"
         )
 
-        result = notebook_service.update_notebook_content(
+        result = notebook_service.update_notebook_definition(
             workspace_name=workspace_name,
             notebook_name=notebook_name,
             notebook_content=notebook_content,

@@ -110,7 +110,7 @@ Expected: Target workspace and lakehouse are present; item listing succeeds.
 **Happy Path:**
 1. `create_notebook` (local fixture: `tests/fixtures/minimal_notebook.ipynb`)
 2. `get_notebook_definition`
-3. `update_notebook_content`
+3. `update_notebook_definition`
 4. `run_on_demand_job` (Notebook, RunNotebook)
 5. Poll `get_job_status_by_url` until `is_terminal == true`
 6. `get_notebook_run_details`
@@ -121,7 +121,7 @@ Expected: Notebook imports, runs successfully, and execution details are retriev
 **Negative Tests:**
 1. `get_notebook_definition` with non-existent notebook name
    - Expected: Error indicating notebook not found
-2. `update_notebook_content` with non-existent lakehouse name
+2. `update_notebook_definition` with non-existent lakehouse name
    - Expected: Error indicating lakehouse not found
 
 Notes:
@@ -357,7 +357,7 @@ At the end of the test run, **ask the user for permission** before deleting any 
 |------|-----------|----------------|
 | Discovery | `list_items` with invalid workspace | Workspace not found |
 | Notebook | `get_notebook_definition` with invalid name | Notebook not found |
-| Notebook | `update_notebook_content` with invalid lakehouse | Lakehouse not found |
+| Notebook | `update_notebook_definition` with invalid lakehouse | Lakehouse not found |
 | Pipeline | `add_activity_to_pipeline` to invalid pipeline | Pipeline not found |
 | Pipeline | `add_notebook_activity_to_pipeline` with invalid notebook | Notebook not found |
 | Semantic Model | `add_table_to_semantic_model` with invalid data type | Unsupported data type |

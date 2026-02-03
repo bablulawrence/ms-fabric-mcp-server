@@ -252,7 +252,7 @@ class ServiceMockFactory:
         service.item_service = mock_item_service
         service.create_notebook = Mock()
         service.get_notebook_definition = Mock()
-        service.update_notebook_content = Mock()
+        service.update_notebook_definition = Mock()
         service.get_notebook_run_details = Mock()
         service.list_notebook_runs = Mock()
         service.get_notebook_driver_logs = Mock()

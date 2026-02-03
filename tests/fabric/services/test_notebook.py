@@ -511,10 +511,10 @@ class TestFabricNotebookService:
         assert result.status == "error"
         assert "Unexpected error" in result.message
 
-    def test_update_notebook_content_with_lakehouse(
+    def test_update_notebook_definition_with_lakehouse(
         self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
     ):
-        """Update notebook content applies lakehouse dependencies when provided."""
+        """Update notebook definition applies lakehouse dependencies when provided."""
         mock_workspace_service.resolve_workspace_id.side_effect = ["workspace-123", "workspace-123"]
 
         notebook = FabricItem(id="nb-1", display_name="Notebook", type="Notebook", workspace_id="workspace-123")
@@ -538,7 +538,7 @@ class TestFabricNotebookService:
         update_def = MockResponseFactory.success({})
         mock_fabric_client.make_api_request.side_effect = [get_def, update_def]
 
-        result = notebook_service.update_notebook_content(
+        result = notebook_service.update_notebook_definition(
             workspace_name="Workspace",
             notebook_name="Notebook",
             notebook_content={"cells": []},
@@ -556,10 +556,10 @@ class TestFabricNotebookService:
         assert lakehouse_meta["default_lakehouse_workspace_id"] == "workspace-123"
         assert lakehouse_meta["known_lakehouses"] == [{"id": "lh-1"}]
 
-    def test_update_notebook_content_preserves_dependencies(
+    def test_update_notebook_definition_preserves_dependencies(
         self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
     ):
-        """Update notebook content preserves existing dependencies when no lakehouse specified."""
+        """Update notebook definition preserves existing dependencies when no lakehouse specified."""
         mock_workspace_service.resolve_workspace_id.return_value = "workspace-123"
 
         notebook = FabricItem(id="nb-1", display_name="Notebook", type="Notebook", workspace_id="workspace-123")
@@ -582,7 +582,7 @@ class TestFabricNotebookService:
         update_def = MockResponseFactory.success({})
         mock_fabric_client.make_api_request.side_effect = [get_def, update_def]
 
-        result = notebook_service.update_notebook_content(
+        result = notebook_service.update_notebook_definition(
             workspace_name="Workspace",
             notebook_name="Notebook",
             notebook_content={"cells": []},
@@ -595,10 +595,10 @@ class TestFabricNotebookService:
         decoded = json.loads(base64.b64decode(encoded).decode("utf-8"))
         assert decoded["metadata"]["dependencies"] == {"foo": "bar"}
 
-    def test_update_notebook_content_uses_existing_definition(
+    def test_update_notebook_definition_uses_existing_definition(
         self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
     ):
-        """Update notebook content can reuse existing definition when content omitted."""
+        """Update notebook definition can reuse existing definition when content omitted."""
         mock_workspace_service.resolve_workspace_id.side_effect = ["workspace-123", "workspace-123"]
 
         notebook = FabricItem(id="nb-1", display_name="Notebook", type="Notebook", workspace_id="workspace-123")
@@ -622,7 +622,7 @@ class TestFabricNotebookService:
         update_def = MockResponseFactory.success({})
         mock_fabric_client.make_api_request.side_effect = [get_def, update_def]
 
-        result = notebook_service.update_notebook_content(
+        result = notebook_service.update_notebook_definition(
             workspace_name="Workspace",
             notebook_name="Notebook",
             notebook_content=None,
@@ -636,7 +636,7 @@ class TestFabricNotebookService:
         decoded = json.loads(base64.b64decode(encoded).decode("utf-8"))
         assert decoded["metadata"]["dependencies"]["lakehouse"]["default_lakehouse"] == "lh-1"
 
-    def test_update_notebook_content_missing_lakehouse(
+    def test_update_notebook_definition_missing_lakehouse(
         self, notebook_service, mock_item_service, mock_workspace_service
     ):
         """Missing lakehouse returns error result."""
@@ -648,7 +648,7 @@ class TestFabricNotebookService:
             FabricItemNotFoundError("Lakehouse", "Lakehouse", "workspace-123"),
         ]
 
-        result = notebook_service.update_notebook_content(
+        result = notebook_service.update_notebook_definition(
             workspace_name="Workspace",
             notebook_name="Notebook",
             notebook_content={"cells": []},

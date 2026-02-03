@@ -31,10 +31,10 @@ Date: 2026-02-01
 2. **Remove** `attach_lakehouse_to_notebook`
    - Replace with optional `default_lakehouse_name` (+ optional `lakehouse_workspace_name`) on:
      - `create_notebook`
-     - `update_notebook_content`
+     - `update_notebook_definition`
    - Default behavior: if not provided, no changes to dependencies.
 
-3. **Add** `update_notebook_content`
+3. **Add** `update_notebook_definition`
    - Inputs: `workspace_name`, `notebook_name`, `notebook_content` (JSON dict).
    - Optional: `default_lakehouse_name`, `lakehouse_workspace_name`.
    - Behavior:
@@ -69,14 +69,14 @@ Date: 2026-02-01
 ## Implementation Outline
 
 ### Notebook
-- Add new service method: `update_notebook_content` in `services/notebook.py`.
+- Add new service method: `update_notebook_definition` in `services/notebook.py`.
   - Reuse `getDefinition?format=ipynb` logic already used in `attach_lakehouse_to_notebook`.
   - Apply lakehouse metadata patch only if `default_lakehouse_name` provided.
   - Encode updated ipynb payload and call `updateDefinition`.
 - Update tools in `tools/notebook_tools.py`:
   - Replace `import_notebook_to_fabric` tool with `create_notebook`.
   - Remove `attach_lakehouse_to_notebook` tool.
-  - Add `update_notebook_content` tool.
+  - Add `update_notebook_definition` tool.
   - Rename `get_notebook_content`, `get_notebook_execution_details`, `list_notebook_executions`.
   - Update parameter names to `notebook_name`.
 - Update tool registry and counts in `tools/__init__.py` and `README.md`.
@@ -93,7 +93,7 @@ Date: 2026-02-01
 ## Tests
 - Update unit tests for notebook tools/services:
   - `create_notebook` happy path.
-  - `update_notebook_content` happy path with/without lakehouse metadata.
+  - `update_notebook_definition` happy path with/without lakehouse metadata.
   - Rename assertions for run tools.
 - Update pipeline tool tests:
   - `create_pipeline` blank and with definition.
@@ -106,7 +106,7 @@ Date: 2026-02-01
 - Update README tool list and counts.
 
 ## Open Questions
-- Confirm default behavior for `update_notebook_content`:
+- Confirm default behavior for `update_notebook_definition`:
   - Preserve metadata unless lakehouse args provided (recommended).
 - Confirm `create_notebook` input format:
   - JSON dict vs raw string (recommended: JSON dict).
