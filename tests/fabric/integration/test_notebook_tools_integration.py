@@ -121,16 +121,24 @@ async def test_update_notebook_definition(
         )
         assert update_result["status"] == "success"
 
-        updated_definition = await call_tool(
-            "get_notebook_definition",
-            workspace_name=workspace_name,
-            notebook_name=notebook_name,
+        # Poll until updated cell is visible (eventual consistency)
+        async def _check_updated_cell():
+            result = await call_tool(
+                "get_notebook_definition",
+                workspace_name=workspace_name,
+                notebook_name=notebook_name,
+            )
+            if result.get("status") != "success":
+                return None
+            cells = result.get("definition", {}).get("cells", [])
+            if any("updated cell" in "".join(cell.get("source", [])) for cell in cells):
+                return result
+            return None
+
+        updated_definition = await poll_until(
+            _check_updated_cell, timeout_seconds=120, interval_seconds=10
         )
-        assert updated_definition["status"] == "success"
-        cells = updated_definition.get("definition", {}).get("cells", [])
-        assert any(
-            "updated cell" in "".join(cell.get("source", [])) for cell in cells
-        )
+        assert updated_definition is not None, "Updated cell not found after polling"
     finally:
         await delete_item_if_exists(notebook_name, "Notebook")
 
