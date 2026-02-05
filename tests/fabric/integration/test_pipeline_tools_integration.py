@@ -228,9 +228,6 @@ async def test_add_dataflow_activity_to_pipeline(
     dataflow_name,
     workspace_name,
 ):
-    if not dataflow_name:
-        pytest.skip("Missing dataflow name for pipeline dataflow activity test")
-
     pipeline_name = unique_name("e2e_pipeline_dataflow")
     try:
         create_result = await call_tool(

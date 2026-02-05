@@ -500,10 +500,52 @@ def pipeline_copy_sql_inputs():
     }
 
 
-@pytest.fixture
-def dataflow_name():
-    """Optional dataflow name for pipeline integration tests."""
-    return get_env_optional("FABRIC_TEST_DATAFLOW_NAME")
+@pytest_asyncio.fixture
+async def dataflow_name(call_tool, delete_item_if_exists, workspace_name, poll_until):
+    """Create a test dataflow for pipeline integration tests, yield name, cleanup."""
+    name = unique_name("fixture_dataflow")
+
+    # Simple Power Query M code that creates a literal table
+    mashup_content = """section Section1;
+shared FixtureQuery = let
+    Source = #table(
+        type table [Col1 = text, Col2 = number],
+        {{"A", 1}, {"B", 2}}
+    )
+in
+    Source;
+"""
+
+    async def _check_dataflow_ready():
+        result = await call_tool(
+            "get_dataflow_definition",
+            workspace_name=workspace_name,
+            dataflow_name=name,
+        )
+        if result.get("status") == "success":
+            return result
+        message = (result.get("message") or "").lower()
+        if "not found" in message or "notfound" in message:
+            return None
+        return result
+
+    create_result = await call_tool(
+        "create_dataflow",
+        workspace_name=workspace_name,
+        dataflow_name=name,
+        mashup_content=mashup_content,
+        description="Fixture dataflow for integration tests",
+    )
+    if create_result.get("status") != "success":
+        pytest.skip(f"Failed to create fixture dataflow: {create_result.get('message')}")
+
+    # Wait for dataflow to be available
+    await poll_until(_check_dataflow_ready, timeout_seconds=120, interval_seconds=10)
+
+    yield name
+
+    # Cleanup
+    await delete_item_if_exists(name, "Dataflow")
 
 
 def _parse_semantic_model_columns(raw: str | None, env_name: str) -> list[dict] | None:
