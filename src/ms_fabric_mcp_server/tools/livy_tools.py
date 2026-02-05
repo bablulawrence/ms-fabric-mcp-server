@@ -77,6 +77,8 @@ def register_livy_tools(mcp: "FastMCP", livy_service: FabricLivyService):
             
         Returns:
             Dictionary with session details including id, state, kind, appId, appInfo, and log.
+            When Fabric falls back to a slower startup path, response may include
+            fallback_reasons and fallback_messages from session tags.
             
         Example:
             ```python

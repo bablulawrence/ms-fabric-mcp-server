@@ -150,6 +150,34 @@ shared Customers = let Source = 1 in Source;
             mashup_content="section Section1; shared Query = 1;",
         )
 
+    @pytest.mark.parametrize(
+        "payload, expected",
+        [
+            ({"message": "top-level"}, "top-level"),
+            ({"error": {"message": "nested"}}, "nested"),
+            ({"failureReason": {"message": "failed"}}, "failed"),
+            ({"moreDetails": [{"message": "detail"}]}, "detail"),
+            ({"moreDetails": [{"detail": {"value": "detail-value"}}]}, "detail-value"),
+            (
+                {"pbi.error": {"details": [{"code": "DetailsMessage", "detail": {"value": "pbi"}}]}},
+                "pbi",
+            ),
+            (
+                {
+                    "error": {
+                        "pbi.error": {
+                            "details": [{"code": "DetailsMessage", "detail": {"value": "pbi-nested"}}]
+                        }
+                    }
+                },
+                "pbi-nested",
+            ),
+        ],
+    )
+    def test_extract_dataflow_error_shapes(self, dataflow_service, payload, expected):
+        """Extracts error message from multiple payload shapes."""
+        assert dataflow_service._extract_dataflow_error(payload) == expected
+
     # --- Create dataflow tests ---
 
     def test_create_dataflow_success(self, dataflow_service, mock_client):
@@ -344,3 +372,20 @@ shared Customers = let Source = 1 in Source;
                 workspace_id="ws-123",
                 dataflow_id="df-missing",
             )
+
+    def test_run_dataflow_extracts_error_message(self, dataflow_service, mock_client):
+        """Uses response payload to surface detailed errors."""
+        error_payload = {"moreDetails": [{"message": "Something went wrong"}]}
+        mock_client.make_api_request.side_effect = FabricAPIError(
+            status_code=400,
+            message="Bad Request",
+            response_body=json.dumps(error_payload),
+        )
+
+        with pytest.raises(FabricAPIError) as exc_info:
+            dataflow_service.run_dataflow(
+                workspace_id="ws-123",
+                dataflow_id="df-123",
+            )
+
+        assert "Something went wrong" in str(exc_info.value)

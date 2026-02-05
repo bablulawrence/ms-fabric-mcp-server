@@ -256,6 +256,32 @@ class TestFabricSQLService:
         assert result["status"] == "error"
         assert result["affected_rows"] == 0
 
+    def test_execute_statement_rejects_ddl_without_flag(self, sql_service):
+        """execute_statement rejects DDL when allow_ddl is False."""
+        service, *_ = sql_service
+        connection = Mock()
+        connection.cursor.return_value = Mock()
+        service._connection = connection
+
+        result = service.execute_statement("CREATE TABLE test (id int)")
+
+        assert result["status"] == "error"
+        assert result["affected_rows"] == 0
+
+    def test_execute_statement_allows_ddl_with_flag(self, sql_service):
+        """execute_statement allows DDL when allow_ddl is True."""
+        service, *_ = sql_service
+        cursor = Mock()
+        cursor.rowcount = 0
+        connection = Mock()
+        connection.cursor.return_value = cursor
+        service._connection = connection
+
+        result = service.execute_statement("CREATE TABLE test (id int)", allow_ddl=True)
+
+        assert result["status"] == "success"
+        connection.commit.assert_called_once()
+
     def test_execute_statement_failure(self, sql_service):
         """execute_statement rolls back on error."""
         service, *_ = sql_service
@@ -328,7 +354,9 @@ class TestFabricSQLService:
 
         assert result["status"] == "success"
         service.connect.assert_called_once_with("endpoint", "Metadata")
-        service.execute_statement.assert_called_once_with("UPDATE test SET a=1")
+        service.execute_statement.assert_called_once_with(
+            "UPDATE test SET a=1", allow_ddl=False
+        )
         service.close.assert_called_once()
 
     def test_get_tables_success(self, sql_service):

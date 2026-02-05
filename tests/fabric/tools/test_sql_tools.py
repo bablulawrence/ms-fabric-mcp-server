@@ -46,5 +46,12 @@ class TestSQLTools:
             sql_endpoint="endpoint",
             statement="UPDATE t SET x=1",
             database="Metadata",
+            allow_ddl=True,
         )
         assert stmt["status"] == "success"
+        sql_service.execute_sql_statement.assert_called_once_with(
+            sql_endpoint="endpoint",
+            statement="UPDATE t SET x=1",
+            database="Metadata",
+            allow_ddl=True,
+        )

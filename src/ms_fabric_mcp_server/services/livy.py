@@ -86,6 +86,17 @@ class FabricLivyService:
         self.poll_interval = poll_interval
         
         logger.debug("FabricLivyService initialized")
+
+    @staticmethod
+    def _extract_fallback_info(session_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract fallback warnings from Livy session tags."""
+        tags = session_data.get("tags") or {}
+        fallback_info: Dict[str, Any] = {}
+        if "FallbackReasons" in tags:
+            fallback_info["fallback_reasons"] = tags["FallbackReasons"]
+        if "FallbackMessages" in tags:
+            fallback_info["fallback_messages"] = tags["FallbackMessages"]
+        return fallback_info
     
     def create_session(
         self,
@@ -171,6 +182,7 @@ class FabricLivyService:
             session_id = session_data.get("id")
             
             logger.info(f"Successfully created Livy session: {session_id}")
+            fallback_info = self._extract_fallback_info(session_data)
             
             # If with_wait is True, poll until session becomes available
             if with_wait:
@@ -181,8 +193,15 @@ class FabricLivyService:
                     session_id=session_id,
                     timeout_seconds=timeout_seconds
                 )
+                final_fallback_info = self._extract_fallback_info(final_session_data)
+                if final_fallback_info:
+                    return {**final_session_data, **final_fallback_info}
+                if fallback_info:
+                    return {**final_session_data, **fallback_info}
                 return final_session_data
             
+            if fallback_info:
+                return {**session_data, **fallback_info}
             return session_data
             
         except FabricAPIError as exc:

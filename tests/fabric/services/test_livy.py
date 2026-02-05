@@ -64,6 +64,30 @@ class TestFabricLivyService:
         env_details = json.loads(payload["conf"]["spark.fabric.environmentDetails"])
         assert env_details["id"] == "env-1"
 
+    def test_create_session_includes_fallback_info(self, livy_service, mock_fabric_client):
+        """Create session surfaces fallback warnings from tags."""
+        response = _make_response(
+            200,
+            {
+                "id": 1,
+                "state": "starting",
+                "tags": {
+                    "FallbackReasons": ["env"],
+                    "FallbackMessages": ["Using base environment"],
+                },
+            },
+        )
+        mock_fabric_client.make_api_request.return_value = response
+
+        result = livy_service.create_session(
+            workspace_id="ws-1",
+            lakehouse_id="lh-1",
+            with_wait=False,
+        )
+
+        assert result["fallback_reasons"] == ["env"]
+        assert result["fallback_messages"] == ["Using base environment"]
+
     def test_create_session_with_wait_uses_wait_for_session(self, livy_service, mock_fabric_client):
         """with_wait True delegates to wait_for_session."""
         mock_fabric_client.make_api_request.return_value = _make_response(200, {"id": 7})

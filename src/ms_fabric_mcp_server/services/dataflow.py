@@ -169,6 +169,57 @@ in
                 message="mashup_content must contain a section declaration (e.g., 'section Section1;')",
             )
 
+    @staticmethod
+    def _extract_dataflow_error(payload: Dict[str, Any]) -> str:
+        """Extract useful error message from Fabric dataflow error payloads."""
+        if not isinstance(payload, dict):
+            return "Unknown dataflow error"
+
+        message = (
+            payload.get("message")
+            or payload.get("error", {}).get("message")
+            or payload.get("failureReason", {}).get("message")
+        )
+        if message:
+            return message
+
+        for detail in payload.get("moreDetails", []) or []:
+            if not isinstance(detail, dict):
+                continue
+            msg = detail.get("message")
+            if not msg:
+                detail_value = detail.get("detail")
+                if isinstance(detail_value, dict):
+                    msg = detail_value.get("value")
+            if msg:
+                return msg
+
+        pbi_error = payload.get("pbi.error") or payload.get("error", {}).get("pbi.error")
+        if isinstance(pbi_error, dict):
+            for detail in pbi_error.get("details", []) or []:
+                if not isinstance(detail, dict):
+                    continue
+                if detail.get("code") == "DetailsMessage":
+                    detail_value = detail.get("detail")
+                    if isinstance(detail_value, dict) and detail_value.get("value"):
+                        return detail_value.get("value")
+                    return "Unknown dataflow error"
+
+        return "Unknown dataflow error"
+
+    @staticmethod
+    def _load_error_payload(response_body: Optional[str]) -> Dict[str, Any]:
+        """Parse response body to JSON payload for error extraction."""
+        if not response_body:
+            return {}
+        try:
+            parsed = json.loads(response_body)
+        except (TypeError, ValueError):
+            return {"message": response_body}
+        if isinstance(parsed, dict):
+            return parsed
+        return {"message": str(parsed)}
+
     def create_dataflow(
         self,
         workspace_id: str,
@@ -365,6 +416,14 @@ in
                     item_name=dataflow_id,
                     workspace_name=workspace_id,
                 )
+            payload = self._load_error_payload(e.response_body)
+            if payload:
+                error_message = self._extract_dataflow_error(payload)
+                raise FabricAPIError(
+                    status_code=e.status_code,
+                    message=error_message,
+                    response_body=e.response_body,
+                ) from e
             raise
 
         # Extract job info from response headers
