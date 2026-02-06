@@ -412,6 +412,12 @@ def sql_database():
 
 
 @pytest.fixture
+def warehouse_name():
+    """Configured warehouse display name."""
+    return get_env_or_skip("FABRIC_TEST_WAREHOUSE_NAME")
+
+
+@pytest.fixture
 def notebook_fixture_path() -> Path:
     """Path to the minimal notebook fixture."""
     return PROJECT_ROOT / "tests" / "fixtures" / "minimal_notebook.ipynb"
