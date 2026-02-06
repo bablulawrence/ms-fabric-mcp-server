@@ -3,7 +3,9 @@
 """Generic service for Fabric item operations."""
 
 import logging
+import re
 from typing import List, Dict, Optional, Any, TYPE_CHECKING
+from urllib.parse import urlencode
 
 if TYPE_CHECKING:
     from ..models.lakehouse import FabricLakehouse
@@ -117,15 +119,19 @@ class FabricItemService:
             )
     
     def list_items(
-        self, 
-        workspace_id: str, 
-        item_type: Optional[str] = None
+        self,
+        workspace_id: str,
+        item_type: Optional[str] = None,
+        root_folder_id: Optional[str] = None,
+        recursive: bool = True,
     ) -> List[FabricItem]:
         """List items in workspace, optionally filtered by type.
         
         Args:
             workspace_id: Workspace ID
             item_type: Optional item type filter
+            root_folder_id: Optional folder ID to scope the listing
+            recursive: Whether to include items in subfolders (default True)
             
         Returns:
             List of FabricItem objects
@@ -136,20 +142,29 @@ class FabricItemService:
         """
         if item_type:
             self._validate_item_type(item_type)
+        if root_folder_id is not None and not str(root_folder_id).strip():
+            raise FabricValidationError(
+                "root_folder_id",
+                str(root_folder_id),
+                "Root folder ID cannot be empty",
+            )
         
         logger.info(f"Fetching items from workspace {workspace_id}")
         
         try:
             # Build endpoint with optional type filter
             endpoint = f"workspaces/{workspace_id}/items"
-            params = {}
+            params: Dict[str, Any] = {}
             if item_type:
                 params["type"] = item_type
-            
-            # Add query parameters if any
+            if root_folder_id:
+                params["rootFolderId"] = root_folder_id
+                params["recursive"] = str(bool(recursive)).lower()
+            elif recursive is False:
+                params["recursive"] = "false"
+
             if params:
-                param_str = "&".join([f"{k}={v}" for k, v in params.items()])
-                endpoint = f"{endpoint}?{param_str}"
+                endpoint = f"{endpoint}?{urlencode(params)}"
             
             response = self.client.make_api_request("GET", endpoint)
             items_data = response.json().get("value", [])
@@ -163,6 +178,7 @@ class FabricItemService:
                     type=item_data["type"],
                     workspace_id=workspace_id,
                     description=item_data.get("description"),
+                    folder_id=item_data.get("folderId"),
                     created_date=item_data.get("createdDate"),
                     modified_date=item_data.get("modifiedDate")
                 )
@@ -177,6 +193,185 @@ class FabricItemService:
         except Exception as exc:
             logger.error(f"Unexpected error fetching items: {exc}")
             raise FabricError(f"Failed to fetch items: {exc}")
+
+    def list_folders(
+        self,
+        workspace_id: str,
+        root_folder_id: Optional[str] = None,
+        recursive: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """List folders in a workspace."""
+        if root_folder_id is not None and not str(root_folder_id).strip():
+            raise FabricValidationError(
+                "root_folder_id",
+                str(root_folder_id),
+                "Root folder ID cannot be empty",
+            )
+
+        endpoint = f"workspaces/{workspace_id}/folders"
+        params: Dict[str, Any] = {}
+        if root_folder_id:
+            params["rootFolderId"] = root_folder_id
+        params["recursive"] = str(bool(recursive)).lower()
+        if params:
+            endpoint = f"{endpoint}?{urlencode(params)}"
+
+        folders: List[Dict[str, Any]] = []
+        continuation_token: Optional[str] = None
+
+        while True:
+            request_endpoint = endpoint
+            if continuation_token:
+                joiner = "&" if "?" in endpoint else "?"
+                request_endpoint = f"{endpoint}{joiner}continuationToken={continuation_token}"
+
+            response = self.client.make_api_request("GET", request_endpoint)
+            response_data = response.json()
+            folders.extend(response_data.get("value", []))
+            continuation_token = response_data.get("continuationToken")
+
+            if not continuation_token:
+                break
+
+        return folders
+
+    def create_folder(
+        self,
+        workspace_id: str,
+        display_name: str,
+        parent_folder_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create a folder in a workspace."""
+        if not display_name or not str(display_name).strip():
+            raise FabricValidationError(
+                "display_name",
+                str(display_name),
+                "Folder display name cannot be empty",
+            )
+
+        payload: Dict[str, Any] = {"displayName": display_name}
+        if parent_folder_id:
+            payload["parentFolderId"] = parent_folder_id
+
+        response = self.client.make_api_request(
+            "POST",
+            f"workspaces/{workspace_id}/folders",
+            payload=payload,
+        )
+        data = response.json()
+        if not isinstance(data, dict) or not data.get("id"):
+            raise FabricError("Failed to create folder: empty response")
+        return data
+
+    def move_folder(
+        self,
+        workspace_id: str,
+        folder_id: str,
+        target_folder_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Move a folder within a workspace."""
+        if not folder_id or not str(folder_id).strip():
+            raise FabricValidationError(
+                "folder_id",
+                str(folder_id),
+                "Folder ID cannot be empty",
+            )
+        if target_folder_id is not None and not str(target_folder_id).strip():
+            raise FabricValidationError(
+                "target_folder_id",
+                str(target_folder_id),
+                "Target folder ID cannot be empty",
+            )
+
+        payload: Dict[str, Any] = {}
+        if target_folder_id:
+            payload["targetFolderId"] = target_folder_id
+
+        response = self.client.make_api_request(
+            "POST",
+            f"workspaces/{workspace_id}/folders/{folder_id}/move",
+            payload=payload,
+        )
+        data = response.json()
+        if not isinstance(data, dict) or not data.get("id"):
+            raise FabricError("Failed to move folder: empty response")
+        return data
+
+    def delete_folder(self, workspace_id: str, folder_id: str) -> Dict[str, Any]:
+        """Delete a folder from a workspace."""
+        if not folder_id or not str(folder_id).strip():
+            raise FabricValidationError(
+                "folder_id",
+                str(folder_id),
+                "Folder ID cannot be empty",
+            )
+
+        response = self.client.make_api_request(
+            "DELETE",
+            f"workspaces/{workspace_id}/folders/{folder_id}",
+        )
+
+        try:
+            data = response.json()
+        except ValueError:
+            data = {}
+
+        if isinstance(data, dict) and data.get("id"):
+            return data
+
+        return {"id": folder_id}
+
+    def resolve_folder_id_from_path(
+        self,
+        workspace_id: str,
+        folder_path: Optional[str],
+        create_missing: bool = False,
+    ) -> Optional[str]:
+        """Resolve a folder path to a folder ID, optionally creating missing folders."""
+        if folder_path is None:
+            return None
+
+        trimmed = str(folder_path).strip()
+        if not trimmed:
+            return None
+
+        normalized = trimmed.strip("/\\")
+        if not normalized:
+            return None
+
+        parts = [part for part in re.split(r"[\\/]+", normalized) if part]
+        if not parts:
+            return None
+
+        folders = self.list_folders(workspace_id, recursive=True)
+        folder_lookup: Dict[tuple[Optional[str], str], str] = {}
+        for folder in folders:
+            folder_lookup[(folder.get("parentFolderId"), folder.get("displayName", ""))] = folder.get("id")
+
+        parent_id: Optional[str] = None
+        for part in parts:
+            key = (parent_id, part)
+            existing_id = folder_lookup.get(key)
+            if existing_id:
+                parent_id = existing_id
+                continue
+
+            if not create_missing:
+                raise FabricValidationError(
+                    "folder_path",
+                    folder_path,
+                    f"Folder path not found: {folder_path}",
+                )
+
+            created = self.create_folder(
+                workspace_id=workspace_id,
+                display_name=part,
+                parent_folder_id=parent_id,
+            )
+            parent_id = created.get("id")
+            folder_lookup[(created.get("parentFolderId"), created.get("displayName", ""))] = parent_id
+
+        return parent_id
     
     def get_item_by_name(
         self, 
@@ -241,6 +436,7 @@ class FabricItemService:
                 type=item_data["type"],
                 workspace_id=workspace_id,
                 description=item_data.get("description"),
+                folder_id=item_data.get("folderId"),
                 created_date=item_data.get("createdDate"),
                 modified_date=item_data.get("modifiedDate")
             )
@@ -400,6 +596,7 @@ class FabricItemService:
                 type=item_data["type"],
                 workspace_id=workspace_id,
                 description=item_data.get("description"),
+                folder_id=item_data.get("folderId"),
                 created_date=item_data.get("createdDate"),
                 modified_date=item_data.get("modifiedDate")
             )
@@ -448,6 +645,7 @@ class FabricItemService:
                 type=item_data["type"],
                 workspace_id=workspace_id,
                 description=item_data.get("description"),
+                folder_id=item_data.get("folderId"),
                 created_date=item_data.get("createdDate"),
                 modified_date=item_data.get("modifiedDate")
             )
@@ -460,6 +658,84 @@ class FabricItemService:
         except Exception as exc:
             logger.error(f"Unexpected error updating item: {exc}")
             raise FabricError(f"Failed to update item: {exc}")
+
+    def rename_item(
+        self,
+        workspace_id: str,
+        item_id: str,
+        new_display_name: str,
+        description: Optional[str] = None,
+    ) -> FabricItem:
+        """Rename an item in a workspace."""
+        if not new_display_name or not new_display_name.strip():
+            raise FabricValidationError(
+                "new_display_name",
+                new_display_name,
+                "New display name cannot be empty",
+            )
+
+        updates: Dict[str, Any] = {"displayName": new_display_name}
+        if description is not None:
+            updates["description"] = description
+
+        return self.update_item(workspace_id, item_id, updates)
+
+    def move_item_to_folder(
+        self,
+        workspace_id: str,
+        item_id: str,
+        target_folder_id: Optional[str] = None,
+    ) -> FabricItem:
+        """Move an item to a folder in a workspace."""
+        if target_folder_id is not None and not str(target_folder_id).strip():
+            raise FabricValidationError(
+                "target_folder_id",
+                str(target_folder_id),
+                "Target folder ID cannot be empty",
+            )
+
+        logger.info(
+            f"Moving item {item_id} to folder {target_folder_id} in workspace {workspace_id}"
+        )
+
+        try:
+            payload: Dict[str, Any] = {"targetFolderId": target_folder_id}
+
+            response = self.client.make_api_request(
+                "POST",
+                f"workspaces/{workspace_id}/items/{item_id}/move",
+                payload=payload,
+                wait_for_lro=True,
+            )
+
+            item_data = response.json()
+            if (
+                not isinstance(item_data, dict)
+                or not item_data
+                or "id" not in item_data
+                or "displayName" not in item_data
+                or "type" not in item_data
+            ):
+                # Move responses can omit item payload; fetch the updated item.
+                return self.get_item_by_id(workspace_id, item_id)
+
+            return FabricItem(
+                id=item_data["id"],
+                display_name=item_data["displayName"],
+                type=item_data["type"],
+                workspace_id=workspace_id,
+                description=item_data.get("description"),
+                folder_id=item_data.get("folderId"),
+                created_date=item_data.get("createdDate"),
+                modified_date=item_data.get("modifiedDate"),
+            )
+        except FabricValidationError:
+            raise
+        except FabricAPIError:
+            raise
+        except Exception as exc:
+            logger.error(f"Unexpected error moving item: {exc}")
+            raise FabricError(f"Failed to move item: {exc}")
     
     def delete_item(self, workspace_id: str, item_id: str) -> None:
         """Delete item from workspace.

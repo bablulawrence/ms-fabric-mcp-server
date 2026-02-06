@@ -1,5 +1,5 @@
 # ABOUTME: Main entry point for registering Microsoft Fabric MCP tools.
-# ABOUTME: Provides register_fabric_tools() to add all 40 Fabric tools to an MCP server.
+# ABOUTME: Provides register_fabric_tools() to add all 59 Fabric tools to an MCP server.
 """Fabric MCP tools - Modular tool registration.
 
 This module provides the main entry point for registering Microsoft Fabric MCP tools.
@@ -21,8 +21,10 @@ from ..services import (
     FabricSQLService,
     FabricLivyService,
     FabricPipelineService,
+    FabricDataflowService,
     FabricSemanticModelService,
     FabricPowerBIService,
+    FabricLakehouseFileService,
 )
 from .workspace_tools import register_workspace_tools
 from .item_tools import register_item_tools
@@ -31,33 +33,44 @@ from .job_tools import register_job_tools
 from .sql_tools import register_sql_tools
 from .livy_tools import register_livy_tools
 from .pipeline_tools import register_pipeline_tools
+from .dataflow_tools import register_dataflow_tools
 from .semantic_model_tools import register_semantic_model_tools
 from .powerbi_tools import register_powerbi_tools
+from .lakehouse_file_tools import register_lakehouse_file_tools
 
 logger = logging.getLogger(__name__)
 
 
 def register_fabric_tools(mcp: "FastMCP"):
-    """Register all Fabric MCP tools (workspace, item, notebook, job, SQL, Livy, pipeline).
+    """Register all Fabric MCP tools (workspace, item, notebook, job, SQL, Livy, pipeline, dataflow).
     
-    This is the main registration function that sets up all 40 Fabric tools.
+    This is the main registration function that sets up all 59 Fabric tools.
     It initializes the service hierarchy and registers all tool categories.
     
     Tool Categories:
     - Workspace tools (1): list_workspaces
-    - Item tools (2): list_items, delete_item
-    - Notebook tools (6): import_notebook_to_fabric, get_notebook_content, attach_lakehouse_to_notebook, get_notebook_execution_details, list_notebook_executions, get_notebook_driver_logs
+    - Item tools (10): list_items, get_item, list_folders, create_folder, move_folder,
+      delete_folder, create_lakehouse,
+      delete_item, rename_item, move_item_to_folder
+    - Notebook tools (6): create_notebook, get_notebook_definition, update_notebook_definition,
+      get_notebook_run_details, list_notebook_runs, get_notebook_driver_logs
     - Job tools (4): run_on_demand_job, get_job_status, get_job_status_by_url, get_operation_result
     - SQL tools (3): get_sql_endpoint, execute_sql_query, execute_sql_statement
     - Livy tools (8): Session and statement management for Spark
-    - Pipeline tools (7): create_blank_pipeline, add_copy_activity_to_pipeline, add_notebook_activity_to_pipeline,
+    - Pipeline tools (10): create_pipeline, add_copy_activity_to_pipeline, add_notebook_activity_to_pipeline,
       add_dataflow_activity_to_pipeline, add_activity_to_pipeline, delete_activity_from_pipeline,
-      remove_activity_dependency
-    - Semantic model tools (7): create_semantic_model, add_table_to_semantic_model,
+      remove_activity_dependency, add_activity_dependency,
+      get_pipeline_definition, update_pipeline_definition
+    - Dataflow tools (3): create_dataflow, get_dataflow_definition, run_dataflow
+    - Semantic model tools (9): create_semantic_model, add_table_to_semantic_model,
       add_relationship_to_semantic_model, get_semantic_model_details,
       get_semantic_model_definition, add_measures_to_semantic_model,
-      delete_measures_from_semantic_model
+      delete_measures_from_semantic_model,
+      delete_table_from_semantic_model,
+      delete_relationship_from_semantic_model
     - Power BI tools (2): refresh_semantic_model, execute_dax_query
+    - Lakehouse file tools (3): list_lakehouse_files, upload_lakehouse_file,
+      delete_lakehouse_file
     
     Args:
         mcp: FastMCP server instance to register tools on.
@@ -90,6 +103,7 @@ def register_fabric_tools(mcp: "FastMCP"):
         job_service = FabricJobService(fabric_client, workspace_service, item_service)
         livy_service = FabricLivyService(fabric_client)
         pipeline_service = FabricPipelineService(fabric_client, workspace_service, item_service)
+        dataflow_service = FabricDataflowService(fabric_client, workspace_service, item_service)
         semantic_model_service = FabricSemanticModelService(workspace_service, item_service)
         powerbi_service = FabricPowerBIService(
             fabric_client,
@@ -98,6 +112,7 @@ def register_fabric_tools(mcp: "FastMCP"):
             refresh_poll_interval=config.POWERBI_REFRESH_POLL_INTERVAL,
             refresh_wait_timeout=config.POWERBI_REFRESH_WAIT_TIMEOUT,
         )
+        lakehouse_file_service = FabricLakehouseFileService(fabric_client)
         
         # SQL service is optional (requires pyodbc)
         sql_service = None
@@ -125,10 +140,17 @@ def register_fabric_tools(mcp: "FastMCP"):
         logger.info("SQL tools not registered (pyodbc not available)")
     register_livy_tools(mcp, livy_service)
     register_pipeline_tools(mcp, pipeline_service, workspace_service, item_service)
+    register_dataflow_tools(mcp, dataflow_service, workspace_service, item_service)
     register_semantic_model_tools(mcp, semantic_model_service)
     register_powerbi_tools(mcp, powerbi_service)
+    register_lakehouse_file_tools(
+        mcp,
+        lakehouse_file_service,
+        workspace_service,
+        item_service,
+    )
     
-    tool_count = 40 if sql_service else 37  # 3 SQL tools
+    tool_count = 59 if sql_service else 56  # 3 SQL tools
     logger.info(f"All Fabric tools registered successfully ({tool_count} tools)")
 
 
@@ -142,6 +164,8 @@ __all__ = [
     "register_sql_tools",
     "register_livy_tools",
     "register_pipeline_tools",
+    "register_dataflow_tools",
     "register_semantic_model_tools",
     "register_powerbi_tools",
+    "register_lakehouse_file_tools",
 ]

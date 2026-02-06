@@ -64,6 +64,30 @@ class TestFabricLivyService:
         env_details = json.loads(payload["conf"]["spark.fabric.environmentDetails"])
         assert env_details["id"] == "env-1"
 
+    def test_create_session_includes_fallback_info(self, livy_service, mock_fabric_client):
+        """Create session surfaces fallback warnings from tags."""
+        response = _make_response(
+            200,
+            {
+                "id": 1,
+                "state": "starting",
+                "tags": {
+                    "FallbackReasons": ["env"],
+                    "FallbackMessages": ["Using base environment"],
+                },
+            },
+        )
+        mock_fabric_client.make_api_request.return_value = response
+
+        result = livy_service.create_session(
+            workspace_id="ws-1",
+            lakehouse_id="lh-1",
+            with_wait=False,
+        )
+
+        assert result["fallback_reasons"] == ["env"]
+        assert result["fallback_messages"] == ["Using base environment"]
+
     def test_create_session_with_wait_uses_wait_for_session(self, livy_service, mock_fabric_client):
         """with_wait True delegates to wait_for_session."""
         mock_fabric_client.make_api_request.return_value = _make_response(200, {"id": 7})
@@ -309,3 +333,34 @@ class TestFabricLivyService:
         with patch("time.time", side_effect=itertools.chain([0], itertools.repeat(10))):
             with pytest.raises(FabricLivyTimeoutError):
                 livy_service.wait_for_statement("ws-1", "lh-1", "1", "1", timeout_seconds=1)
+
+    def test_wait_for_session_retries_on_transient_404(self, livy_service):
+        """Transient 404 errors are retried during session polling."""
+        # Simulate 2x 404 errors, then success
+        livy_service.get_session_status = Mock(
+            side_effect=[
+                FabricLivySessionError("1", "Failed to get session: API error 404: ..."),
+                FabricLivySessionError("1", "Failed to get session: API error 404: ..."),
+                {"id": 1, "state": "idle"},
+            ]
+        )
+
+        with patch("time.sleep", return_value=None):
+            result = livy_service.wait_for_session("ws-1", "lh-1", "1", timeout_seconds=10)
+
+        assert result["state"] == "idle"
+        assert livy_service.get_session_status.call_count == 3
+
+    def test_wait_for_session_fails_after_max_404_retries(self, livy_service):
+        """Exceeding max 404 retries raises FabricLivySessionError."""
+        # Simulate repeated 404 errors exceeding max retries (5)
+        livy_service.get_session_status = Mock(
+            side_effect=FabricLivySessionError("1", "Failed to get session: API error 404: ...")
+        )
+
+        with patch("time.sleep", return_value=None):
+            with pytest.raises(FabricLivySessionError):
+                livy_service.wait_for_session("ws-1", "lh-1", "1", timeout_seconds=10)
+
+        # Should have retried max_404_retries + 1 times
+        assert livy_service.get_session_status.call_count == 6

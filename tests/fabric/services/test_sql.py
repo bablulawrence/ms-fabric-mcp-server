@@ -1,7 +1,7 @@
 """Unit tests for FabricSQLService."""
 
 import struct
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -149,6 +149,7 @@ class TestFabricSQLService:
         args, kwargs = pyodbc_mock.connect.call_args
         assert "Server=server-host,1433" in args[0]
         assert kwargs["attrs_before"][1256] == b"token"
+        assert kwargs["autocommit"] is True
         assert service._connection is not None
 
     def test_connect_failure(self, sql_service):
@@ -199,6 +200,28 @@ class TestFabricSQLService:
         assert result.status == "error"
         assert "Query execution failed" in result.message
 
+    def test_execute_query_retries_transient_error(self, sql_service):
+        """execute_query retries once on transient ODBC errors."""
+        service, *_ = sql_service
+        cursor = Mock()
+        cursor.description = [("id",)]
+        cursor.fetchall.return_value = [(1,)]
+        cursor.execute.side_effect = [RuntimeError("HYT00: timeout"), None]
+        connection = Mock()
+        connection.cursor.return_value = cursor
+        service._connection = connection
+        service._sql_endpoint = None
+        service._database = None
+
+        with patch("ms_fabric_mcp_server.services.sql.time.sleep") as sleep_mock, patch(
+            "ms_fabric_mcp_server.services.sql.random.uniform", return_value=5.0
+        ):
+            result = service.execute_query("SELECT 1")
+
+        assert result.status == "success"
+        assert cursor.execute.call_count == 2
+        sleep_mock.assert_called_once()
+
     def test_execute_statement_requires_connection(self, sql_service):
         """execute_statement raises when not connected."""
         service, *_ = sql_service
@@ -208,7 +231,7 @@ class TestFabricSQLService:
             service.execute_statement("UPDATE test SET a=1")
 
     def test_execute_statement_success(self, sql_service):
-        """execute_statement commits and returns success."""
+        """execute_statement executes and returns success (autocommit, no manual commit)."""
         service, *_ = sql_service
         cursor = Mock()
         cursor.rowcount = 3
@@ -220,7 +243,7 @@ class TestFabricSQLService:
 
         assert result["status"] == "success"
         assert result["affected_rows"] == 3
-        connection.commit.assert_called_once()
+        connection.commit.assert_not_called()
 
     def test_execute_statement_rejects_non_dml(self, sql_service):
         """execute_statement returns error for non-DML statements."""
@@ -234,8 +257,34 @@ class TestFabricSQLService:
         assert result["status"] == "error"
         assert result["affected_rows"] == 0
 
+    def test_execute_statement_rejects_ddl_without_flag(self, sql_service):
+        """execute_statement rejects DDL when allow_ddl is False."""
+        service, *_ = sql_service
+        connection = Mock()
+        connection.cursor.return_value = Mock()
+        service._connection = connection
+
+        result = service.execute_statement("CREATE TABLE test (id int)")
+
+        assert result["status"] == "error"
+        assert result["affected_rows"] == 0
+
+    def test_execute_statement_allows_ddl_with_flag(self, sql_service):
+        """execute_statement allows DDL when allow_ddl is True."""
+        service, *_ = sql_service
+        cursor = Mock()
+        cursor.rowcount = 0
+        connection = Mock()
+        connection.cursor.return_value = cursor
+        service._connection = connection
+
+        result = service.execute_statement("CREATE TABLE test (id int)", allow_ddl=True)
+
+        assert result["status"] == "success"
+        connection.commit.assert_not_called()
+
     def test_execute_statement_failure(self, sql_service):
-        """execute_statement rolls back on error."""
+        """execute_statement returns error on failure (no rollback with autocommit)."""
         service, *_ = sql_service
         cursor = Mock()
         cursor.execute.side_effect = RuntimeError("boom")
@@ -246,7 +295,7 @@ class TestFabricSQLService:
         result = service.execute_statement("UPDATE test SET a=1")
 
         assert result["status"] == "error"
-        connection.rollback.assert_called_once()
+        connection.rollback.assert_not_called()
 
     def test_execute_sql_query_calls_close_on_error(self, sql_service):
         """execute_sql_query closes connection even on error."""
@@ -306,7 +355,9 @@ class TestFabricSQLService:
 
         assert result["status"] == "success"
         service.connect.assert_called_once_with("endpoint", "Metadata")
-        service.execute_statement.assert_called_once_with("UPDATE test SET a=1")
+        service.execute_statement.assert_called_once_with(
+            "UPDATE test SET a=1", allow_ddl=False
+        )
         service.close.assert_called_once()
 
     def test_get_tables_success(self, sql_service):

@@ -1,9 +1,9 @@
 # ABOUTME: Notebook management MCP tools for Microsoft Fabric.
-# ABOUTME: Provides tools for importing, managing, and executing notebooks.
+# ABOUTME: Provides tools for creating, updating, and executing notebooks.
 """Notebook management MCP tools.
 
 This module provides MCP tools for Microsoft Fabric notebook operations including
-importing notebooks from local files and retrieving notebook content.
+creating notebooks and retrieving notebook definitions.
 """
 
 from typing import Optional, TYPE_CHECKING
@@ -21,9 +21,8 @@ logger = logging.getLogger(__name__)
 def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookService):
     """Register notebook management MCP tools.
     
-    This function registers two notebook-related tools:
-    - import_notebook_to_fabric: Upload local .ipynb files to Fabric
-    - get_notebook_content: Retrieve notebook content and definition
+    This function registers notebook-related tools for creating, updating, and
+    inspecting notebooks, plus run history and driver logs.
     
     Args:
         mcp: FastMCP server instance to register tools on.
@@ -47,218 +46,152 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
         ```
     """
     
-    @mcp.tool(title="Import Notebook to Fabric Workspace")
+    @mcp.tool(title="Create Notebook")
     @handle_tool_errors
-    def import_notebook_to_fabric(
+    def create_notebook(
         workspace_name: str,
-        notebook_display_name: str,
-        local_notebook_path: str,
+        notebook_name: str,
+        notebook_content: dict,
         description: Optional[str] = None,
+        folder_path: Optional[str] = None,
+        default_lakehouse_name: Optional[str] = None,
+        lakehouse_workspace_name: Optional[str] = None,
     ) -> dict:
-        """Upload a local .ipynb into a Fabric workspace identified by name.
-        
-        Imports a Jupyter notebook from the local filesystem into a Microsoft Fabric
-        workspace. The notebook file must be in .ipynb format. The notebook can be
-        organized into folders using forward slashes in the display name (e.g., "demos/hello_world").
+        """Create a notebook in a Fabric workspace.
         
         Parameters:
-            workspace_name: The display name of the target workspace (case-sensitive as shown in Fabric).
-            notebook_display_name: Desired name (optionally with folders, e.g. "demos/hello_world") inside Fabric.
-            local_notebook_path: Path to the notebook file (absolute or repo-relative).
+            workspace_name: The display name of the target workspace.
+            notebook_name: Desired name inside Fabric (no folder separators).
+            notebook_content: Notebook definition in ipynb JSON format.
             description: Optional description for the notebook.
+            folder_path: Optional folder path (e.g., "demos/etl") to place the notebook.
+                         Defaults to the workspace root when omitted.
+            default_lakehouse_name: Optional default lakehouse to attach.
+            lakehouse_workspace_name: Optional workspace name for the lakehouse.
             
         Returns:
-            Dictionary with status, message, and artifact_id if successful.
-            
-        Example:
-            ```python
-            result = import_notebook_to_fabric(
-                workspace_name="My Workspace",
-                notebook_display_name="analysis/customer_analysis",
-                local_notebook_path="notebooks/customer_analysis.ipynb",
-                description="Customer behavior analysis notebook"
-            )
-            ```
+            Dictionary with status, message, and notebook_id if successful.
         """
         log_tool_invocation(
-            "import_notebook_to_fabric",
+            "create_notebook",
             workspace_name=workspace_name,
-            notebook_display_name=notebook_display_name,
-            local_notebook_path=local_notebook_path,
-            description=description
+            notebook_name=notebook_name,
+            description=description,
+            folder_path=folder_path,
+            default_lakehouse_name=default_lakehouse_name,
+            lakehouse_workspace_name=lakehouse_workspace_name,
         )
-        logger.info(f"Importing notebook '{notebook_display_name}' to workspace '{workspace_name}'")
+        logger.info(
+            f"Creating notebook '{notebook_name}' in workspace '{workspace_name}'"
+        )
         
-        result = notebook_service.import_notebook(
+        result = notebook_service.create_notebook(
             workspace_name=workspace_name,
-            notebook_name=notebook_display_name,
-            local_path=local_notebook_path,
-            description=description
+            notebook_name=notebook_name,
+            notebook_content=notebook_content,
+            description=description,
+            folder_path=folder_path,
+            default_lakehouse_name=default_lakehouse_name,
+            lakehouse_workspace_name=lakehouse_workspace_name,
         )
         
         if result.status == "success":
-            logger.info(f"Notebook import successful: {result.artifact_id}")
+            logger.info(f"Notebook created successfully: {result.notebook_id}")
             return {
                 "status": "success",
                 "message": result.message,
-                "artifact_id": result.artifact_id
+                "notebook_id": result.notebook_id,
             }
-        else:
-            logger.error(f"Notebook import failed: {result.message}")
-            return {
-                "status": "error",
-                "message": result.message
-            }
+        logger.error(f"Notebook create failed: {result.message}")
+        return {
+            "status": "error",
+            "message": result.message,
+        }
 
-    @mcp.tool(title="Get Notebook Content")
+    @mcp.tool(title="Get Notebook Definition")
     @handle_tool_errors
-    def get_notebook_content(
+    def get_notebook_definition(
         workspace_name: str,
-        notebook_display_name: str
+        notebook_name: str,
     ) -> dict:
-        """Get the content and definition of a notebook.
-        
-        Retrieves the full notebook definition including all cells, metadata, and
-        configuration from a Fabric workspace. The content is returned as a dictionary
-        matching the Jupyter notebook format.
-        
-        Parameters:
-            workspace_name: The display name of the workspace.
-            notebook_display_name: The name of the notebook.
-            
-        Returns:
-            Dictionary with status, workspace_name, notebook_name, and notebook definition.
-            The definition contains the full notebook structure including cells, metadata, etc.
-            
-        Example:
-            ```python
-            result = get_notebook_content(
-                workspace_name="My Workspace",
-                notebook_display_name="analysis/customer_analysis"
-            )
-            
-            if result["status"] == "success":
-                definition = result["definition"]
-                # Access notebook cells, metadata, etc.
-            ```
-        """
+        """Get the notebook definition (ipynb content)."""
         log_tool_invocation(
-            "get_notebook_content",
+            "get_notebook_definition",
             workspace_name=workspace_name,
-            notebook_display_name=notebook_display_name
+            notebook_name=notebook_name,
         )
-        logger.info(f"Getting content for notebook '{notebook_display_name}' in workspace '{workspace_name}'")
+        logger.info(
+            f"Getting definition for notebook '{notebook_name}' in workspace '{workspace_name}'"
+        )
         
-        content = notebook_service.get_notebook_content(workspace_name, notebook_display_name)
+        content = notebook_service.get_notebook_definition(workspace_name, notebook_name)
         
         result = {
             "status": "success",
             "workspace_name": workspace_name,
-            "notebook_name": notebook_display_name,
-            "definition": content
+            "notebook_name": notebook_name,
+            "definition": content,
         }
         
-        logger.info(f"Successfully retrieved notebook content")
+        logger.info("Successfully retrieved notebook definition")
         return result
-    
-    @mcp.tool(title="Attach Default Lakehouse to Notebook")
+
+    @mcp.tool(title="Update Notebook Definition")
     @handle_tool_errors
-    def attach_lakehouse_to_notebook(
+    def update_notebook_definition(
         workspace_name: str,
         notebook_name: str,
-        lakehouse_name: str,
-        lakehouse_workspace_name: Optional[str] = None
+        notebook_content: Optional[dict] = None,
+        default_lakehouse_name: Optional[str] = None,
+        lakehouse_workspace_name: Optional[str] = None,
     ) -> dict:
-        """Attach a default lakehouse to a notebook in Microsoft Fabric.
-        
-        Updates the notebook definition to set a default lakehouse. This lakehouse
-        will be automatically mounted when the notebook runs, providing seamless
-        access to the lakehouse tables and files without additional configuration.
-        
-        **Use this tool when:**
-        - Setting up a new notebook with a lakehouse connection
-        - Changing the default lakehouse for an existing notebook
-        - Ensuring notebook code can access lakehouse tables via spark.read
-        
-        Parameters:
-            workspace_name: The display name of the workspace containing the notebook.
-            notebook_name: Name of the notebook to update.
-            lakehouse_name: Name of the lakehouse to attach as default.
-            lakehouse_workspace_name: Optional workspace name for the lakehouse.
-                                     If not provided, uses the same workspace as the notebook.
-            
-        Returns:
-            Dictionary with status, message, notebook_id, notebook_name, 
-            lakehouse_id, lakehouse_name, and workspace_id.
-            
-        Example:
-            ```python
-            # Attach lakehouse in same workspace
-            result = attach_lakehouse_to_notebook(
-                workspace_name="Analytics Workspace",
-                notebook_name="Data_Processing",
-                lakehouse_name="Bronze_Lakehouse"
-            )
-            
-            # Attach lakehouse from different workspace
-            result = attach_lakehouse_to_notebook(
-                workspace_name="Analytics Workspace",
-                notebook_name="Data_Processing",
-                lakehouse_name="Shared_Lakehouse",
-                lakehouse_workspace_name="Shared Resources"
-            )
-            
-            if result["status"] == "success":
-                print(f"Lakehouse {result['lakehouse_name']} attached successfully!")
-            ```
+        """Update notebook definition in Fabric.
+
+        If notebook_content is omitted, the existing notebook definition is loaded
+        and only metadata changes (e.g., default lakehouse) are applied.
         """
         log_tool_invocation(
-            "attach_lakehouse_to_notebook",
+            "update_notebook_definition",
             workspace_name=workspace_name,
             notebook_name=notebook_name,
-            lakehouse_name=lakehouse_name,
-            lakehouse_workspace_name=lakehouse_workspace_name
+            default_lakehouse_name=default_lakehouse_name,
+            lakehouse_workspace_name=lakehouse_workspace_name,
         )
         logger.info(
-            f"Attaching lakehouse '{lakehouse_name}' to notebook '{notebook_name}' "
-            f"in workspace '{workspace_name}'"
+            f"Updating notebook '{notebook_name}' in workspace '{workspace_name}'"
         )
-        
-        result = notebook_service.attach_lakehouse_to_notebook(
+
+        result = notebook_service.update_notebook_definition(
             workspace_name=workspace_name,
             notebook_name=notebook_name,
-            lakehouse_name=lakehouse_name,
-            lakehouse_workspace_name=lakehouse_workspace_name
+            notebook_content=notebook_content,
+            default_lakehouse_name=default_lakehouse_name,
+            lakehouse_workspace_name=lakehouse_workspace_name,
         )
-        
+
         if result.status == "success":
-            logger.info(
-                f"Successfully attached lakehouse '{lakehouse_name}' to notebook '{notebook_name}'"
-            )
+            logger.info(f"Notebook updated successfully: {notebook_name}")
             return {
                 "status": "success",
                 "message": result.message,
                 "notebook_id": result.notebook_id,
                 "notebook_name": result.notebook_name,
-                "lakehouse_id": result.lakehouse_id,
-                "lakehouse_name": result.lakehouse_name,
-                "workspace_id": result.workspace_id
+                "workspace_id": result.workspace_id,
             }
-        else:
-            logger.error(f"Failed to attach lakehouse: {result.message}")
-            return {
-                "status": "error",
-                "message": result.message
-            }
+        logger.error(f"Notebook update failed: {result.message}")
+        return {
+            "status": "error",
+            "message": result.message,
+        }
     
-    @mcp.tool(title="Get Notebook Execution Details")
+    @mcp.tool(title="Get Notebook Run Details")
     @handle_tool_errors
-    def get_notebook_execution_details(
+    def get_notebook_run_details(
         workspace_name: str,
         notebook_name: str,
         job_instance_id: str
     ) -> dict:
-        """Get detailed execution information for a notebook run by job instance ID.
+        """Get detailed run information for a notebook job instance.
         
         Retrieves execution metadata from the Fabric Notebook Livy Sessions API,
         which provides detailed timing, resource usage, and execution state information.
@@ -303,7 +236,7 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
             )
             
             # Get detailed execution information
-            details = get_notebook_execution_details(
+            details = get_notebook_run_details(
                 workspace_name="Analytics",
                 notebook_name="ETL_Pipeline",
                 job_instance_id=exec_result["job_instance_id"]
@@ -317,37 +250,37 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
             ```
         """
         log_tool_invocation(
-            "get_notebook_execution_details",
+            "get_notebook_run_details",
             workspace_name=workspace_name,
             notebook_name=notebook_name,
             job_instance_id=job_instance_id
         )
         logger.info(
-            f"Getting execution details for notebook '{notebook_name}' "
+            f"Getting run details for notebook '{notebook_name}' "
             f"job instance '{job_instance_id}'"
         )
         
-        result = notebook_service.get_notebook_execution_details(
+        result = notebook_service.get_notebook_run_details(
             workspace_name=workspace_name,
             notebook_name=notebook_name,
             job_instance_id=job_instance_id
         )
         
         if result.get("status") == "success":
-            logger.info(f"Successfully retrieved execution details for job instance '{job_instance_id}'")
+            logger.info(f"Successfully retrieved run details for job instance '{job_instance_id}'")
         else:
-            logger.error(f"Failed to get execution details: {result.get('message')}")
+            logger.error(f"Failed to get run details: {result.get('message')}")
         
         return result
     
-    @mcp.tool(title="List Notebook Executions")
+    @mcp.tool(title="List Notebook Runs")
     @handle_tool_errors
-    def list_notebook_executions(
+    def list_notebook_runs(
         workspace_name: str,
         notebook_name: str,
         limit: Optional[int] = None
     ) -> dict:
-        """List all Livy sessions (execution history) for a notebook.
+        """List all Livy sessions (run history) for a notebook.
         
         Retrieves a list of all Livy sessions associated with a notebook, providing
         an execution history with job instance IDs, states, and timing information.
@@ -380,7 +313,7 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
             
         Example:
             ```python
-            history = list_notebook_executions(
+            history = list_notebook_runs(
                 workspace_name="Analytics",
                 notebook_name="ETL_Pipeline",
                 limit=10
@@ -393,26 +326,26 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
             ```
         """
         log_tool_invocation(
-            "list_notebook_executions",
+            "list_notebook_runs",
             workspace_name=workspace_name,
             notebook_name=notebook_name,
             limit=limit
         )
         logger.info(
-            f"Listing executions for notebook '{notebook_name}' "
+            f"Listing runs for notebook '{notebook_name}' "
             f"in workspace '{workspace_name}'"
         )
         
-        result = notebook_service.list_notebook_executions(
+        result = notebook_service.list_notebook_runs(
             workspace_name=workspace_name,
             notebook_name=notebook_name,
             limit=limit
         )
         
         if result.get("status") == "success":
-            logger.info(f"Found {result.get('total_count', 0)} executions for notebook '{notebook_name}'")
+            logger.info(f"Found {result.get('total_count', 0)} runs for notebook '{notebook_name}'")
         else:
-            logger.error(f"Failed to list executions: {result.get('message')}")
+            logger.error(f"Failed to list runs: {result.get('message')}")
         
         return result
     

@@ -42,6 +42,7 @@ class TestFabricSemanticModelService:
         self, semantic_model_service, mock_workspace_service, mock_item_service
     ):
         mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.resolve_folder_id_from_path.return_value = "folder-1"
         mock_item_service.create_item.return_value = FabricItem(
             id="sm-1",
             display_name="Model",
@@ -49,17 +50,25 @@ class TestFabricSemanticModelService:
             workspace_id="ws-1",
         )
 
-        result = semantic_model_service.create_semantic_model("ws", "Model")
+        result = semantic_model_service.create_semantic_model(
+            "ws", "Model", folder_path="Models/Finance"
+        )
 
         assert result.id == "sm-1"
         args, kwargs = mock_item_service.create_item.call_args
         item_definition = args[1]
         assert item_definition["type"] == "SemanticModel"
+        assert item_definition["folderId"] == "folder-1"
         parts = item_definition["definition"]["parts"]
         pbism = _decode(parts[0]["payload"])
         bim = _decode(parts[1]["payload"])
         assert pbism["version"] == "4.2"
         assert bim["compatibilityLevel"] == 1604
+
+    def test_create_semantic_model_invalid_name(self, semantic_model_service):
+        """Names with separators raise validation error."""
+        with pytest.raises(FabricValidationError):
+            semantic_model_service.create_semantic_model("ws", "Bad/Name")
 
     def test_add_table_to_semantic_model_success(
         self, semantic_model_service, mock_workspace_service, mock_item_service
@@ -102,6 +111,64 @@ class TestFabricSemanticModelService:
         assert len(table["columns"]) == 2
         assert table["columns"][0]["dataType"] == "int64"
 
+    def test_add_table_to_semantic_model_with_schema(
+        self, semantic_model_service, mock_workspace_service, mock_item_service
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.side_effect = [
+            FabricItem(id="sm-1", display_name="Model", type="SemanticModel", workspace_id="ws-1"),
+            FabricItem(id="lh-1", display_name="Lake", type="Lakehouse", workspace_id="ws-1"),
+        ]
+        definition = {
+            "definition": {
+                "parts": [
+                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
+                    {"path": "model.bim", "payload": _encode({"model": {}}), "payloadType": "InlineBase64"},
+                ]
+            }
+        }
+        mock_item_service.get_item_definition.return_value = definition
+
+        columns = [
+            SemanticModelColumn(name="id", data_type=DataType.INT64),
+            SemanticModelColumn(name="name", data_type=DataType.STRING),
+        ]
+
+        semantic_model_service.add_table_to_semantic_model(
+            workspace_name="Workspace",
+            semantic_model_name="Model",
+            lakehouse_name="Lake",
+            table_name="fact_table",
+            columns=columns,
+            table_schema="gold",
+            model_table_name="FactSales",
+        )
+
+        args, kwargs = mock_item_service.update_item_definition.call_args
+        update_payload = args[2]
+        model_payload = update_payload["definition"]["parts"][1]["payload"]
+        bim = _decode(model_payload)
+        model = bim["model"]
+        table = next(t for t in model["tables"] if t["name"] == "FactSales")
+        partition_source = table["partitions"][0]["source"]
+        assert partition_source["entityName"] == "fact_table"
+        assert partition_source["schemaName"] == "gold"
+        assert partition_source["expressionSource"] == "DirectLake - Lake"
+
+    def test_add_table_to_semantic_model_schema_requires_unqualified_table(
+        self, semantic_model_service
+    ):
+        columns = [SemanticModelColumn(name="id", data_type=DataType.INT64)]
+        with pytest.raises(FabricValidationError):
+            semantic_model_service.add_table_to_semantic_model(
+                workspace_name="Workspace",
+                semantic_model_name="Model",
+                lakehouse_name="Lake",
+                table_name="gold.fact_table",
+                columns=columns,
+                table_schema="gold",
+            )
+
     def test_add_table_to_semantic_model_duplicate_table(
         self, semantic_model_service, mock_workspace_service, mock_item_service
     ):
@@ -123,13 +190,60 @@ class TestFabricSemanticModelService:
         columns = [SemanticModelColumn(name="id", data_type=DataType.INT64)]
 
         with pytest.raises(FabricValidationError):
-            semantic_model_service.add_table_to_semantic_model(
-                workspace_name="Workspace",
-                semantic_model_name="Model",
-                lakehouse_name="Lake",
-                table_name="Customers",
-                columns=columns,
-            )
+                semantic_model_service.add_table_to_semantic_model(
+                    workspace_name="Workspace",
+                    semantic_model_name="Model",
+                    lakehouse_name="Lake",
+                    table_name="Customers",
+                    columns=columns,
+                )
+
+    def test_add_table_reuses_directlake_expression(
+        self, semantic_model_service, mock_workspace_service, mock_item_service
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.side_effect = [
+            FabricItem(id="sm-1", display_name="Model", type="SemanticModel", workspace_id="ws-1"),
+            FabricItem(id="lh-1", display_name="Lake", type="Lakehouse", workspace_id="ws-1"),
+        ]
+        existing_expression = {
+            "name": "DirectLakeExisting",
+            "expression": [
+                "let",
+                "    Source = AzureStorage.DataLake(\"https://onelake.dfs.fabric.microsoft.com/ws-1/lh-1\", [HierarchicalNavigation=true])",
+                "in",
+                "    Source",
+            ],
+            "kind": "m",
+        }
+        definition = {
+            "definition": {
+                "parts": [
+                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
+                    {"path": "model.bim", "payload": _encode({"model": {"expressions": [existing_expression]}}), "payloadType": "InlineBase64"},
+                ]
+            }
+        }
+        mock_item_service.get_item_definition.return_value = definition
+
+        columns = [SemanticModelColumn(name="id", data_type=DataType.INT64)]
+
+        semantic_model_service.add_table_to_semantic_model(
+            workspace_name="Workspace",
+            semantic_model_name="Model",
+            lakehouse_name="Lake",
+            table_name="Customers",
+            columns=columns,
+        )
+
+        args, kwargs = mock_item_service.update_item_definition.call_args
+        update_payload = args[2]
+        model_payload = update_payload["definition"]["parts"][1]["payload"]
+        bim = _decode(model_payload)
+        model = bim["model"]
+        assert len(model["expressions"]) == 1
+        table = next(t for t in model["tables"] if t["name"] == "Customers")
+        assert table["partitions"][0]["source"]["expressionSource"] == "DirectLakeExisting"
 
     def test_add_relationship_to_semantic_model_success(
         self, semantic_model_service, mock_workspace_service, mock_item_service
@@ -439,4 +553,117 @@ class TestFabricSemanticModelService:
                 semantic_model_id=None,
                 table_name="Sales",
                 measure_names=["Missing Measure"],
+            )
+
+    def test_delete_table_from_semantic_model_removes_relationships(
+        self, semantic_model_service, mock_workspace_service, mock_item_service
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="sm-1", display_name="Model", type="SemanticModel", workspace_id="ws-1"
+        )
+        definition = {
+            "definition": {
+                "parts": [
+                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "model.bim",
+                        "payload": _encode(
+                            {
+                                "model": {
+                                    "tables": [
+                                        {"name": "fact", "columns": []},
+                                        {"name": "dim", "columns": []},
+                                    ],
+                                    "relationships": [
+                                        {
+                                            "name": "rel-1",
+                                            "fromTable": "fact",
+                                            "fromColumn": "id",
+                                            "toTable": "dim",
+                                            "toColumn": "id",
+                                        }
+                                    ],
+                                }
+                            }
+                        ),
+                        "payloadType": "InlineBase64",
+                    },
+                ]
+            }
+        }
+        mock_item_service.get_item_definition.return_value = definition
+
+        _, removed = semantic_model_service.delete_table_from_semantic_model(
+            workspace_name="Workspace",
+            semantic_model_name="Model",
+            semantic_model_id=None,
+            table_name="fact",
+            remove_relationships=True,
+        )
+
+        assert removed == 1
+        args, kwargs = mock_item_service.update_item_definition.call_args
+        update_payload = args[2]
+        model_payload = update_payload["definition"]["parts"][1]["payload"]
+        bim = _decode(model_payload)
+        model = bim["model"]
+        assert [t["name"] for t in model["tables"]] == ["dim"]
+        assert model["relationships"] == []
+
+    def test_delete_relationship_by_name(
+        self, semantic_model_service, mock_workspace_service, mock_item_service
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="sm-1", display_name="Model", type="SemanticModel", workspace_id="ws-1"
+        )
+        definition = {
+            "definition": {
+                "parts": [
+                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "model.bim",
+                        "payload": _encode(
+                            {
+                                "model": {
+                                    "relationships": [
+                                        {
+                                            "name": "rel-1",
+                                            "fromTable": "a",
+                                            "fromColumn": "id",
+                                            "toTable": "b",
+                                            "toColumn": "id",
+                                        }
+                                    ]
+                                }
+                            }
+                        ),
+                        "payloadType": "InlineBase64",
+                    },
+                ]
+            }
+        }
+        mock_item_service.get_item_definition.return_value = definition
+
+        _, removed = semantic_model_service.delete_relationship_from_semantic_model(
+            workspace_name="Workspace",
+            semantic_model_name="Model",
+            semantic_model_id=None,
+            relationship_name="rel-1",
+        )
+
+        assert removed == 1
+        args, kwargs = mock_item_service.update_item_definition.call_args
+        update_payload = args[2]
+        model_payload = update_payload["definition"]["parts"][1]["payload"]
+        bim = _decode(model_payload)
+        assert bim["model"]["relationships"] == []
+
+    def test_delete_relationship_by_keys_validation(self, semantic_model_service):
+        with pytest.raises(FabricValidationError):
+            semantic_model_service.delete_relationship_from_semantic_model(
+                workspace_name="Workspace",
+                semantic_model_name="Model",
+                semantic_model_id=None,
             )

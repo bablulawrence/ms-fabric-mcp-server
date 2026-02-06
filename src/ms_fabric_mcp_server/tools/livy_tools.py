@@ -77,6 +77,8 @@ def register_livy_tools(mcp: "FastMCP", livy_service: FabricLivyService):
             
         Returns:
             Dictionary with session details including id, state, kind, appId, appInfo, and log.
+            When Fabric falls back to a slower startup path, response may include
+            fallback_reasons and fallback_messages from session tags.
             
         Example:
             ```python
@@ -506,8 +508,8 @@ def register_livy_tools(mcp: "FastMCP", livy_service: FabricLivyService):
             workspace_id: Fabric workspace ID.
             lakehouse_id: Fabric lakehouse ID.
             session_id: Livy session ID.
-            start: Starting log line index (default: 0).
-            size: Number of log lines to retrieve (default: 500).
+            start: Starting byte offset (default: 0).
+            size: Number of bytes to retrieve (default: 500).
             
         Returns:
             Dictionary with log content and metadata:
@@ -515,20 +517,20 @@ def register_livy_tools(mcp: "FastMCP", livy_service: FabricLivyService):
             
         Example:
             ```python
-            # Get first 100 log lines
+            # Get first 500 bytes of logs
             result = livy_get_session_log(
                 workspace_id="12345678-1234-1234-1234-123456789abc",
                 lakehouse_id="87654321-4321-4321-4321-210987654321",
                 session_id="0",
                 start=0,
-                size=100
+                size=500
             )
             
             for log_line in result.get("log", []):
                 print(log_line)
             
-            # Get next 100 lines
-            result = livy_get_session_log(..., start=100, size=100)
+            # Get next 500 bytes
+            result = livy_get_session_log(..., start=500, size=500)
             ```
         """
         log_tool_invocation("livy_get_session_log",

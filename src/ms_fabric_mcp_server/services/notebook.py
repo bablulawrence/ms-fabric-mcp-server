@@ -1,11 +1,12 @@
 # ABOUTME: Service for Fabric notebook operations.
-# ABOUTME: Handles notebook import, export, execution, and metadata management.
+# ABOUTME: Handles notebook creation, update, execution, and metadata management.
 """Service for Fabric notebook operations."""
 
 import base64
+import copy
+import json
 import logging
-import os
-from pathlib import Path
+import time
 from typing import Any, Dict, List, Optional
 
 from ..client.exceptions import (
@@ -16,7 +17,7 @@ from ..client.exceptions import (
 )
 from ..client.http_client import FabricClient
 from ..models.item import FabricItem
-from ..models.results import ExecuteNotebookResult, ImportNotebookResult, AttachLakehouseResult
+from ..models.results import ExecuteNotebookResult, CreateNotebookResult, UpdateNotebookResult
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 class FabricNotebookService:
     """Service for Fabric notebook operations.
     
-    This service handles notebook import, export, execution, and metadata management.
+    This service handles notebook creation, update, execution, and metadata management.
     
     Example:
         ```python
@@ -46,16 +47,16 @@ class FabricNotebookService:
             repo_root="/path/to/repo"
         )
         
-        # Import a notebook
-        result = notebook_service.import_notebook(
+        # Create a notebook
+        result = notebook_service.create_notebook(
             workspace_name="MyWorkspace",
             notebook_name="MyNotebook",
-            local_path="notebooks/my_notebook.ipynb",
+            notebook_content={"cells": [], "metadata": {}, "nbformat": 4, "nbformat_minor": 5},
             description="ETL Pipeline"
         )
         
         if result.status == "success":
-            print(f"Notebook imported with ID: {result.artifact_id}")
+            print(f"Notebook created with ID: {result.notebook_id}")
         ```
     """
     
@@ -81,87 +82,44 @@ class FabricNotebookService:
         
         logger.debug("FabricNotebookService initialized")
     
-    def _resolve_notebook_path(self, notebook_path: str) -> str:
-        """Resolve notebook path using repo root if configured.
-        
-        Args:
-            notebook_path: Path to the notebook file (relative or absolute)
-            
-        Returns:
-            Resolved absolute path to the notebook file
-        """
-        # If path is already absolute, return as-is
-        if os.path.isabs(notebook_path):
-            return notebook_path
-        
-        # If repo root is configured, resolve relative to repo root
-        if self.repo_root:
-            resolved_path = os.path.join(self.repo_root, notebook_path)
-            logger.debug(f"Resolved notebook path: {notebook_path} -> {resolved_path}")
-            return resolved_path
-        
-        # Otherwise, resolve relative to current working directory
-        return os.path.abspath(notebook_path)
-    
-    def _encode_notebook_file(self, notebook_path: str) -> str:
-        """Encode notebook file to base64.
-        
-        Args:
-            notebook_path: Path to the notebook file
-            
-        Returns:
-            Base64 encoded notebook content
-            
-        Raises:
-            FileNotFoundError: If notebook file doesn't exist
-            ValueError: If notebook file is empty
-            FabricError: For other encoding errors
-        """
-        # Resolve the notebook path using repo root if configured
-        resolved_path = self._resolve_notebook_path(notebook_path)
-        logger.debug(f"Encoding notebook file: {resolved_path}")
-        
-        # Check if file exists and validate size
-        p = Path(resolved_path)
-        if not p.exists():
-            raise FileNotFoundError(f"Notebook not found: {p}")
-        
-        size = p.stat().st_size
-        if size == 0:
-            raise ValueError(
-                f"Notebook is empty (0 bytes): {p}. "
-                "Please ensure notebook is saved before uploading."
+    def _encode_notebook_content(self, notebook_content: Dict[str, Any]) -> str:
+        """Encode notebook content to base64."""
+        if not isinstance(notebook_content, dict) or not notebook_content:
+            raise FabricValidationError(
+                "notebook_content",
+                str(type(notebook_content)),
+                "notebook_content must be a non-empty dictionary",
             )
-        
+
         try:
-            with open(resolved_path, "rb") as file:
-                content = file.read()
-                encoded_content = base64.b64encode(content).decode('utf-8')
-            
-            logger.debug(f"Notebook encoded: {len(encoded_content)} base64 characters")
+            payload = json.dumps(notebook_content)
+            encoded_content = base64.b64encode(payload.encode("utf-8")).decode("utf-8")
+            logger.debug(
+                f"Notebook content encoded: {len(encoded_content)} base64 characters"
+            )
             return encoded_content
-            
         except Exception as exc:
-            logger.error(f"Failed to encode notebook: {exc}")
-            raise FabricError(f"Failed to encode notebook file: {exc}")
+            logger.error(f"Failed to encode notebook content: {exc}")
+            raise FabricError(f"Failed to encode notebook content: {exc}")
     
     def _create_notebook_definition(
         self,
         notebook_name: str,
-        notebook_path: str,
-        description: Optional[str] = None
+        notebook_content: Dict[str, Any],
+        description: Optional[str] = None,
+        folder_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create notebook definition for API request.
         
         Args:
             notebook_name: Display name for the notebook
-            notebook_path: Path to the notebook file
+            notebook_content: Notebook definition (ipynb JSON)
             description: Optional description
             
         Returns:
             Notebook definition dictionary
         """
-        encoded_content = self._encode_notebook_file(notebook_path)
+        encoded_content = self._encode_notebook_content(notebook_content)
         
         definition = {
             "displayName": notebook_name,
@@ -170,7 +128,7 @@ class FabricNotebookService:
                 "format": "ipynb",
                 "parts": [
                     {
-                        "path": os.path.basename(notebook_path),
+                        "path": f"{notebook_name}.ipynb",
                         "payload": encoded_content,
                         "payloadType": "InlineBase64",
                     }
@@ -180,6 +138,8 @@ class FabricNotebookService:
         
         if description:
             definition["description"] = description
+        if folder_id:
+            definition["folderId"] = folder_id
         
         return definition
 
@@ -191,195 +151,327 @@ class FabricNotebookService:
             return int(value)
         except (TypeError, ValueError):
             return default
+
+    def _get_notebook_definition_response(
+        self, workspace_id: str, notebook_id: str
+    ) -> Dict[str, Any]:
+        response = self.client.make_api_request(
+            "POST",
+            f"workspaces/{workspace_id}/items/{notebook_id}/getDefinition?format=ipynb",
+        )
+
+        if response.status_code == 202:
+            location = response.headers.get("Location")
+            retry_after = self._parse_retry_after(response.headers, 5)
+
+            if not location:
+                raise FabricError("No Location header in 202 response")
+
+            max_retries = 30
+            for _ in range(max_retries):
+                time.sleep(retry_after)
+                poll_response = self.client.make_api_request("GET", location)
+                if poll_response.status_code == 200:
+                    op_result = poll_response.json()
+                    if op_result.get("status") == "Succeeded":
+                        result_response = self.client.make_api_request(
+                            "GET",
+                            f"{location}/result",
+                        )
+                        if result_response.status_code == 200:
+                            return result_response.json()
+                        raise FabricAPIError(
+                            result_response.status_code,
+                            f"Failed to get definition result: {result_response.text}",
+                        )
+                    if op_result.get("status") == "Failed":
+                        error_msg = op_result.get("error", {}).get(
+                            "message", "Unknown error"
+                        )
+                        raise FabricError(f"Operation failed: {error_msg}")
+
+                    retry_after = self._parse_retry_after(poll_response.headers, 5)
+                    continue
+
+                if poll_response.status_code == 202:
+                    retry_after = self._parse_retry_after(poll_response.headers, 5)
+                    continue
+
+                raise FabricAPIError(
+                    poll_response.status_code,
+                    f"Failed to poll operation: {poll_response.text}",
+                )
+
+            raise FabricError("Timeout waiting for notebook definition")
+
+        definition_response = response.json()
+        if definition_response is None:
+            raise FabricError("Empty response when getting notebook definition")
+        return definition_response
+
+    @staticmethod
+    def _extract_ipynb_content(
+        definition_response: Dict[str, Any],
+    ) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
+        parts = definition_response.get("definition", {}).get("parts", [])
+        for part in parts:
+            path = part.get("path", "")
+            if not path.endswith(".ipynb"):
+                continue
+            payload = part.get("payload", "")
+            if not payload:
+                raise FabricError("Notebook content payload missing")
+            notebook_content = json.loads(base64.b64decode(payload).decode("utf-8"))
+            return notebook_content, path
+        return None, None
+
+    @staticmethod
+    def _apply_lakehouse_dependency(
+        notebook_content: Dict[str, Any],
+        lakehouse: FabricItem,
+        lakehouse_workspace_id: str,
+    ) -> None:
+        metadata = notebook_content.setdefault("metadata", {})
+        dependencies = metadata.setdefault("dependencies", {})
+        dependencies["lakehouse"] = {
+            "default_lakehouse": lakehouse.id,
+            "default_lakehouse_name": lakehouse.display_name,
+            "default_lakehouse_workspace_id": lakehouse_workspace_id,
+            "known_lakehouses": [{"id": lakehouse.id}],
+        }
     
-    def import_notebook(
+    def create_notebook(
         self,
         workspace_name: str,
         notebook_name: str,
-        local_path: str,
-        description: Optional[str] = None
-    ) -> ImportNotebookResult:
-        """Import local notebook to Fabric workspace.
+        notebook_content: Dict[str, Any],
+        description: Optional[str] = None,
+        folder_path: Optional[str] = None,
+        default_lakehouse_name: Optional[str] = None,
+        lakehouse_workspace_name: Optional[str] = None,
+    ) -> CreateNotebookResult:
+        """Create a notebook in Fabric workspace.
         
         Args:
             workspace_name: Name of the target workspace
             notebook_name: Display name for the notebook in Fabric
-            local_path: Path to the local notebook file
+            notebook_content: Notebook content (ipynb JSON)
             description: Optional description for the notebook
+            default_lakehouse_name: Optional default lakehouse name to attach
+            lakehouse_workspace_name: Optional workspace name for the lakehouse
             
         Returns:
-            ImportNotebookResult with operation status and notebook ID
+            CreateNotebookResult with operation status and notebook ID
             
         Example:
             ```python
-            result = notebook_service.import_notebook(
+            result = notebook_service.create_notebook(
                 workspace_name="Analytics",
                 notebook_name="ETL_Pipeline",
-                local_path="notebooks/etl.ipynb",
+                notebook_content=notebook_definition,
                 description="Daily ETL processing"
             )
             
             if result.status == "success":
-                print(f"Notebook ID: {result.artifact_id}")
+                print(f"Notebook ID: {result.notebook_id}")
             ```
         """
         logger.info(
-            f"Importing notebook '{notebook_name}' to workspace '{workspace_name}'"
+            f"Creating notebook '{notebook_name}' in workspace '{workspace_name}'"
         )
+
+        if "/" in notebook_name or "\\" in notebook_name:
+            raise FabricValidationError(
+                "notebook_name",
+                notebook_name,
+                "Notebook name cannot include path separators. "
+                "Use folder_path to place notebooks in folders.",
+            )
         
         try:
             # Resolve workspace ID
             workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
             
+            folder_id = self.item_service.resolve_folder_id_from_path(
+                workspace_id, folder_path, create_missing=True
+            )
+
+            notebook_payload = copy.deepcopy(notebook_content)
+            if default_lakehouse_name:
+                lakehouse_workspace = lakehouse_workspace_name or workspace_name
+                lakehouse_workspace_id = self.workspace_service.resolve_workspace_id(
+                    lakehouse_workspace
+                )
+                lakehouse = self.item_service.get_item_by_name(
+                    lakehouse_workspace_id, default_lakehouse_name, "Lakehouse"
+                )
+                self._apply_lakehouse_dependency(
+                    notebook_payload, lakehouse, lakehouse_workspace_id
+                )
+
             # Create notebook definition
             notebook_definition = self._create_notebook_definition(
-                notebook_name, local_path, description
+                notebook_name, notebook_payload, description, folder_id=folder_id
             )
             
             # Create the notebook item
             created_item = self.item_service.create_item(workspace_id, notebook_definition)
             
-            logger.info(f"Successfully imported notebook with ID: {created_item.id}")
-            return ImportNotebookResult(
+            logger.info(f"Successfully created notebook with ID: {created_item.id}")
+            return CreateNotebookResult(
                 status="success",
-                artifact_id=created_item.id,
-                message=f"Notebook '{notebook_name}' imported successfully"
+                notebook_id=created_item.id,
+                message=f"Notebook '{notebook_name}' created successfully"
             )
             
         except (
             FabricItemNotFoundError,
             FabricValidationError,
             FabricAPIError,
-            FileNotFoundError,
-            ValueError
         ) as exc:
-            logger.error(f"Import failed: {exc}")
-            return ImportNotebookResult(
+            logger.error(f"Create notebook failed: {exc}")
+            return CreateNotebookResult(
                 status="error",
                 message=str(exc)
             )
         except Exception as exc:
-            logger.error(f"Unexpected error during import: {exc}")
-            return ImportNotebookResult(
+            logger.error(f"Unexpected error during notebook creation: {exc}")
+            return CreateNotebookResult(
                 status="error",
                 message=f"Unexpected error: {exc}"
             )
     
-    def get_notebook_content(
+    def get_notebook_definition(
         self,
         workspace_name: str,
-        notebook_name: str
+        notebook_name: str,
     ) -> Dict[str, Any]:
-        """Get notebook definition and content.
-        
-        Retrieves the full notebook definition in ipynb format, including cells,
-        metadata, and dependencies. Handles Fabric's long-running operation pattern
-        for fetching notebook definitions.
-        
-        Args:
-            workspace_name: Name of the workspace
-            notebook_name: Name of the notebook
-            
-        Returns:
-            Dictionary containing notebook definition with cells and metadata
-            
-        Raises:
-            FabricItemNotFoundError: If notebook not found
-            FabricAPIError: If API request fails
-            
-        Example:
-            ```python
-            content = notebook_service.get_notebook_content(
-                workspace_name="Analytics",
-                notebook_name="ETL_Pipeline"
-            )
-            
-            print(f"Cells: {len(content.get('cells', []))}")
-            print(f"Lakehouse: {content.get('metadata', {}).get('dependencies', {}).get('lakehouse')}")
-            ```
-        """
-        import json
-        import time
-        
+        """Get notebook definition (ipynb content)."""
         logger.info(
-            f"Fetching content for notebook '{notebook_name}' "
+            f"Fetching definition for notebook '{notebook_name}' "
             f"in workspace '{workspace_name}'"
         )
-        
-        # Resolve workspace ID
+
         workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
-        
-        # Find the notebook
         notebook = self.item_service.get_item_by_name(
             workspace_id, notebook_name, "Notebook"
         )
-        
-        # Get the notebook definition in ipynb format
-        response = self.client.make_api_request(
-            "POST",
-            f"workspaces/{workspace_id}/items/{notebook.id}/getDefinition?format=ipynb"
+
+        definition_response = self._get_notebook_definition_response(
+            workspace_id, notebook.id
         )
-        
-        # Handle 202 Accepted (long-running operation)
-        if response.status_code == 202:
-            location = response.headers.get("Location")
-            retry_after = self._parse_retry_after(response.headers, 5)
-            
-            if location:
-                max_retries = 30
-                for _ in range(max_retries):
-                    time.sleep(retry_after)
-                    poll_response = self.client.make_api_request("GET", location)
-                    if poll_response.status_code == 200:
-                        op_result = poll_response.json()
-                        if op_result.get("status") == "Succeeded":
-                            # Get the actual result from the /result endpoint
-                            result_response = self.client.make_api_request(
-                                "GET", 
-                                f"{location}/result"
-                            )
-                            if result_response.status_code == 200:
-                                definition_response = result_response.json()
-                                break
-                            else:
-                                raise FabricAPIError(
-                                    result_response.status_code,
-                                    f"Failed to get definition result: {result_response.text}"
-                                )
-                        elif op_result.get("status") == "Failed":
-                            error_msg = op_result.get("error", {}).get("message", "Unknown error")
-                            raise FabricError(f"Operation failed: {error_msg}")
-                        else:
-                            retry_after = self._parse_retry_after(poll_response.headers, 5)
-                            continue
-                    elif poll_response.status_code == 202:
-                        retry_after = self._parse_retry_after(poll_response.headers, 5)
-                        continue
-                    else:
-                        raise FabricAPIError(
-                            poll_response.status_code,
-                            f"Failed to poll operation: {poll_response.text}"
-                        )
-                else:
-                    raise FabricError("Timeout waiting for notebook definition")
-            else:
-                raise FabricError("No Location header in 202 response")
-        else:
-            definition_response = response.json()
-        
-        # Extract the notebook content from the definition
-        parts = definition_response.get("definition", {}).get("parts", [])
-        
-        for part in parts:
-            if part.get("path", "").endswith(".ipynb"):
-                payload = part.get("payload", "")
-                notebook_content = json.loads(base64.b64decode(payload).decode('utf-8'))
-                logger.info(f"Successfully fetched notebook content for {notebook_name}")
-                return notebook_content
-        
-        # If no .ipynb found, return the raw definition
+        notebook_content, _ = self._extract_ipynb_content(definition_response)
+        if notebook_content is not None:
+            logger.info(
+                f"Successfully fetched notebook definition for {notebook_name}"
+            )
+            return notebook_content
+
         logger.warning(f"No .ipynb content found for notebook {notebook_name}")
         return definition_response
+
+    def update_notebook_definition(
+        self,
+        workspace_name: str,
+        notebook_name: str,
+        notebook_content: Optional[Dict[str, Any]] = None,
+        default_lakehouse_name: Optional[str] = None,
+        lakehouse_workspace_name: Optional[str] = None,
+    ) -> UpdateNotebookResult:
+        """Update notebook definition using the updateDefinition endpoint."""
+        logger.info(
+            f"Updating notebook '{notebook_name}' in workspace '{workspace_name}'"
+        )
+
+        try:
+            workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
+            notebook = self.item_service.get_item_by_name(
+                workspace_id, notebook_name, "Notebook"
+            )
+
+            definition_response = self._get_notebook_definition_response(
+                workspace_id, notebook.id
+            )
+            existing_content, notebook_path = self._extract_ipynb_content(
+                definition_response
+            )
+            if existing_content is None:
+                raise FabricError("Could not find notebook content in definition")
+
+            if notebook_content is None:
+                updated_content = copy.deepcopy(existing_content)
+            else:
+                updated_content = copy.deepcopy(notebook_content)
+
+            existing_dependencies = (
+                existing_content.get("metadata", {}).get("dependencies")
+                if isinstance(existing_content, dict)
+                else None
+            )
+
+            if default_lakehouse_name:
+                if existing_dependencies is not None:
+                    updated_content.setdefault("metadata", {})
+                    updated_content["metadata"]["dependencies"] = copy.deepcopy(
+                        existing_dependencies
+                    )
+
+                lakehouse_workspace = lakehouse_workspace_name or workspace_name
+                lakehouse_workspace_id = self.workspace_service.resolve_workspace_id(
+                    lakehouse_workspace
+                )
+                lakehouse = self.item_service.get_item_by_name(
+                    lakehouse_workspace_id, default_lakehouse_name, "Lakehouse"
+                )
+                self._apply_lakehouse_dependency(
+                    updated_content, lakehouse, lakehouse_workspace_id
+                )
+            elif existing_dependencies is not None:
+                updated_content.setdefault("metadata", {})
+                updated_content["metadata"].setdefault(
+                    "dependencies", copy.deepcopy(existing_dependencies)
+                )
+
+            encoded_content = self._encode_notebook_content(updated_content)
+            update_payload = {
+                "definition": {
+                    "format": "ipynb",
+                    "parts": [
+                        {
+                            "path": notebook_path or f"{notebook_name}.ipynb",
+                            "payload": encoded_content,
+                            "payloadType": "InlineBase64",
+                        }
+                    ],
+                }
+            }
+
+            self.client.make_api_request(
+                "POST",
+                f"workspaces/{workspace_id}/items/{notebook.id}/updateDefinition",
+                payload=update_payload,
+            )
+
+            logger.info(
+                f"Successfully updated notebook '{notebook_name}' in workspace '{workspace_name}'"
+            )
+            return UpdateNotebookResult(
+                status="success",
+                message=f"Notebook '{notebook_name}' updated successfully",
+                notebook_id=notebook.id,
+                notebook_name=notebook_name,
+                workspace_id=workspace_id,
+            )
+
+        except (FabricItemNotFoundError, FabricValidationError, FabricAPIError) as exc:
+            logger.error(f"Notebook update failed: {exc}")
+            return UpdateNotebookResult(status="error", message=str(exc))
+        except Exception as exc:
+            logger.error(f"Unexpected error during notebook update: {exc}")
+            return UpdateNotebookResult(
+                status="error",
+                message=f"Unexpected error: {exc}",
+            )
     
     def list_notebooks(self, workspace_name: str) -> List[FabricItem]:
         """List all notebooks in workspace.
@@ -646,237 +738,13 @@ class FabricNotebookService:
                 message=f"Unexpected error: {exc}"
             )
     
-    def attach_lakehouse_to_notebook(
-        self,
-        workspace_name: str,
-        notebook_name: str,
-        lakehouse_name: str,
-        lakehouse_workspace_name: Optional[str] = None
-    ) -> AttachLakehouseResult:
-        """Attach a default lakehouse to a notebook.
-        
-        Updates the notebook definition to set a default lakehouse. This lakehouse
-        will be automatically mounted when the notebook runs, providing seamless
-        access to the lakehouse tables and files.
-        
-        The implementation follows the Fabric REST API approach:
-        1. Get the notebook definition in ipynb format
-        2. Modify the notebook metadata to include lakehouse dependencies
-        3. Update the notebook definition with the modified content
-        
-        Args:
-            workspace_name: Name of the workspace containing the notebook
-            notebook_name: Name of the notebook to update
-            lakehouse_name: Name of the lakehouse to attach as default
-            lakehouse_workspace_name: Optional workspace name for the lakehouse 
-                                     (defaults to same workspace as notebook)
-            
-        Returns:
-            AttachLakehouseResult with operation status and details
-            
-        Raises:
-            FabricItemNotFoundError: If notebook or lakehouse not found
-            FabricAPIError: If API request fails
-            
-        Example:
-            ```python
-            result = notebook_service.attach_lakehouse_to_notebook(
-                workspace_name="Analytics",
-                notebook_name="ETL_Pipeline",
-                lakehouse_name="Bronze_Lakehouse"
-            )
-            
-            if result.status == "success":
-                print(f"Lakehouse '{result.lakehouse_name}' attached to notebook")
-            ```
-        """
-        logger.info(
-            f"Attaching lakehouse '{lakehouse_name}' to notebook '{notebook_name}' "
-            f"in workspace '{workspace_name}'"
-        )
-        
-        try:
-            import json
-            import time
-            
-            # Resolve notebook workspace ID
-            notebook_workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
-            
-            # Find the notebook
-            notebook = self.item_service.get_item_by_name(
-                notebook_workspace_id, notebook_name, "Notebook"
-            )
-            
-            # Resolve lakehouse workspace (same as notebook if not specified)
-            lakehouse_workspace_name = lakehouse_workspace_name or workspace_name
-            lakehouse_workspace_id = self.workspace_service.resolve_workspace_id(lakehouse_workspace_name)
-            
-            # Find the lakehouse
-            lakehouse = self.item_service.get_item_by_name(
-                lakehouse_workspace_id, lakehouse_name, "Lakehouse"
-            )
-            
-            # Step 1: Get the current notebook definition in ipynb format
-            logger.debug(f"Getting notebook definition for {notebook.id}")
-            response = self.client.make_api_request(
-                "POST",
-                f"workspaces/{notebook_workspace_id}/items/{notebook.id}/getDefinition?format=ipynb"
-            )
-            
-            # Handle 202 Accepted (long-running operation)
-            if response.status_code == 202:
-                # Poll for completion using the Location header
-                location = response.headers.get("Location")
-                retry_after = self._parse_retry_after(response.headers, 5)
-                
-                if location:
-                    max_retries = 30
-                    for _ in range(max_retries):
-                        time.sleep(retry_after)
-                        poll_response = self.client.make_api_request("GET", location)
-                        if poll_response.status_code == 200:
-                            # Check if operation succeeded
-                            op_result = poll_response.json()
-                            if op_result.get("status") == "Succeeded":
-                                # Get the actual result from the /result endpoint
-                                result_response = self.client.make_api_request(
-                                    "GET", 
-                                    f"{location}/result"
-                                )
-                                if result_response.status_code == 200:
-                                    definition_response = result_response.json()
-                                    break
-                                else:
-                                    raise FabricAPIError(
-                                        result_response.status_code,
-                                        f"Failed to get definition result: {result_response.text}"
-                                    )
-                            elif op_result.get("status") == "Failed":
-                                error_msg = op_result.get("error", {}).get("message", "Unknown error")
-                                raise FabricError(f"Operation failed: {error_msg}")
-                            else:
-                                # Still in progress
-                                retry_after = self._parse_retry_after(poll_response.headers, 5)
-                                continue
-                        elif poll_response.status_code == 202:
-                            retry_after = self._parse_retry_after(poll_response.headers, 5)
-                            continue
-                        else:
-                            raise FabricAPIError(
-                                poll_response.status_code,
-                                f"Failed to poll operation: {poll_response.text}"
-                            )
-                    else:
-                        raise FabricError("Timeout waiting for notebook definition")
-                else:
-                    raise FabricError("No Location header in 202 response")
-            else:
-                definition_response = response.json()
-            
-            if definition_response is None:
-                raise FabricError("Empty response when getting notebook definition")
-            
-            # Extract the notebook content from the definition
-            parts = definition_response.get("definition", {}).get("parts", [])
-            notebook_content = None
-            notebook_path = None
-            
-            logger.debug(f"Found {len(parts)} parts in notebook definition")
-            
-            for part in parts:
-                path = part.get("path", "")
-                logger.debug(f"Checking part: {path}")
-                if path.endswith(".ipynb"):
-                    notebook_path = path
-                    payload = part.get("payload", "")
-                    # Decode the base64 content
-                    notebook_content = json.loads(base64.b64decode(payload).decode('utf-8'))
-                    break
-            
-            if notebook_content is None:
-                raise FabricError("Could not find notebook content in definition")
-            
-            # Step 2: Modify the notebook metadata to include lakehouse dependencies
-            if "metadata" not in notebook_content:
-                notebook_content["metadata"] = {}
-            
-            if "dependencies" not in notebook_content["metadata"]:
-                notebook_content["metadata"]["dependencies"] = {}
-            
-            # Set the lakehouse configuration
-            notebook_content["metadata"]["dependencies"]["lakehouse"] = {
-                "default_lakehouse": lakehouse.id,
-                "default_lakehouse_name": lakehouse_name,
-                "default_lakehouse_workspace_id": lakehouse_workspace_id,
-                "known_lakehouses": [
-                    {"id": lakehouse.id}
-                ]
-            }
-            
-            # Step 3: Encode the updated notebook content and update the definition
-            updated_content = json.dumps(notebook_content)
-            encoded_content = base64.b64encode(updated_content.encode('utf-8')).decode('utf-8')
-            
-            update_payload = {
-                "definition": {
-                    "format": "ipynb",
-                    "parts": [
-                        {
-                            "path": notebook_path or "notebook-content.ipynb",
-                            "payload": encoded_content,
-                            "payloadType": "InlineBase64"
-                        }
-                    ]
-                }
-            }
-            
-            # Call the updateDefinition endpoint
-            self.client.make_api_request(
-                "POST",
-                f"workspaces/{notebook_workspace_id}/items/{notebook.id}/updateDefinition",
-                payload=update_payload
-            )
-            
-            logger.info(
-                f"Successfully attached lakehouse '{lakehouse_name}' to notebook '{notebook_name}'"
-            )
-            
-            return AttachLakehouseResult(
-                status="success",
-                message=f"Successfully attached lakehouse '{lakehouse_name}' to notebook '{notebook_name}'",
-                notebook_id=notebook.id,
-                notebook_name=notebook_name,
-                lakehouse_id=lakehouse.id,
-                lakehouse_name=lakehouse_name,
-                workspace_id=notebook_workspace_id
-            )
-            
-        except FabricItemNotFoundError as exc:
-            logger.error(f"Item not found: {exc}")
-            return AttachLakehouseResult(
-                status="error",
-                message=str(exc)
-            )
-        except FabricAPIError as exc:
-            logger.error(f"API error attaching lakehouse: {exc}")
-            return AttachLakehouseResult(
-                status="error",
-                message=str(exc)
-            )
-        except Exception as exc:
-            logger.error(f"Unexpected error attaching lakehouse to notebook: {exc}")
-            return AttachLakehouseResult(
-                status="error",
-                message=f"Unexpected error: {exc}"
-            )
-    
-    def get_notebook_execution_details(
+    def get_notebook_run_details(
         self,
         workspace_name: str,
         notebook_name: str,
         job_instance_id: str
     ) -> Dict[str, Any]:
-        """Get detailed execution information for a notebook run by job instance ID.
+        """Get detailed run information for a notebook job instance.
         
         Retrieves execution metadata from the Fabric Notebook Livy Sessions API,
         which provides detailed timing, resource usage, and execution state information.
@@ -908,7 +776,7 @@ class FabricNotebookService:
             )
             
             # Get detailed execution information
-            details = notebook_service.get_notebook_execution_details(
+            details = notebook_service.get_notebook_run_details(
                 workspace_name="Analytics",
                 notebook_name="ETL_Pipeline",
                 job_instance_id=exec_result.job_instance_id
@@ -922,7 +790,7 @@ class FabricNotebookService:
             ```
         """
         logger.info(
-            f"Getting execution details for notebook '{notebook_name}' "
+            f"Getting run details for notebook '{notebook_name}' "
             f"job instance '{job_instance_id}'"
         )
         
@@ -1002,12 +870,12 @@ class FabricNotebookService:
             }
             
             logger.info(
-                f"Successfully retrieved execution details for job instance '{job_instance_id}'"
+                f"Successfully retrieved run details for job instance '{job_instance_id}'"
             )
             
             return {
                 "status": "success",
-                "message": f"Execution details retrieved for job instance {job_instance_id}",
+                "message": f"Run details retrieved for job instance {job_instance_id}",
                 "workspace_name": workspace_name,
                 "notebook_name": notebook_name,
                 "notebook_id": notebook.id,
@@ -1022,25 +890,25 @@ class FabricNotebookService:
                 "message": str(exc)
             }
         except FabricAPIError as exc:
-            logger.error(f"API error getting execution details: {exc}")
+            logger.error(f"API error getting run details: {exc}")
             return {
                 "status": "error",
                 "message": str(exc)
             }
         except Exception as exc:
-            logger.error(f"Unexpected error getting execution details: {exc}")
+            logger.error(f"Unexpected error getting run details: {exc}")
             return {
                 "status": "error",
                 "message": f"Unexpected error: {exc}"
             }
     
-    def list_notebook_executions(
+    def list_notebook_runs(
         self,
         workspace_name: str,
         notebook_name: str,
         limit: Optional[int] = None
     ) -> Dict[str, Any]:
-        """List all Livy sessions (execution history) for a notebook.
+        """List all Livy sessions (run history) for a notebook.
         
         Retrieves a list of all Livy sessions associated with a notebook, providing
         an execution history with job instance IDs, states, and timing information.
@@ -1059,7 +927,7 @@ class FabricNotebookService:
             
         Example:
             ```python
-            history = notebook_service.list_notebook_executions(
+            history = notebook_service.list_notebook_runs(
                 workspace_name="Analytics",
                 notebook_name="ETL_Pipeline",
                 limit=10
@@ -1071,7 +939,7 @@ class FabricNotebookService:
             ```
         """
         logger.info(
-            f"Listing executions for notebook '{notebook_name}' "
+            f"Listing runs for notebook '{notebook_name}' "
             f"in workspace '{workspace_name}'"
         )
         
@@ -1113,12 +981,12 @@ class FabricNotebookService:
                 session_summaries = session_summaries[:limit]
             
             logger.info(
-                f"Found {len(session_summaries)} executions for notebook '{notebook_name}'"
+                f"Found {len(session_summaries)} runs for notebook '{notebook_name}'"
             )
             
             return {
                 "status": "success",
-                "message": f"Found {len(session_summaries)} executions",
+                "message": f"Found {len(session_summaries)} runs",
                 "workspace_name": workspace_name,
                 "notebook_name": notebook_name,
                 "notebook_id": notebook.id,
@@ -1133,13 +1001,13 @@ class FabricNotebookService:
                 "message": str(exc)
             }
         except FabricAPIError as exc:
-            logger.error(f"API error listing executions: {exc}")
+            logger.error(f"API error listing runs: {exc}")
             return {
                 "status": "error",
                 "message": str(exc)
             }
         except Exception as exc:
-            logger.error(f"Unexpected error listing executions: {exc}")
+            logger.error(f"Unexpected error listing runs: {exc}")
             return {
                 "status": "error",
                 "message": f"Unexpected error: {exc}"
@@ -1216,8 +1084,8 @@ class FabricNotebookService:
                 workspace_id, notebook_name, "Notebook"
             )
             
-            # First, get the execution details to find the Livy session and Spark app ID
-            exec_details = self.get_notebook_execution_details(
+            # First, get the run details to find the Livy session and Spark app ID
+            exec_details = self.get_notebook_run_details(
                 workspace_name, notebook_name, job_instance_id
             )
             

@@ -62,6 +62,7 @@ from .services import (
     FabricPipelineService,
     FabricSemanticModelService,
     FabricPowerBIService,
+    FabricLakehouseFileService,
 )
 
 # Model exports
@@ -107,6 +108,7 @@ __all__ = [
     "FabricPipelineService",
     "FabricSemanticModelService",
     "FabricPowerBIService",
+    "FabricLakehouseFileService",
     
     # Models
     "FabricWorkspace",

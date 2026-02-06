@@ -86,6 +86,17 @@ class FabricLivyService:
         self.poll_interval = poll_interval
         
         logger.debug("FabricLivyService initialized")
+
+    @staticmethod
+    def _extract_fallback_info(session_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract fallback warnings from Livy session tags."""
+        tags = session_data.get("tags") or {}
+        fallback_info: Dict[str, Any] = {}
+        if "FallbackReasons" in tags:
+            fallback_info["fallback_reasons"] = tags["FallbackReasons"]
+        if "FallbackMessages" in tags:
+            fallback_info["fallback_messages"] = tags["FallbackMessages"]
+        return fallback_info
     
     def create_session(
         self,
@@ -171,6 +182,7 @@ class FabricLivyService:
             session_id = session_data.get("id")
             
             logger.info(f"Successfully created Livy session: {session_id}")
+            fallback_info = self._extract_fallback_info(session_data)
             
             # If with_wait is True, poll until session becomes available
             if with_wait:
@@ -181,8 +193,15 @@ class FabricLivyService:
                     session_id=session_id,
                     timeout_seconds=timeout_seconds
                 )
+                final_fallback_info = self._extract_fallback_info(final_session_data)
+                if final_fallback_info:
+                    return {**final_session_data, **final_fallback_info}
+                if fallback_info:
+                    return {**final_session_data, **fallback_info}
                 return final_session_data
             
+            if fallback_info:
+                return {**session_data, **fallback_info}
             return session_data
             
         except FabricAPIError as exc:
@@ -768,6 +787,9 @@ class FabricLivyService:
         )
         
         start_time = time.time()
+        # Allow transient 404s during initial session creation (Fabric API lag)
+        max_404_retries = 5
+        consecutive_404_count = 0
         
         while True:
             elapsed = time.time() - start_time
@@ -782,6 +804,9 @@ class FabricLivyService:
                 session_data = self.get_session_status(
                     workspace_id, lakehouse_id, session_id
                 )
+                
+                # Reset 404 counter on successful response
+                consecutive_404_count = 0
                 
                 state = session_data.get("state", "unknown")
                 
@@ -805,8 +830,18 @@ class FabricLivyService:
                         f"(state={state}, elapsed={elapsed:.1f}s)"
                     )
                 
-            except (FabricLivyTimeoutError, FabricLivySessionError):
+            except FabricLivyTimeoutError:
                 raise
+            except FabricLivySessionError as exc:
+                # Check if this is a transient 404 (session not yet visible)
+                if "404" in str(exc) and consecutive_404_count < max_404_retries:
+                    consecutive_404_count += 1
+                    logger.warning(
+                        f"Session {session_id} returned 404, retrying "
+                        f"({consecutive_404_count}/{max_404_retries})"
+                    )
+                else:
+                    raise
             except Exception as exc:
                 logger.error(f"Error polling session {session_id}: {exc}")
                 raise FabricLivySessionError(session_id, f"Polling error: {exc}")

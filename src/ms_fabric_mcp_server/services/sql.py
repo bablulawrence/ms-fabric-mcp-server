@@ -3,6 +3,8 @@
 """Fabric SQL Warehouse Service for connecting and executing queries."""
 
 import logging
+import random
+import time
 import struct
 from itertools import chain, repeat
 from typing import Any, Dict, List, Optional
@@ -101,6 +103,7 @@ class FabricSQLService:
         self.item_service = item_service
         self._connection = None
         self._sql_endpoint = None
+        self._database = None
         
         # Enable OpenTelemetry auto-instrumentation if available
         if OTEL_AVAILABLE:
@@ -305,8 +308,9 @@ class FabricSQLService:
             )
             
             logger.info(f"Connecting to SQL endpoint: {sql_endpoint}, database: {database}")
-            self._connection = pyodbc.connect(cnx_str, attrs_before=attrs)
+            self._connection = pyodbc.connect(cnx_str, attrs_before=attrs, autocommit=True)
             self._sql_endpoint = sql_endpoint
+            self._database = database
             logger.info("Successfully connected to Fabric SQL Warehouse")
             
         except Exception as exc:
@@ -342,63 +346,83 @@ class FabricSQLService:
                 "Not connected to SQL endpoint. Call connect() first."
             )
         
-        try:
-            logger.info(f"Executing query: {query[:100]}...")
-            cursor = self._connection.cursor()
-            
-            # Auto-instrumentation will create CLIENT spans for DB operations
-            cursor.execute(query)
-            
-            # Get column names
-            columns = (
-                [column[0] for column in cursor.description]
-                if cursor.description else []
-            )
-            
-            # Fetch all rows
-            rows = cursor.fetchall()
-            
-            # Convert rows to list of dictionaries
-            data = []
-            for row in rows:
-                row_dict = {}
-                for i, column in enumerate(columns):
-                    row_dict[column] = row[i]
-                data.append(row_dict)
-            
-            result = QueryResult(
-                status="success",
-                data=data,
-                columns=columns,
-                row_count=len(data),
-                message=f"Query executed successfully. Returned {len(data)} rows."
-            )
-            
-            logger.info(f"Query executed successfully. Returned {len(data)} rows.")
-            return result
-            
-        except Exception as exc:
-            logger.error(f"Query execution failed: {exc}")
-            error_result = QueryResult(
-                status="error",
-                data=[],
-                columns=[],
-                row_count=0,
-                message=f"Query execution failed: {exc}"
-            )
-            return error_result
+        for attempt in range(2):
+            try:
+                logger.info(f"Executing query: {query[:100]}...")
+                cursor = self._connection.cursor()
+
+                # Auto-instrumentation will create CLIENT spans for DB operations
+                cursor.execute(query)
+
+                # Get column names
+                columns = (
+                    [column[0] for column in cursor.description]
+                    if cursor.description else []
+                )
+
+                # Fetch all rows
+                rows = cursor.fetchall()
+
+                # Convert rows to list of dictionaries
+                data = []
+                for row in rows:
+                    row_dict = {}
+                    for i, column in enumerate(columns):
+                        row_dict[column] = row[i]
+                    data.append(row_dict)
+
+                result = QueryResult(
+                    status="success",
+                    data=data,
+                    columns=columns,
+                    row_count=len(data),
+                    message=f"Query executed successfully. Returned {len(data)} rows.",
+                )
+
+                logger.info(f"Query executed successfully. Returned {len(data)} rows.")
+                return result
+
+            except Exception as exc:
+                if attempt == 0 and self._is_transient_odbc_error(exc):
+                    delay = random.uniform(5, 10)
+                    logger.warning(
+                        f"Transient SQL error detected; retrying in {delay:.1f}s: {exc}"
+                    )
+                    time.sleep(delay)
+                    if self._sql_endpoint and self._database:
+                        try:
+                            self.connect(self._sql_endpoint, self._database)
+                        except Exception as reconnect_exc:
+                            logger.warning(
+                                f"Retry reconnect failed: {reconnect_exc}"
+                            )
+                    continue
+
+                logger.error(f"Query execution failed: {exc}")
+                return QueryResult(
+                    status="error",
+                    data=[],
+                    columns=[],
+                    row_count=0,
+                    message=f"Query execution failed: {exc}",
+                )
     
-    def execute_statement(self, statement: str) -> Dict[str, Any]:
+    def execute_statement(self, statement: str, allow_ddl: bool = False) -> Dict[str, Any]:
         """Execute a DML SQL statement (INSERT, UPDATE, DELETE, MERGE).
         
         Args:
             statement: DML SQL statement to execute
+            allow_ddl: If True, allow DDL statements (CREATE/ALTER/DROP/TRUNCATE)
             
         Returns:
             Dictionary with execution status and affected rows
             
         Raises:
             FabricConnectionError: If not connected
+
+        Note:
+            DDL statements are supported only on Warehouse SQL endpoints. Lakehouse
+            SQL endpoints are read-only and will reject DDL at the API level.
             
         Example:
             ```python
@@ -416,24 +440,40 @@ class FabricSQLService:
             )
 
         if not self._is_dml_statement(statement):
-            message = (
-                "Only DML statements (INSERT, UPDATE, DELETE, MERGE) are supported."
-            )
-            logger.warning(message)
-            return {
-                "status": "error",
-                "affected_rows": 0,
-                "message": message,
-            }
+            if allow_ddl and self._is_ddl_statement(statement):
+                pass  # DDL allowed explicitly
+            elif self._is_ddl_statement(statement):
+                message = (
+                    "DDL statements require allow_ddl=True. "
+                    "Set allow_ddl=True to execute CREATE, ALTER, DROP, or TRUNCATE statements."
+                )
+                logger.warning(message)
+                return {
+                    "status": "error",
+                    "affected_rows": 0,
+                    "message": message,
+                }
+            else:
+                message = (
+                    "Use execute_sql_query for SELECT, SHOW, or DESCRIBE statements. "
+                    "This tool only supports DML (INSERT, UPDATE, DELETE, MERGE) "
+                    "and DDL (with allow_ddl=True)."
+                )
+                logger.warning(message)
+                return {
+                    "status": "error",
+                    "affected_rows": 0,
+                    "message": message,
+                }
         
         try:
             logger.info(f"Executing statement: {statement[:100]}...")
             cursor = self._connection.cursor()
             
             # Auto-instrumentation will create CLIENT spans for DB operations
+            # autocommit=True is set on the connection so no explicit commit needed
             cursor.execute(statement)
             affected_rows = cursor.rowcount
-            self._connection.commit()
             
             result = {
                 "status": "success",
@@ -445,10 +485,6 @@ class FabricSQLService:
             return result
             
         except Exception as exc:
-            try:
-                self._connection.rollback()
-            except:
-                pass  # Rollback may fail if connection is broken
             logger.error(f"Statement execution failed: {exc}")
             return {
                 "status": "error",
@@ -465,6 +501,29 @@ class FabricSQLService:
         if not first_token:
             return False
         return first_token[0].upper() in {"INSERT", "UPDATE", "DELETE", "MERGE"}
+
+    @staticmethod
+    def _is_ddl_statement(statement: str) -> bool:
+        """Return True if the statement starts with a DDL keyword."""
+        if not statement:
+            return False
+        first_token = statement.lstrip().split(None, 1)
+        if not first_token:
+            return False
+        return first_token[0].upper() in {"CREATE", "ALTER", "DROP", "TRUNCATE"}
+
+    @staticmethod
+    def _is_transient_odbc_error(exc: Exception) -> bool:
+        message = str(exc).lower()
+        transient_codes = ("hyt00", "hyt01", "08s01")
+        if "cursor closed" in message:
+            return True
+        if any(code in message for code in transient_codes):
+            return True
+        for arg in getattr(exc, "args", ()) or ():
+            if isinstance(arg, str) and any(code in arg.lower() for code in transient_codes):
+                return True
+        return False
     
     def execute_sql_query(
         self,
@@ -505,7 +564,8 @@ class FabricSQLService:
         self,
         sql_endpoint: str,
         statement: str,
-        database: str = "Metadata"
+        database: str = "Metadata",
+        allow_ddl: bool = False,
     ) -> Dict[str, Any]:
         """Execute a DML SQL statement against a Fabric SQL endpoint (Warehouse or Lakehouse).
         
@@ -517,6 +577,8 @@ class FabricSQLService:
                 (e.g., "abc-123.datawarehouse.fabric.microsoft.com")
             statement: DML SQL statement to execute (INSERT, UPDATE, DELETE, MERGE)
             database: Database name to connect to (default: "Metadata")
+            allow_ddl: If True, allow DDL statements (CREATE/ALTER/DROP/TRUNCATE).
+                DDL is supported only on Warehouse SQL endpoints.
             
         Returns:
             Dictionary with execution status and affected rows
@@ -532,7 +594,7 @@ class FabricSQLService:
         """
         self.connect(sql_endpoint, database)
         try:
-            return self.execute_statement(statement)
+            return self.execute_statement(statement, allow_ddl=allow_ddl)
         finally:
             self.close()
     

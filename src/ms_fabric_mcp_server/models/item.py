@@ -18,6 +18,7 @@ class FabricItem(BaseModel):
         type: Type of item (Notebook, Lakehouse, Warehouse, Pipeline, etc.)
         workspace_id: ID of the workspace containing this item
         description: Optional description of the item
+        folder_id: Optional folder ID containing the item
         created_date: Creation timestamp (ISO 8601 format)
         modified_date: Last modification timestamp (ISO 8601 format)
         definition: Item definition details (type-specific structure)
@@ -39,6 +40,7 @@ class FabricItem(BaseModel):
     type: str = Field(description="Type of item (Notebook, Lakehouse, Warehouse, etc.)")
     workspace_id: str = Field(description="ID of the workspace containing this item")
     description: Optional[str] = Field(default=None, description="Description of the item")
+    folder_id: Optional[str] = Field(default=None, description="Folder ID containing the item")
     created_date: Optional[str] = Field(default=None, description="Creation timestamp")
     modified_date: Optional[str] = Field(default=None, description="Last modification timestamp")
     definition: Optional[Dict[str, Any]] = Field(default=None, description="Item definition details")

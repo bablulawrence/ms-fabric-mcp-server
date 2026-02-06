@@ -182,7 +182,8 @@ def register_sql_tools(mcp: "FastMCP", sql_service: FabricSQLService):
     def execute_sql_statement(
         sql_endpoint: str,
         statement: str,
-        database: str = "Metadata"
+        database: str = "Metadata",
+        allow_ddl: bool = False,
     ) -> dict:
         """Execute a DML SQL statement (INSERT, UPDATE, DELETE, MERGE) against a Fabric SQL Warehouse.
         
@@ -190,12 +191,15 @@ def register_sql_tools(mcp: "FastMCP", sql_service: FabricSQLService):
         
         **Note**: This tool is for DML statements that modify data (INSERT/UPDATE/DELETE/MERGE).
         For queries that return data (SELECT/SHOW/DESCRIBE), use execute_sql_query instead.
+        Use allow_ddl=True to permit DDL statements (CREATE/ALTER/DROP/TRUNCATE). DDL is
+        supported only on Warehouse SQL endpoints; Lakehouse SQL endpoints are read-only.
         
         Parameters:
             sql_endpoint: The SQL endpoint URL (e.g., "abc-123.datawarehouse.fabric.microsoft.com").
                          Use get_sql_endpoint to retrieve this.
             statement: DML SQL statement to execute (INSERT, UPDATE, DELETE, MERGE).
             database: Database/Warehouse name to connect to (default: "Metadata").
+            allow_ddl: If True, allow DDL statements (CREATE/ALTER/DROP/TRUNCATE).
             
         Returns:
             Dictionary with status, message, affected_rows, and endpoint.
@@ -218,13 +222,15 @@ def register_sql_tools(mcp: "FastMCP", sql_service: FabricSQLService):
             ```
         """
         log_tool_invocation("execute_sql_statement",
-                          sql_endpoint=sql_endpoint, statement=statement[:100], database=database)
+                          sql_endpoint=sql_endpoint, statement=statement[:100], database=database,
+                          allow_ddl=allow_ddl)
         logger.info(f"Executing DML statement on {sql_endpoint} (database: {database}): {statement[:100]}...")
         
         result = sql_service.execute_sql_statement(
             sql_endpoint=sql_endpoint,
             statement=statement,
-            database=database
+            database=database,
+            allow_ddl=allow_ddl,
         )
         
         response = {

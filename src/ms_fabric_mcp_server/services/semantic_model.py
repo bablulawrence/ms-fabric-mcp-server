@@ -48,6 +48,7 @@ class FabricSemanticModelService:
         self,
         workspace_name: str,
         semantic_model_name: str,
+        folder_path: Optional[str] = None,
     ) -> SemanticModelReference:
         """Create an empty Fabric semantic model."""
         logger.info(
@@ -60,9 +61,18 @@ class FabricSemanticModelService:
                 semantic_model_name,
                 "Semantic model name cannot be empty",
             )
+        if "/" in semantic_model_name or "\\" in semantic_model_name:
+            raise FabricValidationError(
+                "semantic_model_name",
+                semantic_model_name,
+                "Semantic model name cannot include path separators. Use folder_path instead.",
+            )
 
         try:
             workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
+            folder_id = self.item_service.resolve_folder_id_from_path(
+                workspace_id, folder_path, create_missing=True
+            )
 
             item_definition = {
                 "displayName": semantic_model_name,
@@ -100,6 +110,8 @@ class FabricSemanticModelService:
                     ],
                 },
             }
+            if folder_id:
+                item_definition["folderId"] = folder_id
 
             created_item = self.item_service.create_item(workspace_id, item_definition)
 
@@ -123,6 +135,8 @@ class FabricSemanticModelService:
         lakehouse_name: str,
         table_name: str,
         columns: List[SemanticModelColumn],
+        table_schema: Optional[str] = None,
+        model_table_name: Optional[str] = None,
     ) -> SemanticModelReference:
         """Add a table from a lakehouse to an existing semantic model."""
         logger.info(
@@ -133,8 +147,23 @@ class FabricSemanticModelService:
             raise FabricValidationError(
                 "columns", "empty", "Columns list cannot be empty"
             )
+        if table_schema is not None and not table_schema.strip():
+            raise FabricValidationError(
+                "table_schema", table_schema, "Table schema cannot be empty"
+            )
+        if model_table_name is not None and not model_table_name.strip():
+            raise FabricValidationError(
+                "model_table_name", model_table_name, "Model table name cannot be empty"
+            )
+        if table_schema and ("/" in table_name or "\\" in table_name or "." in table_name):
+            raise FabricValidationError(
+                "table_name",
+                table_name,
+                "Table name must be unqualified when table_schema is provided",
+            )
 
         try:
+            resolved_table_name = model_table_name or table_name
             workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
             semantic_model_id = self.item_service.get_item_by_name(
                 workspace_id, semantic_model_name, "SemanticModel"
@@ -151,12 +180,10 @@ class FabricSemanticModelService:
             expressions = model.setdefault("expressions", [])
             tables = model.setdefault("tables", [])
 
-            expression_name = f"DirectLake - {lakehouse_name}"
-            table_expression = self._find_list_item(
-                expressions, "name", expression_name
-            )
-
-            if not table_expression:
+            expression_name = self._find_directlake_expression_name(
+                expressions, workspace_id, lakehouse_id
+            ) or f"DirectLake - {lakehouse_name}"
+            if not self._find_list_item(expressions, "name", expression_name):
                 expressions.append(
                     {
                         "name": expression_name,
@@ -171,16 +198,24 @@ class FabricSemanticModelService:
                     }
                 )
 
-            if self._find_list_item(tables, "name", table_name):
+            if self._find_list_item(tables, "name", resolved_table_name):
                 raise FabricValidationError(
-                    "table_name",
-                    table_name,
-                    f"Table '{table_name}' already exists in semantic model '{semantic_model_name}'",
+                    "model_table_name" if model_table_name else "table_name",
+                    resolved_table_name,
+                    f"Table '{resolved_table_name}' already exists in semantic model '{semantic_model_name}'",
                 )
+
+            partition_source = {
+                "entityName": table_name,
+                "expressionSource": expression_name,
+                "type": "entity",
+            }
+            if table_schema:
+                partition_source["schemaName"] = table_schema
 
             tables.append(
                 {
-                    "name": table_name,
+                    "name": resolved_table_name,
                     "columns": [
                         {
                             "name": column.name,
@@ -193,13 +228,9 @@ class FabricSemanticModelService:
                     ],
                     "partitions": [
                         {
-                            "name": table_name,
+                            "name": resolved_table_name,
                             "mode": "directLake",
-                            "source": {
-                                "entityName": table_name,
-                                "expressionSource": expression_name,
-                                "type": "entity",
-                            },
+                            "source": partition_source,
                         }
                     ],
                     "lineageTag": str(uuid.uuid4()),
@@ -336,6 +367,121 @@ class FabricSemanticModelService:
 
         self._update_definition(workspace_id, semantic_model.id, definition, bim)
         return SemanticModelReference(workspace_id, semantic_model.id)
+
+    def delete_table_from_semantic_model(
+        self,
+        workspace_name: str,
+        semantic_model_name: Optional[str],
+        semantic_model_id: Optional[str],
+        table_name: str,
+        remove_relationships: bool = True,
+    ) -> Tuple[SemanticModelReference, int]:
+        """Delete a table from a semantic model."""
+        if not table_name or not table_name.strip():
+            raise FabricValidationError(
+                "table_name", table_name, "Table name cannot be empty"
+            )
+
+        workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
+        semantic_model = self._resolve_semantic_model(
+            workspace_id, semantic_model_name, semantic_model_id
+        )
+        definition = self._get_definition_with_retry(
+            workspace_id, semantic_model.id, format="TMSL"
+        )
+        bim = self._get_bim(definition)
+        model = bim.setdefault("model", {})
+        tables = model.setdefault("tables", [])
+
+        table = self._find_list_item(tables, "name", table_name)
+        if not table:
+            raise FabricValidationError(
+                "table_name",
+                table_name,
+                f"Table '{table_name}' not found in semantic model",
+            )
+
+        model["tables"] = [t for t in tables if t is not table]
+
+        removed_relationships = 0
+        if remove_relationships:
+            relationships = model.get("relationships", [])
+            kept: List[Dict[str, Any]] = []
+            for relationship in relationships:
+                if relationship.get("fromTable") == table_name or relationship.get(
+                    "toTable"
+                ) == table_name:
+                    removed_relationships += 1
+                    continue
+                kept.append(relationship)
+            model["relationships"] = kept
+
+        self._update_definition(workspace_id, semantic_model.id, definition, bim)
+        return SemanticModelReference(workspace_id, semantic_model.id), removed_relationships
+
+    def delete_relationship_from_semantic_model(
+        self,
+        workspace_name: str,
+        semantic_model_name: Optional[str],
+        semantic_model_id: Optional[str],
+        relationship_name: Optional[str] = None,
+        from_table: Optional[str] = None,
+        from_column: Optional[str] = None,
+        to_table: Optional[str] = None,
+        to_column: Optional[str] = None,
+    ) -> Tuple[SemanticModelReference, int]:
+        """Delete relationship(s) from a semantic model."""
+        if relationship_name:
+            match_by_name = True
+        else:
+            match_by_name = False
+            required = [from_table, from_column, to_table, to_column]
+            if not all(required):
+                raise FabricValidationError(
+                    "relationship",
+                    "",
+                    "Provide relationship_name or from_table/from_column/to_table/to_column",
+                )
+
+        workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
+        semantic_model = self._resolve_semantic_model(
+            workspace_id, semantic_model_name, semantic_model_id
+        )
+        definition = self._get_definition_with_retry(
+            workspace_id, semantic_model.id, format="TMSL"
+        )
+        bim = self._get_bim(definition)
+        model = bim.setdefault("model", {})
+        relationships = model.setdefault("relationships", [])
+
+        kept: List[Dict[str, Any]] = []
+        removed = 0
+        for relationship in relationships:
+            if match_by_name:
+                if relationship.get("name") == relationship_name:
+                    removed += 1
+                    continue
+            else:
+                if (
+                    relationship.get("fromTable") == from_table
+                    and relationship.get("fromColumn") == from_column
+                    and relationship.get("toTable") == to_table
+                    and relationship.get("toColumn") == to_column
+                ):
+                    removed += 1
+                    continue
+            kept.append(relationship)
+
+        if removed == 0:
+            raise FabricValidationError(
+                "relationship",
+                relationship_name or "",
+                "Relationship not found in semantic model",
+            )
+
+        model["relationships"] = kept
+        self._update_definition(workspace_id, semantic_model.id, definition, bim)
+        return SemanticModelReference(workspace_id, semantic_model.id), removed
 
     def delete_measures_from_semantic_model(
         self,
@@ -550,6 +696,29 @@ class FabricSemanticModelService:
         self.item_service.update_item_definition(
             workspace_id, semantic_model_id, update_payload
         )
+
+    def _find_directlake_expression_name(
+        self,
+        expressions: List[Dict[str, Any]],
+        workspace_id: str,
+        lakehouse_id: str,
+    ) -> Optional[str]:
+        directlake_path = (
+            f"https://onelake.dfs.fabric.microsoft.com/{workspace_id}/{lakehouse_id}"
+        )
+        for expression in expressions:
+            expr_body = expression.get("expression")
+            if not expr_body:
+                continue
+            if isinstance(expr_body, list):
+                joined = "\n".join(str(line) for line in expr_body)
+            else:
+                joined = str(expr_body)
+            if directlake_path in joined:
+                name = expression.get("name")
+                if name:
+                    return name
+        return None
 
     def _find_list_item(
         self, items: List[Dict[str, Any]], key: str, value: Any

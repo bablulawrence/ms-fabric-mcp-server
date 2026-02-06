@@ -1,8 +1,10 @@
 """Tests for Fabric workspace tools."""
 
 import pytest
-from unittest.mock import Mock
-from tests.fixtures.mocks import FabricDataFactory, ServiceMockFactory
+
+from ms_fabric_mcp_server.models.workspace import FabricWorkspace
+from tests.fabric.tools.utils import capture_tools
+from tests.fixtures.mocks import ServiceMockFactory
 
 
 @pytest.mark.unit
@@ -13,18 +15,28 @@ class TestWorkspaceTools:
         """Test list_workspaces tool registration and execution."""
         from ms_fabric_mcp_server.tools.workspace_tools import register_workspace_tools
         
-        # Create mock service
+        tools, mcp = capture_tools()
         workspace_service = ServiceMockFactory.workspace_service()
         workspace_service.list_workspaces.return_value = [
-            FabricDataFactory.workspace(workspace_id="ws-1", name="Workspace 1"),
-            FabricDataFactory.workspace(workspace_id="ws-2", name="Workspace 2"),
+            FabricWorkspace(
+                id="ws-1",
+                display_name="Workspace 1",
+                description="Workspace 1",
+                type="Workspace",
+            ),
+            FabricWorkspace(
+                id="ws-2",
+                display_name="Workspace 2",
+                description="Workspace 2",
+                type="Workspace",
+            ),
         ]
-        
-        # Register tools
-        register_workspace_tools(mock_fastmcp, workspace_service)
-        
-        # Verify tool was registered
-        assert mock_fastmcp.tool.called
+
+        register_workspace_tools(mcp, workspace_service)
+
+        result = tools["list_workspaces"]()
+        assert result["status"] == "success"
+        assert result["workspace_count"] == 2
 
 
 @pytest.mark.unit

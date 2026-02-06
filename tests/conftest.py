@@ -12,11 +12,19 @@ from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
 from typing import Dict, Any
 
+from dotenv import load_dotenv
+
 # Ensure local src/ is used instead of any installed package.
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_PATH = PROJECT_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
+
+# Load .env.integration for local integration tests (if it exists).
+# In CI, environment variables are set directly in the workflow, so we don't override.
+_ENV_INTEGRATION_PATH = PROJECT_ROOT / ".env.integration"
+if _ENV_INTEGRATION_PATH.exists():
+    load_dotenv(_ENV_INTEGRATION_PATH, override=False)
 
 
 # ============================================================================
@@ -492,10 +500,52 @@ def pipeline_copy_sql_inputs():
     }
 
 
-@pytest.fixture
-def dataflow_name():
-    """Optional dataflow name for pipeline integration tests."""
-    return get_env_optional("FABRIC_TEST_DATAFLOW_NAME")
+@pytest_asyncio.fixture
+async def dataflow_name(call_tool, delete_item_if_exists, workspace_name, poll_until):
+    """Create a test dataflow for pipeline integration tests, yield name, cleanup."""
+    name = unique_name("fixture_dataflow")
+
+    # Simple Power Query M code that creates a literal table
+    mashup_content = """section Section1;
+shared FixtureQuery = let
+    Source = #table(
+        type table [Col1 = text, Col2 = number],
+        {{"A", 1}, {"B", 2}}
+    )
+in
+    Source;
+"""
+
+    async def _check_dataflow_ready():
+        result = await call_tool(
+            "get_dataflow_definition",
+            workspace_name=workspace_name,
+            dataflow_name=name,
+        )
+        if result.get("status") == "success":
+            return result
+        message = (result.get("message") or "").lower()
+        if "not found" in message or "notfound" in message:
+            return None
+        return result
+
+    create_result = await call_tool(
+        "create_dataflow",
+        workspace_name=workspace_name,
+        dataflow_name=name,
+        mashup_content=mashup_content,
+        description="Fixture dataflow for integration tests",
+    )
+    if create_result.get("status") != "success":
+        pytest.skip(f"Failed to create fixture dataflow: {create_result.get('message')}")
+
+    # Wait for dataflow to be available
+    await poll_until(_check_dataflow_ready, timeout_seconds=120, interval_seconds=10)
+
+    yield name
+
+    # Cleanup
+    await delete_item_if_exists(name, "Dataflow")
 
 
 def _parse_semantic_model_columns(raw: str | None, env_name: str) -> list[dict] | None:
@@ -543,6 +593,30 @@ def semantic_model_columns_2():
 
 
 @pytest.fixture
+def semantic_model_schema():
+    """Optional semantic model schema name for integration tests."""
+    return get_env_optional("FABRIC_TEST_SEMANTIC_MODEL_SCHEMA")
+
+
+@pytest.fixture
+def semantic_model_schema_refresh():
+    """Optional flag to require schema-based semantic model refresh."""
+    value = get_env_optional("FABRIC_TEST_SEMANTIC_MODEL_SCHEMA_REFRESH")
+    if not value:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "y"}
+
+
+@pytest.fixture
+def semantic_model_refresh():
+    """Optional flag to require semantic model refresh in integration tests."""
+    value = get_env_optional("FABRIC_TEST_SEMANTIC_MODEL_REFRESH")
+    if not value:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "y"}
+
+
+@pytest.fixture
 def sql_dependencies_available(tool_registry):
     """Skip SQL tests if dependencies or tools are unavailable."""
     pyodbc = pytest.importorskip("pyodbc")
@@ -557,17 +631,17 @@ def sql_dependencies_available(tool_registry):
 @pytest.fixture
 def delete_item_if_exists(call_tool, workspace_name):
     """Delete an item and ignore not-found errors."""
-    async def _delete(item_display_name: str, item_type: str):
+    async def _delete(item_name: str, item_type: str):
         result = await call_tool(
             "delete_item",
             workspace_name=workspace_name,
-            item_display_name=item_display_name,
+            item_name=item_name,
             item_type=item_type,
         )
         if result.get("status") == "error":
             message = (result.get("message") or "").lower()
             if "not found" not in message:
-                raise AssertionError(f"Failed to delete {item_type} '{item_display_name}': {result}")
+                raise AssertionError(f"Failed to delete {item_type} '{item_name}': {result}")
         return result
 
     return _delete
@@ -586,9 +660,9 @@ async def executed_notebook_context(
 
     async def _get_content():
         result = await call_tool_session(
-            "get_notebook_content",
+            "get_notebook_definition",
             workspace_name=workspace_name_session,
-            notebook_display_name=notebook_name,
+            notebook_name=notebook_name,
         )
         if result.get("status") == "success":
             return result
@@ -619,11 +693,14 @@ async def executed_notebook_context(
         return None
 
     try:
+        notebook_path = PROJECT_ROOT / "tests" / "fixtures" / "minimal_notebook.ipynb"
+        notebook_content = json.loads(notebook_path.read_text())
+
         import_result = await call_tool_session(
-            "import_notebook_to_fabric",
+            "create_notebook",
             workspace_name=workspace_name_session,
-            notebook_display_name=notebook_name,
-            local_notebook_path=str(PROJECT_ROOT / "tests" / "fixtures" / "minimal_notebook.ipynb"),
+            notebook_name=notebook_name,
+            notebook_content=notebook_content,
         )
         assert import_result["status"] == "success"
 
@@ -632,10 +709,11 @@ async def executed_notebook_context(
         assert content_result["status"] == "success"
 
         attach_result = await call_tool_session(
-            "attach_lakehouse_to_notebook",
+            "update_notebook_definition",
             workspace_name=workspace_name_session,
             notebook_name=notebook_name,
-            lakehouse_name=lakehouse_name_session,
+            notebook_content=notebook_content,
+            default_lakehouse_name=lakehouse_name_session,
         )
         assert attach_result["status"] == "success"
 
@@ -668,7 +746,7 @@ async def executed_notebook_context(
         result = await call_tool_session(
             "delete_item",
             workspace_name=workspace_name_session,
-            item_display_name=notebook_name,
+            item_name=notebook_name,
             item_type="Notebook",
         )
         if result.get("status") == "error":

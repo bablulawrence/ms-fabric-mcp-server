@@ -87,16 +87,20 @@ class FabricDataFactory:
         item_id: str = "item-123",
         name: str = "Test Item",
         item_type: str = "Notebook",
-        workspace_id: str = "ws-123"
+        workspace_id: str = "ws-123",
+        folder_id: str | None = None,
     ) -> Dict[str, Any]:
         """Generate item data."""
-        return {
+        data = {
             "id": item_id,
             "displayName": name,
             "type": item_type,
             "workspaceId": workspace_id,
             "description": f"Test {item_type}"
         }
+        if folder_id:
+            data["folderId"] = folder_id
+        return data
     
     @staticmethod
     def item_list(count: int = 5, item_type: str = None) -> Dict[str, Any]:
@@ -246,8 +250,12 @@ class ServiceMockFactory:
         service.client = mock_client
         service.workspace_service = mock_workspace_service
         service.item_service = mock_item_service
-        service.import_notebook = Mock()
+        service.create_notebook = Mock()
         service.get_notebook_definition = Mock()
+        service.update_notebook_definition = Mock()
+        service.get_notebook_run_details = Mock()
+        service.list_notebook_runs = Mock()
+        service.get_notebook_driver_logs = Mock()
         return service
     
     @staticmethod
