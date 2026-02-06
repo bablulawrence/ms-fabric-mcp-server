@@ -352,7 +352,7 @@ def register_item_tools(
         Parameters:
             workspace_name: The display name of the workspace.
             folder_id: Folder ID to move.
-            target_folder_id: Target parent folder ID (None for workspace root).
+            target_folder_id: Target parent folder ID. Use "root" or omit to move to workspace root.
             target_folder_path: Target parent folder path (must exist).
 
         Returns:
@@ -374,6 +374,10 @@ def register_item_tools(
                 target_folder_path,
                 "Provide either target_folder_id or target_folder_path, not both.",
             )
+
+        # Accept "root" as sentinel for workspace root
+        if isinstance(target_folder_id, str) and target_folder_id.lower() == "root":
+            target_folder_id = None
 
         if target_folder_path:
             target_folder_id = item_service.resolve_folder_id_from_path(
@@ -622,7 +626,7 @@ def register_item_tools(
         Parameters:
             workspace_name: The display name of the workspace.
             item_id: ID of the item to move.
-            target_folder_id: Folder ID to move the item into. Omit to move to root.
+            target_folder_id: Folder ID to move the item into. Use "root" or omit to move to workspace root.
             target_folder_path: Folder path to move the item into. Omit to move to root.
 
         Returns:
@@ -646,6 +650,9 @@ def register_item_tools(
                 target_folder_path,
                 "Provide either target_folder_id or target_folder_path, not both.",
             )
+        # Accept "root" as sentinel for workspace root
+        if isinstance(target_folder_id, str) and target_folder_id.lower() == "root":
+            target_folder_id = None
         if target_folder_path:
             target_folder_id = item_service.resolve_folder_id_from_path(
                 workspace_id, target_folder_path, create_missing=False

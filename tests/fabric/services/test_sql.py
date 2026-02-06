@@ -149,6 +149,7 @@ class TestFabricSQLService:
         args, kwargs = pyodbc_mock.connect.call_args
         assert "Server=server-host,1433" in args[0]
         assert kwargs["attrs_before"][1256] == b"token"
+        assert kwargs["autocommit"] is True
         assert service._connection is not None
 
     def test_connect_failure(self, sql_service):
@@ -230,7 +231,7 @@ class TestFabricSQLService:
             service.execute_statement("UPDATE test SET a=1")
 
     def test_execute_statement_success(self, sql_service):
-        """execute_statement commits and returns success."""
+        """execute_statement executes and returns success (autocommit, no manual commit)."""
         service, *_ = sql_service
         cursor = Mock()
         cursor.rowcount = 3
@@ -242,7 +243,7 @@ class TestFabricSQLService:
 
         assert result["status"] == "success"
         assert result["affected_rows"] == 3
-        connection.commit.assert_called_once()
+        connection.commit.assert_not_called()
 
     def test_execute_statement_rejects_non_dml(self, sql_service):
         """execute_statement returns error for non-DML statements."""
@@ -280,10 +281,10 @@ class TestFabricSQLService:
         result = service.execute_statement("CREATE TABLE test (id int)", allow_ddl=True)
 
         assert result["status"] == "success"
-        connection.commit.assert_called_once()
+        connection.commit.assert_not_called()
 
     def test_execute_statement_failure(self, sql_service):
-        """execute_statement rolls back on error."""
+        """execute_statement returns error on failure (no rollback with autocommit)."""
         service, *_ = sql_service
         cursor = Mock()
         cursor.execute.side_effect = RuntimeError("boom")
@@ -294,7 +295,7 @@ class TestFabricSQLService:
         result = service.execute_statement("UPDATE test SET a=1")
 
         assert result["status"] == "error"
-        connection.rollback.assert_called_once()
+        connection.rollback.assert_not_called()
 
     def test_execute_sql_query_calls_close_on_error(self, sql_service):
         """execute_sql_query closes connection even on error."""

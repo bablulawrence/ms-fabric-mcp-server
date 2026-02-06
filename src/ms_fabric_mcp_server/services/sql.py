@@ -308,7 +308,7 @@ class FabricSQLService:
             )
             
             logger.info(f"Connecting to SQL endpoint: {sql_endpoint}, database: {database}")
-            self._connection = pyodbc.connect(cnx_str, attrs_before=attrs)
+            self._connection = pyodbc.connect(cnx_str, attrs_before=attrs, autocommit=True)
             self._sql_endpoint = sql_endpoint
             self._database = database
             logger.info("Successfully connected to Fabric SQL Warehouse")
@@ -440,9 +440,24 @@ class FabricSQLService:
             )
 
         if not self._is_dml_statement(statement):
-            if not (allow_ddl and self._is_ddl_statement(statement)):
+            if allow_ddl and self._is_ddl_statement(statement):
+                pass  # DDL allowed explicitly
+            elif self._is_ddl_statement(statement):
                 message = (
-                    "Only DML statements (INSERT, UPDATE, DELETE, MERGE) are supported."
+                    "DDL statements require allow_ddl=True. "
+                    "Set allow_ddl=True to execute CREATE, ALTER, DROP, or TRUNCATE statements."
+                )
+                logger.warning(message)
+                return {
+                    "status": "error",
+                    "affected_rows": 0,
+                    "message": message,
+                }
+            else:
+                message = (
+                    "Use execute_sql_query for SELECT, SHOW, or DESCRIBE statements. "
+                    "This tool only supports DML (INSERT, UPDATE, DELETE, MERGE) "
+                    "and DDL (with allow_ddl=True)."
                 )
                 logger.warning(message)
                 return {
@@ -456,9 +471,9 @@ class FabricSQLService:
             cursor = self._connection.cursor()
             
             # Auto-instrumentation will create CLIENT spans for DB operations
+            # autocommit=True is set on the connection so no explicit commit needed
             cursor.execute(statement)
             affected_rows = cursor.rowcount
-            self._connection.commit()
             
             result = {
                 "status": "success",
@@ -470,10 +485,6 @@ class FabricSQLService:
             return result
             
         except Exception as exc:
-            try:
-                self._connection.rollback()
-            except:
-                pass  # Rollback may fail if connection is broken
             logger.error(f"Statement execution failed: {exc}")
             return {
                 "status": "error",

@@ -10,7 +10,42 @@ import logging
 from typing import Any, Dict, Callable
 from functools import wraps
 
+from ..client.exceptions import (
+    FabricAPIError,
+    FabricAuthError,
+    FabricConnectionError,
+    FabricError,
+    FabricItemNotFoundError,
+    FabricLivyError,
+    FabricLivyTimeoutError,
+    FabricRateLimitError,
+    FabricValidationError,
+    FabricWorkspaceNotFoundError,
+)
+
 logger = logging.getLogger(__name__)
+
+# Map exception types to error codes for consistent error responses
+_ERROR_CODE_MAP = {
+    FabricValidationError: "VALIDATION_ERROR",
+    FabricItemNotFoundError: "ITEM_NOT_FOUND",
+    FabricWorkspaceNotFoundError: "WORKSPACE_NOT_FOUND",
+    FabricAuthError: "AUTH_ERROR",
+    FabricConnectionError: "CONNECTION_ERROR",
+    FabricRateLimitError: "RATE_LIMIT",
+    FabricLivyTimeoutError: "LIVY_TIMEOUT",
+    FabricLivyError: "LIVY_ERROR",
+    FabricAPIError: "API_ERROR",
+    FabricError: "FABRIC_ERROR",
+}
+
+
+def _error_code_for(exc: Exception) -> str:
+    """Return a standardized error code for the given exception."""
+    for exc_type, code in _ERROR_CODE_MAP.items():
+        if isinstance(exc, exc_type):
+            return code
+    return "UNEXPECTED_ERROR"
 
 
 def handle_tool_errors(tool_func: Callable) -> Callable:
@@ -40,11 +75,16 @@ def handle_tool_errors(tool_func: Callable) -> Callable:
         try:
             return tool_func(*args, **kwargs)
         except Exception as exc:
+            error_code = _error_code_for(exc)
             logger.error(f"Error in {tool_func.__name__}: {exc}", exc_info=True)
-            return {
+            response: Dict[str, Any] = {
                 "status": "error",
-                "message": f"Unexpected error: {exc}"
+                "error_code": error_code,
+                "message": str(exc),
             }
+            if isinstance(exc, FabricAPIError) and exc.status_code:
+                response["status_code"] = exc.status_code
+            return response
     return wrapper
 
 

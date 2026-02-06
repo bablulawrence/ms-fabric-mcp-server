@@ -86,6 +86,10 @@ def register_lakehouse_file_tools(
 
         formatted: List[Dict[str, Any]] = []
         for entry in files:
+            name = entry.get("name", "")
+            # Filter out entries outside Files/ (e.g., Tables/ delta internals)
+            if not name.startswith("Files"):
+                continue
             formatted.append(
                 {
                     "name": entry.get("name"),
