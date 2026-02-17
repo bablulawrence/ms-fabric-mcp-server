@@ -868,3 +868,207 @@ class TestFabricNotebookService:
         )
 
         assert result["status"] == "error"
+
+    # ── File-path round-trip tests ──────────────────────────────────────
+
+    def test_load_notebook_from_file_success(self, notebook_service, tmp_path):
+        """Load a valid .ipynb file from disk."""
+        nb = {"cells": [], "metadata": {}, "nbformat": 4}
+        nb_file = tmp_path / "test.ipynb"
+        nb_file.write_text(json.dumps(nb))
+
+        result = notebook_service._load_notebook_from_file(str(nb_file))
+        assert result == nb
+
+    def test_load_notebook_from_file_not_found(self, notebook_service, tmp_path):
+        """Missing file raises validation error."""
+        with pytest.raises(FabricValidationError, match="does not exist"):
+            notebook_service._load_notebook_from_file(str(tmp_path / "nope.ipynb"))
+
+    def test_load_notebook_from_file_invalid_json(self, notebook_service, tmp_path):
+        """Non-JSON file raises validation error."""
+        bad_file = tmp_path / "bad.ipynb"
+        bad_file.write_text("not json {{{")
+
+        with pytest.raises(FabricValidationError, match="not valid JSON"):
+            notebook_service._load_notebook_from_file(str(bad_file))
+
+    def test_load_notebook_from_file_empty_object(self, notebook_service, tmp_path):
+        """Empty JSON object raises validation error."""
+        empty_file = tmp_path / "empty.ipynb"
+        empty_file.write_text("{}")
+
+        with pytest.raises(FabricValidationError, match="non-empty"):
+            notebook_service._load_notebook_from_file(str(empty_file))
+
+    def test_load_notebook_from_file_os_error(self, notebook_service, tmp_path):
+        """Unreadable file raises validation error, not raw OSError."""
+        nb_file = tmp_path / "unreadable.ipynb"
+        nb_file.write_text('{"cells": []}')
+        nb_file.chmod(0o000)
+
+        try:
+            with pytest.raises(FabricValidationError, match="Cannot read file"):
+                notebook_service._load_notebook_from_file(str(nb_file))
+        finally:
+            nb_file.chmod(0o644)
+
+    def test_create_notebook_mutual_exclusivity_empty_dict(self, notebook_service, tmp_path):
+        """Empty dict notebook_content + notebook_file_path still triggers mutual exclusivity."""
+        nb_file = tmp_path / "nb.ipynb"
+        nb_file.write_text('{"cells": []}')
+
+        with pytest.raises(FabricValidationError, match="not both"):
+            notebook_service.create_notebook(
+                workspace_name="WS",
+                notebook_name="NB",
+                notebook_content={},
+                notebook_file_path=str(nb_file),
+            )
+
+    def test_update_notebook_mutual_exclusivity_empty_dict(self, notebook_service, tmp_path):
+        """Empty dict notebook_content + notebook_file_path still triggers mutual exclusivity."""
+        nb_file = tmp_path / "nb.ipynb"
+        nb_file.write_text('{"cells": []}')
+
+        with pytest.raises(FabricValidationError, match="not both"):
+            notebook_service.update_notebook_definition(
+                workspace_name="WS",
+                notebook_name="NB",
+                notebook_content={},
+                notebook_file_path=str(nb_file),
+            )
+
+    def test_create_notebook_with_file_path(
+        self, notebook_service, mock_item_service, mock_workspace_service, tmp_path
+    ):
+        """Create notebook from a local file path."""
+        nb = {"cells": [{"cell_type": "code", "source": ["1+1"]}], "metadata": {}}
+        nb_file = tmp_path / "nb.ipynb"
+        nb_file.write_text(json.dumps(nb))
+
+        notebook_service._create_notebook_definition = Mock(return_value={"definition": {}})
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.resolve_folder_id_from_path.return_value = None
+        mock_item_service.create_item.return_value = FabricItem(
+            id="nb-fp", display_name="NB", type="Notebook", workspace_id="ws-1"
+        )
+
+        result = notebook_service.create_notebook(
+            workspace_name="WS",
+            notebook_name="NB",
+            notebook_file_path=str(nb_file),
+        )
+
+        assert result.status == "success"
+        assert result.notebook_id == "nb-fp"
+
+    def test_create_notebook_mutual_exclusivity(self, notebook_service, tmp_path):
+        """Providing both notebook_content and notebook_file_path raises error."""
+        nb_file = tmp_path / "nb.ipynb"
+        nb_file.write_text('{"cells": []}')
+
+        with pytest.raises(FabricValidationError, match="not both"):
+            notebook_service.create_notebook(
+                workspace_name="WS",
+                notebook_name="NB",
+                notebook_content={"cells": []},
+                notebook_file_path=str(nb_file),
+            )
+
+    def test_create_notebook_neither_provided(self, notebook_service):
+        """Providing neither content nor file path raises error."""
+        with pytest.raises(FabricValidationError, match="notebook_content"):
+            notebook_service.create_notebook(
+                workspace_name="WS",
+                notebook_name="NB",
+            )
+
+    def test_update_notebook_with_file_path(
+        self, notebook_service, mock_item_service, mock_workspace_service,
+        mock_fabric_client, tmp_path
+    ):
+        """Update notebook definition from a local file path."""
+        existing = {"cells": [], "metadata": {}}
+        updated = {"cells": [{"cell_type": "code", "source": ["2+2"]}], "metadata": {}}
+        nb_file = tmp_path / "updated.ipynb"
+        nb_file.write_text(json.dumps(updated))
+
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="nb-1", display_name="NB", type="Notebook", workspace_id="ws-1"
+        )
+        definition_response = {
+            "definition": {
+                "parts": [
+                    {
+                        "path": "NB.ipynb",
+                        "payload": _encode_ipynb(existing),
+                        "payloadType": "InlineBase64",
+                    }
+                ]
+            }
+        }
+        mock_fabric_client.make_api_request.return_value = _make_response(200, definition_response)
+
+        result = notebook_service.update_notebook_definition(
+            workspace_name="WS",
+            notebook_name="NB",
+            notebook_file_path=str(nb_file),
+        )
+
+        assert result.status == "success"
+
+    def test_update_notebook_mutual_exclusivity(self, notebook_service, tmp_path):
+        """Providing both notebook_content and notebook_file_path raises error."""
+        nb_file = tmp_path / "nb.ipynb"
+        nb_file.write_text('{"cells": []}')
+
+        with pytest.raises(FabricValidationError, match="not both"):
+            notebook_service.update_notebook_definition(
+                workspace_name="WS",
+                notebook_name="NB",
+                notebook_content={"cells": []},
+                notebook_file_path=str(nb_file),
+            )
+
+    def test_get_notebook_definition_save_to_path(
+        self, notebook_service, mock_item_service, mock_workspace_service,
+        mock_fabric_client, tmp_path
+    ):
+        """save_to_path writes content to file and returns metadata."""
+        notebook_content = {"cells": [{"cell_type": "code", "source": ["x=1"]}]}
+        definition_response = {
+            "definition": {
+                "parts": [
+                    {
+                        "path": "nb.ipynb",
+                        "payload": _encode_ipynb(notebook_content),
+                        "payloadType": "InlineBase64",
+                    }
+                ]
+            }
+        }
+
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="nb-1", display_name="NB", type="Notebook", workspace_id="ws-1"
+        )
+        mock_fabric_client.make_api_request.return_value = _make_response(200, definition_response)
+
+        out_file = tmp_path / "saved.ipynb"
+        result = notebook_service.get_notebook_definition(
+            "WS", "NB", save_to_path=str(out_file)
+        )
+
+        assert result["file_path"] == str(out_file)
+        assert result["size_bytes"] > 0
+        assert out_file.exists()
+        assert json.loads(out_file.read_text()) == notebook_content
+
+    def test_get_notebook_definition_save_to_path_bad_parent(self, notebook_service):
+        """save_to_path with non-existent parent dir raises validation error."""
+        with pytest.raises(FabricValidationError, match="Parent directory"):
+            notebook_service.get_notebook_definition(
+                "WS", "NB", save_to_path="/no/such/dir/nb.ipynb"
+            )

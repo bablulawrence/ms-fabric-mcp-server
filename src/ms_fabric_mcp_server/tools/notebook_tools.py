@@ -51,7 +51,8 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
     def create_notebook(
         workspace_name: str,
         notebook_name: str,
-        notebook_content: dict,
+        notebook_content: Optional[dict] = None,
+        notebook_file_path: Optional[str] = None,
         description: Optional[str] = None,
         folder_path: Optional[str] = None,
         default_lakehouse_name: Optional[str] = None,
@@ -63,6 +64,9 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
             workspace_name: The display name of the target workspace.
             notebook_name: Desired name inside Fabric (no folder separators).
             notebook_content: Notebook definition in ipynb JSON format.
+                Mutually exclusive with *notebook_file_path*.
+            notebook_file_path: Local file path to a .ipynb file on disk.
+                Mutually exclusive with *notebook_content*.
             description: Optional description for the notebook.
             folder_path: Optional folder path (e.g., "demos/etl") to place the notebook.
                          Defaults to the workspace root when omitted.
@@ -78,6 +82,7 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
             notebook_name=notebook_name,
             description=description,
             folder_path=folder_path,
+            notebook_file_path=notebook_file_path,
             default_lakehouse_name=default_lakehouse_name,
             lakehouse_workspace_name=lakehouse_workspace_name,
         )
@@ -89,6 +94,7 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
             workspace_name=workspace_name,
             notebook_name=notebook_name,
             notebook_content=notebook_content,
+            notebook_file_path=notebook_file_path,
             description=description,
             folder_path=folder_path,
             default_lakehouse_name=default_lakehouse_name,
@@ -113,19 +119,37 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
     def get_notebook_definition(
         workspace_name: str,
         notebook_name: str,
+        save_to_path: Optional[str] = None,
     ) -> dict:
-        """Get the notebook definition (ipynb content)."""
+        """Get the notebook definition (ipynb content).
+
+        When *save_to_path* is provided the notebook content is written to that
+        local file and a lightweight ``{"file_path": ..., "size_bytes": ...}``
+        dict is returned instead of the full notebook JSON.  This keeps large
+        notebooks out of the LLM context.
+        """
         log_tool_invocation(
             "get_notebook_definition",
             workspace_name=workspace_name,
             notebook_name=notebook_name,
+            save_to_path=save_to_path,
         )
         logger.info(
             f"Getting definition for notebook '{notebook_name}' in workspace '{workspace_name}'"
         )
         
-        content = notebook_service.get_notebook_definition(workspace_name, notebook_name)
+        content = notebook_service.get_notebook_definition(
+            workspace_name, notebook_name, save_to_path=save_to_path
+        )
         
+        if save_to_path is not None:
+            return {
+                "status": "success",
+                "workspace_name": workspace_name,
+                "notebook_name": notebook_name,
+                **content,
+            }
+
         result = {
             "status": "success",
             "workspace_name": workspace_name,
@@ -142,6 +166,7 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
         workspace_name: str,
         notebook_name: str,
         notebook_content: Optional[dict] = None,
+        notebook_file_path: Optional[str] = None,
         default_lakehouse_name: Optional[str] = None,
         lakehouse_workspace_name: Optional[str] = None,
     ) -> dict:
@@ -149,11 +174,15 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
 
         If notebook_content is omitted, the existing notebook definition is loaded
         and only metadata changes (e.g., default lakehouse) are applied.
+
+        Content can be supplied inline via *notebook_content* or read from a
+        local file via *notebook_file_path* (mutually exclusive).
         """
         log_tool_invocation(
             "update_notebook_definition",
             workspace_name=workspace_name,
             notebook_name=notebook_name,
+            notebook_file_path=notebook_file_path,
             default_lakehouse_name=default_lakehouse_name,
             lakehouse_workspace_name=lakehouse_workspace_name,
         )
@@ -165,6 +194,7 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
             workspace_name=workspace_name,
             notebook_name=notebook_name,
             notebook_content=notebook_content,
+            notebook_file_path=notebook_file_path,
             default_lakehouse_name=default_lakehouse_name,
             lakehouse_workspace_name=lakehouse_workspace_name,
         )

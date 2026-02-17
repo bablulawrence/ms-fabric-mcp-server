@@ -7,7 +7,8 @@ import copy
 import json
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
 from ..client.exceptions import (
     FabricAPIError,
@@ -81,7 +82,55 @@ class FabricNotebookService:
         self.repo_root = repo_root
         
         logger.debug("FabricNotebookService initialized")
-    
+
+    @staticmethod
+    def _load_notebook_from_file(file_path: str) -> Dict[str, Any]:
+        """Load and validate notebook content from a local file.
+
+        Args:
+            file_path: Path to a .ipynb file on disk.
+
+        Returns:
+            Parsed notebook content as a dictionary.
+
+        Raises:
+            FabricValidationError: If file doesn't exist, isn't valid JSON,
+                or is empty.
+        """
+        local_path = Path(file_path)
+        if not local_path.is_file():
+            raise FabricValidationError(
+                "notebook_file_path",
+                file_path,
+                "File does not exist or is not a file.",
+            )
+
+        try:
+            with open(local_path, "r", encoding="utf-8") as f:
+                content = json.load(f)
+        except json.JSONDecodeError as exc:
+            raise FabricValidationError(
+                "notebook_file_path",
+                file_path,
+                f"File is not valid JSON: {exc}",
+            )
+        except OSError as exc:
+            raise FabricValidationError(
+                "notebook_file_path",
+                file_path,
+                f"Cannot read file: {exc}",
+            )
+
+        if not isinstance(content, dict) or not content:
+            raise FabricValidationError(
+                "notebook_file_path",
+                file_path,
+                "File must contain a non-empty JSON object.",
+            )
+
+        logger.debug(f"Loaded notebook from file: {file_path}")
+        return content
+
     def _encode_notebook_content(self, notebook_content: Dict[str, Any]) -> str:
         """Encode notebook content to base64."""
         if not isinstance(notebook_content, dict) or not notebook_content:
@@ -244,7 +293,8 @@ class FabricNotebookService:
         self,
         workspace_name: str,
         notebook_name: str,
-        notebook_content: Dict[str, Any],
+        notebook_content: Optional[Dict[str, Any]] = None,
+        notebook_file_path: Optional[str] = None,
         description: Optional[str] = None,
         folder_path: Optional[str] = None,
         default_lakehouse_name: Optional[str] = None,
@@ -255,8 +305,13 @@ class FabricNotebookService:
         Args:
             workspace_name: Name of the target workspace
             notebook_name: Display name for the notebook in Fabric
-            notebook_content: Notebook content (ipynb JSON)
+            notebook_content: Notebook content (ipynb JSON). Mutually exclusive
+                with *notebook_file_path*.
+            notebook_file_path: Local file path to a .ipynb file. Mutually
+                exclusive with *notebook_content*.
             description: Optional description for the notebook
+            folder_path: Optional folder path (e.g., "demos/etl") to place the
+                notebook. Defaults to the workspace root when omitted.
             default_lakehouse_name: Optional default lakehouse name to attach
             lakehouse_workspace_name: Optional workspace name for the lakehouse
             
@@ -265,20 +320,37 @@ class FabricNotebookService:
             
         Example:
             ```python
+            # Inline content
             result = notebook_service.create_notebook(
                 workspace_name="Analytics",
                 notebook_name="ETL_Pipeline",
                 notebook_content=notebook_definition,
-                description="Daily ETL processing"
             )
             
-            if result.status == "success":
-                print(f"Notebook ID: {result.notebook_id}")
+            # From file
+            result = notebook_service.create_notebook(
+                workspace_name="Analytics",
+                notebook_name="ETL_Pipeline",
+                notebook_file_path="/tmp/etl.ipynb",
+            )
             ```
         """
         logger.info(
             f"Creating notebook '{notebook_name}' in workspace '{workspace_name}'"
         )
+
+        if notebook_content is not None and notebook_file_path is not None:
+            raise FabricValidationError(
+                "notebook_file_path",
+                notebook_file_path,
+                "Provide either notebook_content or notebook_file_path, not both.",
+            )
+        if notebook_content is None and notebook_file_path is None:
+            raise FabricValidationError(
+                "notebook_content",
+                "None",
+                "Provide either notebook_content or notebook_file_path.",
+            )
 
         if "/" in notebook_name or "\\" in notebook_name:
             raise FabricValidationError(
@@ -287,6 +359,9 @@ class FabricNotebookService:
                 "Notebook name cannot include path separators. "
                 "Use folder_path to place notebooks in folders.",
             )
+
+        if notebook_file_path:
+            notebook_content = self._load_notebook_from_file(notebook_file_path)
         
         try:
             # Resolve workspace ID
@@ -345,12 +420,35 @@ class FabricNotebookService:
         self,
         workspace_name: str,
         notebook_name: str,
-    ) -> Dict[str, Any]:
-        """Get notebook definition (ipynb content)."""
+        save_to_path: Optional[str] = None,
+    ) -> Union[Dict[str, Any], Dict[str, Any]]:
+        """Get notebook definition (ipynb content).
+
+        Args:
+            workspace_name: Name of the workspace containing the notebook.
+            notebook_name: Name of the notebook.
+            save_to_path: Optional local file path. When provided, the notebook
+                content is written to this file and a lightweight dict
+                ``{"file_path": ..., "size_bytes": ...}`` is returned instead
+                of the full notebook content.
+
+        Returns:
+            Notebook content dict, or file metadata dict when *save_to_path*
+            is used.
+        """
         logger.info(
             f"Fetching definition for notebook '{notebook_name}' "
             f"in workspace '{workspace_name}'"
         )
+
+        if save_to_path is not None:
+            parent = Path(save_to_path).parent
+            if not parent.is_dir():
+                raise FabricValidationError(
+                    "save_to_path",
+                    save_to_path,
+                    f"Parent directory does not exist: {parent}",
+                )
 
         workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
         notebook = self.item_service.get_item_by_name(
@@ -361,27 +459,64 @@ class FabricNotebookService:
             workspace_id, notebook.id
         )
         notebook_content, _ = self._extract_ipynb_content(definition_response)
-        if notebook_content is not None:
-            logger.info(
-                f"Successfully fetched notebook definition for {notebook_name}"
-            )
-            return notebook_content
+        if notebook_content is None:
+            logger.warning(f"No .ipynb content found for notebook {notebook_name}")
+            notebook_content = definition_response
 
-        logger.warning(f"No .ipynb content found for notebook {notebook_name}")
-        return definition_response
+        logger.info(
+            f"Successfully fetched notebook definition for {notebook_name}"
+        )
+
+        if save_to_path is not None:
+            try:
+                with open(save_to_path, "w", encoding="utf-8") as f:
+                    json.dump(notebook_content, f, indent=1)
+            except OSError as exc:
+                raise FabricValidationError(
+                    "save_to_path",
+                    save_to_path,
+                    f"Cannot write file: {exc}",
+                )
+            size_bytes = Path(save_to_path).stat().st_size
+            logger.info(
+                f"Notebook definition saved to {save_to_path} ({size_bytes} bytes)"
+            )
+            return {
+                "file_path": save_to_path,
+                "size_bytes": size_bytes,
+            }
+
+        return notebook_content
 
     def update_notebook_definition(
         self,
         workspace_name: str,
         notebook_name: str,
         notebook_content: Optional[Dict[str, Any]] = None,
+        notebook_file_path: Optional[str] = None,
         default_lakehouse_name: Optional[str] = None,
         lakehouse_workspace_name: Optional[str] = None,
     ) -> UpdateNotebookResult:
-        """Update notebook definition using the updateDefinition endpoint."""
+        """Update notebook definition using the updateDefinition endpoint.
+
+        Content can be supplied inline via *notebook_content* or read from a
+        local file via *notebook_file_path* (mutually exclusive).  When neither
+        is provided, the existing definition is loaded from Fabric and only
+        metadata changes (e.g., default lakehouse) are applied.
+        """
         logger.info(
             f"Updating notebook '{notebook_name}' in workspace '{workspace_name}'"
         )
+
+        if notebook_content is not None and notebook_file_path is not None:
+            raise FabricValidationError(
+                "notebook_file_path",
+                notebook_file_path,
+                "Provide either notebook_content or notebook_file_path, not both.",
+            )
+
+        if notebook_file_path:
+            notebook_content = self._load_notebook_from_file(notebook_file_path)
 
         try:
             workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
