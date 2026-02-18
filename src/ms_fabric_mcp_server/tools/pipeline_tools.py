@@ -176,6 +176,8 @@ def register_pipeline_tools(
             pipeline_name: Name of the existing pipeline to update.
             source_type: Type of source (e.g., "AzurePostgreSqlSource", "AzureSqlSource", "SqlServerSource").
             source_connection_id: Fabric workspace connection ID for source database.
+                For `source_access_mode="sql"` with `LakehouseTableSource`, use a
+                Lakehouse connection ID (not a SQL analytics endpoint connection).
             source_table_schema: Schema name of the source table (e.g., "public", "dbo").
             source_table_name: Name of the source table (e.g., "movie").
             destination_lakehouse_id: Workspace artifact ID of the destination Lakehouse.
@@ -235,7 +237,7 @@ def register_pipeline_tools(
                 workspace_name="Analytics Workspace",
                 pipeline_name="My_Existing_Pipeline",
                 source_type="LakehouseTableSource",
-                source_connection_id=sql_endpoint_conn_id,  # SQL analytics endpoint connection
+                source_connection_id=lakehouse_conn_id,  # Lakehouse connection ID
                 source_table_schema="dbo",
                 source_table_name="fact_sale",
                 destination_lakehouse_id=lakehouse_id,

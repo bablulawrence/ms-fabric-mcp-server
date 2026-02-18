@@ -933,9 +933,10 @@ class FabricNotebookService:
             # Resolve workspace ID
             workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
             
-            # Find the notebook
-            notebook = self.item_service.get_item_by_name(
-                workspace_id, notebook_name, "Notebook"
+            notebook = self._resolve_notebook_for_job_instance(
+                workspace_id=workspace_id,
+                notebook_name=notebook_name,
+                job_instance_id=job_instance_id,
             )
             
             # List Livy sessions for the notebook
@@ -1036,6 +1037,38 @@ class FabricNotebookService:
                 "status": "error",
                 "message": f"Unexpected error: {exc}"
             }
+
+    def _resolve_notebook_for_job_instance(
+        self, workspace_id: str, notebook_name: str, job_instance_id: str
+    ) -> FabricItem:
+        """Resolve notebook by name, with fallback to job-instance lookup.
+
+        This fallback supports cases where the notebook was renamed after the run
+        completed but before log/details retrieval.
+        """
+        try:
+            return self.item_service.get_item_by_name(
+                workspace_id, notebook_name, "Notebook"
+            )
+        except FabricItemNotFoundError as original_exc:
+            notebooks = self.item_service.list_items(workspace_id, item_type="Notebook")
+            for notebook in notebooks:
+                try:
+                    self.client.make_api_request(
+                        "GET",
+                        f"workspaces/{workspace_id}/items/{notebook.id}/jobs/instances/{job_instance_id}",
+                    )
+                    logger.info(
+                        "Resolved notebook '%s' by job instance '%s' after name lookup failed",
+                        notebook_name,
+                        job_instance_id,
+                    )
+                    return notebook
+                except FabricAPIError as exc:
+                    if exc.status_code == 404:
+                        continue
+                    raise
+            raise original_exc
     
     def list_notebook_runs(
         self,
@@ -1166,6 +1199,8 @@ class FabricNotebookService:
         - Python exceptions appear in `stdout`, not `stderr`
         - `stderr` contains Spark/system logs (typically larger)
         - For failed notebooks, check `stdout` first for the Python error
+        - Logs can be briefly unavailable after completion; transient 404
+          responses are retried before failing
         
         Args:
             workspace_name: Name of the workspace containing the notebook
@@ -1214,11 +1249,6 @@ class FabricNotebookService:
             # Resolve workspace ID
             workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
             
-            # Find the notebook
-            notebook = self.item_service.get_item_by_name(
-                workspace_id, notebook_name, "Notebook"
-            )
-            
             # First, get the run details to find the Livy session and Spark app ID
             exec_details = self.get_notebook_run_details(
                 workspace_name, notebook_name, job_instance_id
@@ -1230,28 +1260,44 @@ class FabricNotebookService:
             summary = exec_details.get("execution_summary", {})
             livy_id = summary.get("livy_id")
             spark_app_id = summary.get("spark_application_id")
+            notebook_id = exec_details.get("notebook_id")
             
-            if not livy_id or not spark_app_id:
+            if not livy_id or not spark_app_id or not notebook_id:
                 return {
                     "status": "error",
                     "message": f"Could not find Livy session or Spark application ID for job {job_instance_id}"
                 }
-            
+
+            def _request_driver_log(endpoint: str, request_name: str):
+                max_attempts = 3
+                for attempt in range(1, max_attempts + 1):
+                    try:
+                        return self.client.make_api_request("GET", endpoint)
+                    except FabricAPIError as exc:
+                        if exc.status_code != 404 or attempt == max_attempts:
+                            raise
+                        delay_seconds = 2 ** (attempt - 1)
+                        logger.info(
+                            f"{request_name} not ready yet "
+                            f"(attempt {attempt}/{max_attempts}); retrying in {delay_seconds}s"
+                        )
+                        time.sleep(delay_seconds)
+
             # First, get log metadata to check file size
-            meta_response = self.client.make_api_request(
-                "GET",
-                f"workspaces/{workspace_id}/notebooks/{notebook.id}/livySessions/{livy_id}"
-                f"/applications/{spark_app_id}/logs?type=driver&meta=true&fileName={log_type}"
+            meta_response = _request_driver_log(
+                f"workspaces/{workspace_id}/notebooks/{notebook_id}/livySessions/{livy_id}"
+                f"/applications/{spark_app_id}/logs?type=driver&meta=true&fileName={log_type}",
+                "Driver log metadata",
             )
             
             log_metadata = meta_response.json()
             log_size = log_metadata.get("sizeInBytes", 0)
             
             # Now fetch the actual log content
-            log_response = self.client.make_api_request(
-                "GET",
-                f"workspaces/{workspace_id}/notebooks/{notebook.id}/livySessions/{livy_id}"
-                f"/applications/{spark_app_id}/logs?type=driver&fileName={log_type}&isDownload=true"
+            log_response = _request_driver_log(
+                f"workspaces/{workspace_id}/notebooks/{notebook_id}/livySessions/{livy_id}"
+                f"/applications/{spark_app_id}/logs?type=driver&fileName={log_type}&isDownload=true",
+                "Driver log content",
             )
             
             log_content = log_response.text

@@ -185,6 +185,41 @@ class TestFabricLakehouseFileService:
         assert "/Files/raw/sample.csv" in create_url
         assert "/Files/Files/raw/sample.csv" not in create_url
 
+    def test_upload_file_create_directories_avoids_files_double_nesting(
+        self, mock_fabric_client, tmp_path: Path
+    ):
+        service = FabricLakehouseFileService(mock_fabric_client)
+        mock_fabric_client.get_auth_token = Mock(return_value="token")
+        session = Mock()
+        mock_fabric_client._session = session
+
+        sample = tmp_path / "sample.csv"
+        sample.write_text("a,b\n1,2\n")
+
+        responses = []
+        for _ in range(4):
+            response = Mock()
+            response.status_code = 200
+            response.ok = True
+            response.json.return_value = {}
+            responses.append(response)
+
+        session.request.side_effect = responses
+
+        result = service.upload_file(
+            workspace_id="ws-1",
+            lakehouse_id="lh-1",
+            local_file_path=str(sample),
+            destination_path="mcp_test/file.txt",
+            create_missing_directories=True,
+        )
+
+        assert result["path"] == "mcp_test/file.txt"
+        urls = [call.kwargs["url"] for call in session.request.call_args_list]
+        assert any("/Files/mcp_test?resource=directory" in url for url in urls)
+        assert any("/Files/mcp_test/file.txt?resource=file" in url for url in urls)
+        assert all("/Files/mcp_test/Files/mcp_test" not in url for url in urls)
+
     def test_delete_file_recursive(self, mock_fabric_client):
         service = FabricLakehouseFileService(mock_fabric_client)
         mock_fabric_client.get_auth_token = Mock(return_value="token")

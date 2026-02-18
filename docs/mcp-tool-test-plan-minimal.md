@@ -147,7 +147,7 @@ Notes:
      - `FABRIC_TEST_SOURCE_TABLE`
      - `FABRIC_TEST_DEST_CONNECTION_ID`
      - `FABRIC_TEST_DEST_TABLE_NAME`
-   - SQL fallback example (use SQL Analytics endpoint connection):
+   - SQL fallback example (use Lakehouse connection, not SQL Analytics endpoint):
      ```
      add_copy_activity_to_pipeline(
        workspace_name=...,

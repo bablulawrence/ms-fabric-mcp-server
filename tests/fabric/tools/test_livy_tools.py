@@ -48,3 +48,19 @@ class TestLivyTools:
         assert tools["livy_get_session_log"](
             workspace_id="ws-1", lakehouse_id="lh-1", session_id="1"
         )["log"] == ["line"]
+
+    def test_livy_run_statement_passes_code_verbatim(self):
+        tools, mcp = capture_tools()
+        livy_service = Mock()
+        livy_service.run_statement.return_value = {"id": "1", "state": "available"}
+        register_livy_tools(mcp, livy_service)
+
+        code = "x = 1\\nx + 1"
+        tools["livy_run_statement"](
+            workspace_id="ws-1",
+            lakehouse_id="lh-1",
+            session_id="1",
+            code=code,
+        )
+
+        assert livy_service.run_statement.call_args.kwargs["code"] == code

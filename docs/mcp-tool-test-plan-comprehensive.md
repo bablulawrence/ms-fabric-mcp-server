@@ -57,7 +57,7 @@ Use the values from `.env.integration`:
 - Pipeline copy inputs (source/destination connection, table, schema):
   - `FABRIC_TEST_SOURCE_TYPE`
   - `FABRIC_TEST_SOURCE_CONNECTION_ID`
-  - `FABRIC_TEST_SOURCE_SQL_CONNECTION_ID` (for SQL fallback mode)
+  - `FABRIC_TEST_SOURCE_SQL_CONNECTION_ID` (Lakehouse connection for SQL fallback mode)
   - `FABRIC_TEST_SOURCE_SCHEMA`
   - `FABRIC_TEST_SOURCE_TABLE`
   - `FABRIC_TEST_DEST_CONNECTION_ID`
@@ -208,6 +208,7 @@ Notes:
 4. `add_copy_activity_to_pipeline` (SQL fallback mode)
    ```
    source_type="LakehouseTableSource"
+   source_connection_id=FABRIC_TEST_SOURCE_SQL_CONNECTION_ID  # Lakehouse connection ID
    source_access_mode="sql"
    table_action_option="Overwrite"
    ```

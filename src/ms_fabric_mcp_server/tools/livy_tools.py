@@ -304,6 +304,8 @@ def register_livy_tools(mcp: "FastMCP", livy_service: FabricLivyService):
         - Use df.show() or df.printSchema() to inspect DataFrames before accessing columns
         - SHOW TABLES returns 'namespace' column, not 'database' in Fabric
         - Avoid direct Row attribute access without schema verification
+        - Provide real newline characters in `code` for multiline statements;
+          literal `\\n` text is sent as-is and can cause syntax errors
         - When with_wait=False, returns immediately with statement ID - check status separately
         
         Parameters:
@@ -325,7 +327,8 @@ def register_livy_tools(mcp: "FastMCP", livy_service: FabricLivyService):
                 workspace_id="12345678-1234-1234-1234-123456789abc",
                 lakehouse_id="87654321-4321-4321-4321-210987654321",
                 session_id="0",
-                code="df = spark.range(10)\\ndf.count()",
+                code='''df = spark.range(10)
+df.count()''',
                 kind="pyspark",
                 with_wait=True
             )

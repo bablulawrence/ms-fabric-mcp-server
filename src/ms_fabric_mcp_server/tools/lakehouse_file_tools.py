@@ -61,6 +61,7 @@ def register_lakehouse_file_tools(
             lakehouse_name: Display name of the lakehouse (required if lakehouse_id not provided).
             lakehouse_id: ID of the lakehouse (optional).
             path: Optional path under Files to list (e.g., "raw/2025").
+                  This tool does not support the Tables area.
             recursive: Whether to list files recursively (default True).
         """
         log_tool_invocation(
@@ -71,6 +72,18 @@ def register_lakehouse_file_tools(
             path=path,
             recursive=recursive,
         )
+
+        if path:
+            normalized_path = str(path).strip().replace("\\", "/").lstrip("/")
+            if normalized_path:
+                first_segment = normalized_path.split("/", 1)[0].lower()
+                if first_segment == "tables":
+                    raise FabricValidationError(
+                        "path",
+                        str(path),
+                        "list_lakehouse_files only supports the Files area. "
+                        "Use a path under Files (for example, 'raw/2025').",
+                    )
 
         workspace_id = workspace_service.resolve_workspace_id(workspace_name)
         lakehouse_id, resolved_name = _resolve_lakehouse(

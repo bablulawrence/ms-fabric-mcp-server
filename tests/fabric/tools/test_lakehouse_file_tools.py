@@ -103,6 +103,29 @@ class TestLakehouseFileTools:
             create_missing_directories=True,
         )
 
+    def test_list_lakehouse_files_rejects_tables_path(self):
+        tools, tool_decorator = _capture_tools()
+        mcp = SimpleNamespace(tool=tool_decorator)
+
+        lakehouse_file_service = Mock()
+        workspace_service = Mock()
+        item_service = Mock()
+
+        register_lakehouse_file_tools(
+            mcp, lakehouse_file_service, workspace_service, item_service
+        )
+
+        result = tools["list_lakehouse_files"](
+            workspace_name="Workspace",
+            lakehouse_name="Lakehouse",
+            path="Tables",
+            recursive=True,
+        )
+
+        assert result["status"] == "error"
+        assert "Files area" in result["message"]
+        lakehouse_file_service.list_files.assert_not_called()
+
     def test_delete_lakehouse_file(self):
         tools, tool_decorator = _capture_tools()
         mcp = SimpleNamespace(tool=tool_decorator)

@@ -1313,7 +1313,17 @@ class FabricPipelineService:
             raise
         except FabricItemNotFoundError:
             raise
-        except FabricAPIError:
+        except FabricAPIError as exc:
+            if (
+                source_access_mode == "sql"
+                and "SqlAnalyticsEndpoint" in str(exc)
+            ):
+                raise FabricValidationError(
+                    "source_connection_id",
+                    source_connection_id,
+                    "SQL copy mode requires a Lakehouse connection ID. "
+                    "SQL analytics endpoint connections are not supported.",
+                )
             raise
         except Exception as exc:
             logger.error(f"Failed to add Copy Activity to pipeline: {exc}")

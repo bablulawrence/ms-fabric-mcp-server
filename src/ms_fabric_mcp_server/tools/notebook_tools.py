@@ -398,6 +398,8 @@ def register_notebook_tools(mcp: "FastMCP", notebook_service: FabricNotebookServ
         - Python exceptions and tracebacks appear in `stdout`, not `stderr`
         - `stderr` contains Spark/system logs (typically larger)
         - For failed notebooks, check `stdout` first for the Python error
+        - Logs can be briefly unavailable after completion; transient 404s are
+          retried before returning an error
         - Look for "Error", "Exception", "Traceback" in the output
         
         **Use this tool when:**

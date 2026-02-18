@@ -744,6 +744,42 @@ class TestFabricNotebookService:
         assert result["status"] == "error"
         assert "boom" in result["message"]
 
+    def test_get_notebook_run_details_falls_back_to_job_instance_when_renamed(
+        self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
+    ):
+        """If name lookup fails, resolve notebook by matching job instance across notebooks."""
+        mock_workspace_service.resolve_workspace_id.return_value = "workspace-123"
+        mock_item_service.get_item_by_name.side_effect = FabricItemNotFoundError(
+            "Notebook", "OldNotebook", "workspace-123"
+        )
+        notebook = FabricItem(
+            id="nb-1",
+            display_name="RenamedNotebook",
+            type="Notebook",
+            workspace_id="workspace-123",
+        )
+        mock_item_service.list_items.return_value = [notebook]
+
+        mock_fabric_client.make_api_request.side_effect = [
+            _make_response(200, {"status": "Completed"}),
+            _make_response(200, {"value": [{"jobInstanceId": "job-1", "livyId": "livy-1"}]}),
+            _make_response(
+                200,
+                {
+                    "state": "Success",
+                    "sparkApplicationId": "app-1",
+                    "livyId": "livy-1",
+                    "jobInstanceId": "job-1",
+                },
+            ),
+            _make_response(200, {"failureReason": None}),
+        ]
+
+        result = notebook_service.get_notebook_run_details("Workspace", "OldNotebook", "job-1")
+
+        assert result["status"] == "success"
+        assert result["notebook_id"] == "nb-1"
+
     def test_list_notebook_runs_success_with_limit(
         self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
     ):
@@ -791,6 +827,7 @@ class TestFabricNotebookService:
         notebook_service.get_notebook_run_details = Mock(
             return_value={
                 "status": "success",
+                "notebook_id": "nb-1",
                 "execution_summary": {
                     "livy_id": "livy-1",
                     "spark_application_id": "app-1",
@@ -858,6 +895,7 @@ class TestFabricNotebookService:
         notebook_service.get_notebook_run_details = Mock(
             return_value={
                 "status": "success",
+                "notebook_id": "nb-1",
                 "execution_summary": {"livy_id": "livy-1", "spark_application_id": "app-1"},
             }
         )
@@ -868,6 +906,43 @@ class TestFabricNotebookService:
         )
 
         assert result["status"] == "error"
+
+    def test_get_notebook_driver_logs_retries_transient_404(
+        self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
+    ):
+        """Transient 404s on log endpoints are retried."""
+        mock_workspace_service.resolve_workspace_id.return_value = "workspace-123"
+        notebook = FabricItem(
+            id="nb-1",
+            display_name="Notebook",
+            type="Notebook",
+            workspace_id="workspace-123",
+        )
+        mock_item_service.get_item_by_name.return_value = notebook
+        notebook_service.get_notebook_run_details = Mock(
+            return_value={
+                "status": "success",
+                "notebook_id": "nb-1",
+                "execution_summary": {
+                    "livy_id": "livy-1",
+                    "spark_application_id": "app-1",
+                },
+            }
+        )
+        mock_fabric_client.make_api_request.side_effect = [
+            FabricAPIError(404, "metadata not ready"),
+            _make_response(200, {"sizeInBytes": 123}),
+            FabricAPIError(404, "content not ready"),
+            _make_response(200, text="line1\nline2"),
+        ]
+
+        with patch("ms_fabric_mcp_server.services.notebook.time.sleep"):
+            result = notebook_service.get_notebook_driver_logs(
+                "Workspace", "Notebook", "job-1"
+            )
+
+        assert result["status"] == "success"
+        assert result["log_content"] == "line1\nline2"
 
     # ── File-path round-trip tests ──────────────────────────────────────
 

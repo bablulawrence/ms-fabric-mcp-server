@@ -818,6 +818,41 @@ class TestFabricPipelineService:
                 destination_table="movie",
             )
 
+    def test_add_copy_activity_to_pipeline_sql_mode_rejects_sql_analytics_endpoint(
+        self, pipeline_service, mock_item_service, mock_client
+    ):
+        """SQL mode raises a validation error for SQL analytics endpoint connections."""
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        base_definition = {"properties": {"activities": []}}
+        encoded = pipeline_service._encode_definition(base_definition)
+        mock_item_service.get_item_definition.return_value = {
+            "definition": {
+                "parts": [{"path": "pipeline-content.json", "payload": encoded}]
+            }
+        }
+        mock_client.make_api_request.side_effect = FabricAPIError(
+            400, "datasource type SqlAnalyticsEndpoint is invalid"
+        )
+
+        with pytest.raises(FabricValidationError, match="Lakehouse connection ID"):
+            pipeline_service.add_copy_activity_to_pipeline(
+                workspace_id="ws-1",
+                pipeline_name="Pipe",
+                source_type="LakehouseTableSource",
+                source_connection_id="sql-endpoint-conn",
+                source_schema="dbo",
+                source_table="fact_sale",
+                destination_lakehouse_id="lh-1",
+                destination_connection_id="dest-conn",
+                destination_table="fact_sale_copy",
+                source_access_mode="sql",
+            )
+
     def test_add_notebook_activity_to_pipeline_success(
         self, pipeline_service, mock_item_service, mock_client
     ):
