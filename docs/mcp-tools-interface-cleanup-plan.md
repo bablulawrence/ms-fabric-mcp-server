@@ -2,6 +2,8 @@
 
 Date: 2026-02-01
 
+> Note: This is a historical design plan; some tool names below reflect pre-rename interfaces.
+
 ## Goals
 - Simplify and standardize tool names for notebook and pipeline operations.
 - Replace single-purpose notebook tools with a clean definition-based interface.
@@ -110,4 +112,3 @@ Date: 2026-02-01
   - Preserve metadata unless lakehouse args provided (recommended).
 - Confirm `create_notebook` input format:
   - JSON dict vs raw string (recommended: JSON dict).
-

@@ -7,7 +7,7 @@
 
 A Model Context Protocol (MCP) server for Microsoft Fabric. Exposes Fabric operations (workspaces, notebooks, SQL, Livy, pipelines, jobs) as MCP tools that AI agents can invoke.
 
-> ⚠️ **Warning**: This package is intended for **development environments only** and should not be used in production. It includes tools that can perform destructive operations (e.g., `delete_notebook`, `delete_item`) and execute arbitrary code via Livy Spark sessions. Always review AI-generated tool calls before execution.
+> ⚠️ **Warning**: This package is intended for **development environments only** and should not be used in production. It includes tools that can perform destructive operations (e.g., `delete_item`, `delete_lakehouse_file`, `delete_activity_from_pipeline`) and execute arbitrary code via Livy Spark sessions. Always review AI-generated tool calls before execution.
 
 ## Quick Start
 
@@ -193,7 +193,7 @@ Copy `.env.example` to `.env` and customize as needed.
 
 ## Available Tools
 
-The server provides **56 core tools**, with **3 additional SQL tools** when installed with `[sql]` extras (59 total).
+The server provides **57 core tools**, with **3 additional SQL tools** when installed with `[sql]` extras (60 total).
 
 | Tool Group | Count | Tools |
 |------------|-------|-------|
@@ -224,7 +224,7 @@ sudo apt-get update
 sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
 ```
 
-If `pyodbc` is not available, the server starts with 56 tools (SQL tools disabled).
+If `pyodbc` is not available, the server starts with 57 tools (SQL tools disabled).
 
 ## Development
 
