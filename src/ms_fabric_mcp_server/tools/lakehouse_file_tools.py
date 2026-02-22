@@ -97,15 +97,18 @@ def register_lakehouse_file_tools(
             recursive=recursive,
         )
 
+        lakehouse_prefix = f"{lakehouse_id}/"
         formatted: List[Dict[str, Any]] = []
         for entry in files:
             name = entry.get("name", "")
+            if name.startswith(lakehouse_prefix):
+                name = name[len(lakehouse_prefix) :]
             # Filter out entries outside Files/ (e.g., Tables/ delta internals)
             if not name.startswith("Files"):
                 continue
             formatted.append(
                 {
-                    "name": entry.get("name"),
+                    "name": name,
                     "is_directory": entry.get("isDirectory"),
                     "content_length": entry.get("contentLength"),
                     "last_modified": entry.get("lastModified"),

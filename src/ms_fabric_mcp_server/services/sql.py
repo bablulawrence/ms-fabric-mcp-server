@@ -269,7 +269,46 @@ class FabricSQLService:
         except Exception as exc:
             logger.error(f"Failed to get authentication token: {exc}")
             raise FabricConnectionError(f"Authentication failed: {exc}")
-    
+
+    def _create_connection(self, sql_endpoint: str, database: str = "Metadata"):
+        """Create a new independent pyodbc connection.
+
+        Returns a fresh connection object without mutating ``self._connection``.
+        This is safe for concurrent use because each caller receives its own
+        connection.
+
+        Args:
+            sql_endpoint: The SQL endpoint URL.
+            database: Database name to connect to.
+
+        Returns:
+            A ``pyodbc.Connection`` instance.
+
+        Raises:
+            FabricConnectionError: If connection fails.
+        """
+        try:
+            token_bytes = self._get_token_bytes()
+            attrs = {1256: token_bytes}  # SQL_COPT_SS_ACCESS_TOKEN
+
+            if "," not in sql_endpoint and ":" not in sql_endpoint:
+                sql_endpoint = f"{sql_endpoint},1433"
+
+            cnx_str = (
+                "Driver={ODBC Driver 18 for SQL Server};"
+                f"Server={sql_endpoint};"
+                f"Database={database};"
+                "Encrypt=yes;TrustServerCertificate=no"
+            )
+
+            logger.info(f"Creating connection to SQL endpoint: {sql_endpoint}, database: {database}")
+            connection = pyodbc.connect(cnx_str, attrs_before=attrs, autocommit=True)
+            return connection
+
+        except Exception as exc:
+            logger.error(f"Failed to connect to SQL endpoint {sql_endpoint}: {exc}")
+            raise FabricConnectionError(f"Connection failed: {exc}")
+
     def connect(self, sql_endpoint: str, database: str = "Metadata") -> None:
         """Connect to Fabric SQL Warehouse.
         
@@ -293,22 +332,7 @@ class FabricSQLService:
             # Close existing connection if any
             self.close()
             
-            token_bytes = self._get_token_bytes()
-            attrs = {1256: token_bytes}  # 1256 = SQL_COPT_SS_ACCESS_TOKEN
-            
-            # Ensure endpoint has port if not specified
-            if "," not in sql_endpoint and ":" not in sql_endpoint:
-                sql_endpoint = f"{sql_endpoint},1433"
-            
-            cnx_str = (
-                "Driver={ODBC Driver 18 for SQL Server};"
-                f"Server={sql_endpoint};"
-                f"Database={database};"
-                "Encrypt=yes;TrustServerCertificate=no"
-            )
-            
-            logger.info(f"Connecting to SQL endpoint: {sql_endpoint}, database: {database}")
-            self._connection = pyodbc.connect(cnx_str, attrs_before=attrs, autocommit=True)
+            self._connection = self._create_connection(sql_endpoint, database)
             self._sql_endpoint = sql_endpoint
             self._database = database
             logger.info("Successfully connected to Fabric SQL Warehouse")
@@ -317,6 +341,128 @@ class FabricSQLService:
             logger.error(f"Failed to connect to SQL endpoint {sql_endpoint}: {exc}")
             raise FabricConnectionError(f"Connection failed: {exc}")
     
+    def _execute_query_with_connection(
+        self,
+        connection,
+        query: str,
+        sql_endpoint: str = None,
+        database: str = None,
+    ) -> QueryResult:
+        """Execute a query using the given connection.
+
+        This is the inner implementation shared by :meth:`execute_query` (stateful)
+        and :meth:`execute_sql_query` (per-call connection).  On a transient ODBC
+        error the method retries once with a fresh connection when *sql_endpoint*
+        and *database* are provided.
+        """
+        for attempt in range(2):
+            try:
+                logger.info(f"Executing query: {query[:100]}...")
+                cursor = connection.cursor()
+                cursor.execute(query)
+
+                columns = (
+                    [column[0] for column in cursor.description]
+                    if cursor.description else []
+                )
+                rows = cursor.fetchall()
+
+                data = []
+                for row in rows:
+                    row_dict = {}
+                    for i, column in enumerate(columns):
+                        row_dict[column] = row[i]
+                    data.append(row_dict)
+
+                result = QueryResult(
+                    status="success",
+                    data=data,
+                    columns=columns,
+                    row_count=len(data),
+                    message=f"Query executed successfully. Returned {len(data)} rows.",
+                )
+
+                logger.info(f"Query executed successfully. Returned {len(data)} rows.")
+                return result
+
+            except Exception as exc:
+                if attempt == 0 and self._is_transient_odbc_error(exc):
+                    delay = random.uniform(5, 10)
+                    logger.warning(
+                        f"Transient SQL error detected; retrying in {delay:.1f}s: {exc}"
+                    )
+                    time.sleep(delay)
+                    if sql_endpoint and database:
+                        try:
+                            connection = self._create_connection(sql_endpoint, database)
+                        except Exception as reconnect_exc:
+                            logger.warning(
+                                f"Retry reconnect failed: {reconnect_exc}"
+                            )
+                    continue
+
+                logger.error(f"Query execution failed: {exc}")
+                return QueryResult(
+                    status="error",
+                    data=[],
+                    columns=[],
+                    row_count=0,
+                    message=f"Query execution failed: {exc}",
+                )
+
+    def _execute_statement_with_connection(
+        self,
+        connection,
+        statement: str,
+        allow_ddl: bool = False,
+    ) -> Dict[str, Any]:
+        """Execute a DML/DDL statement using the given connection.
+
+        This is the inner implementation shared by :meth:`execute_statement`
+        (stateful) and :meth:`execute_sql_statement` (per-call connection).
+        """
+        if not self._is_dml_statement(statement):
+            if allow_ddl and self._is_ddl_statement(statement):
+                pass
+            elif self._is_ddl_statement(statement):
+                message = (
+                    "DDL statements require allow_ddl=True. "
+                    "Set allow_ddl=True to execute CREATE, ALTER, DROP, or TRUNCATE statements."
+                )
+                logger.warning(message)
+                return {"status": "error", "affected_rows": 0, "message": message}
+            else:
+                message = (
+                    "Use execute_sql_query for SELECT, SHOW, or DESCRIBE statements. "
+                    "This tool only supports DML (INSERT, UPDATE, DELETE, MERGE) "
+                    "and DDL (with allow_ddl=True)."
+                )
+                logger.warning(message)
+                return {"status": "error", "affected_rows": 0, "message": message}
+
+        try:
+            logger.info(f"Executing statement: {statement[:100]}...")
+            cursor = connection.cursor()
+            cursor.execute(statement)
+            affected_rows = cursor.rowcount
+
+            result = {
+                "status": "success",
+                "affected_rows": affected_rows,
+                "message": f"Statement executed successfully. {affected_rows} rows affected.",
+            }
+
+            logger.info(f"Statement executed successfully. {affected_rows} rows affected.")
+            return result
+
+        except Exception as exc:
+            logger.error(f"Statement execution failed: {exc}")
+            return {
+                "status": "error",
+                "affected_rows": 0,
+                "message": f"Statement execution failed: {exc}",
+            }
+
     def execute_query(self, query: str) -> QueryResult:
         """Execute a SQL query and return results.
         
@@ -346,66 +492,9 @@ class FabricSQLService:
                 "Not connected to SQL endpoint. Call connect() first."
             )
         
-        for attempt in range(2):
-            try:
-                logger.info(f"Executing query: {query[:100]}...")
-                cursor = self._connection.cursor()
-
-                # Auto-instrumentation will create CLIENT spans for DB operations
-                cursor.execute(query)
-
-                # Get column names
-                columns = (
-                    [column[0] for column in cursor.description]
-                    if cursor.description else []
-                )
-
-                # Fetch all rows
-                rows = cursor.fetchall()
-
-                # Convert rows to list of dictionaries
-                data = []
-                for row in rows:
-                    row_dict = {}
-                    for i, column in enumerate(columns):
-                        row_dict[column] = row[i]
-                    data.append(row_dict)
-
-                result = QueryResult(
-                    status="success",
-                    data=data,
-                    columns=columns,
-                    row_count=len(data),
-                    message=f"Query executed successfully. Returned {len(data)} rows.",
-                )
-
-                logger.info(f"Query executed successfully. Returned {len(data)} rows.")
-                return result
-
-            except Exception as exc:
-                if attempt == 0 and self._is_transient_odbc_error(exc):
-                    delay = random.uniform(5, 10)
-                    logger.warning(
-                        f"Transient SQL error detected; retrying in {delay:.1f}s: {exc}"
-                    )
-                    time.sleep(delay)
-                    if self._sql_endpoint and self._database:
-                        try:
-                            self.connect(self._sql_endpoint, self._database)
-                        except Exception as reconnect_exc:
-                            logger.warning(
-                                f"Retry reconnect failed: {reconnect_exc}"
-                            )
-                    continue
-
-                logger.error(f"Query execution failed: {exc}")
-                return QueryResult(
-                    status="error",
-                    data=[],
-                    columns=[],
-                    row_count=0,
-                    message=f"Query execution failed: {exc}",
-                )
+        return self._execute_query_with_connection(
+            self._connection, query, self._sql_endpoint, self._database
+        )
     
     def execute_statement(self, statement: str, allow_ddl: bool = False) -> Dict[str, Any]:
         """Execute a DML SQL statement (INSERT, UPDATE, DELETE, MERGE).
@@ -439,58 +528,9 @@ class FabricSQLService:
                 "Not connected to SQL endpoint. Call connect() first."
             )
 
-        if not self._is_dml_statement(statement):
-            if allow_ddl and self._is_ddl_statement(statement):
-                pass  # DDL allowed explicitly
-            elif self._is_ddl_statement(statement):
-                message = (
-                    "DDL statements require allow_ddl=True. "
-                    "Set allow_ddl=True to execute CREATE, ALTER, DROP, or TRUNCATE statements."
-                )
-                logger.warning(message)
-                return {
-                    "status": "error",
-                    "affected_rows": 0,
-                    "message": message,
-                }
-            else:
-                message = (
-                    "Use execute_sql_query for SELECT, SHOW, or DESCRIBE statements. "
-                    "This tool only supports DML (INSERT, UPDATE, DELETE, MERGE) "
-                    "and DDL (with allow_ddl=True)."
-                )
-                logger.warning(message)
-                return {
-                    "status": "error",
-                    "affected_rows": 0,
-                    "message": message,
-                }
-        
-        try:
-            logger.info(f"Executing statement: {statement[:100]}...")
-            cursor = self._connection.cursor()
-            
-            # Auto-instrumentation will create CLIENT spans for DB operations
-            # autocommit=True is set on the connection so no explicit commit needed
-            cursor.execute(statement)
-            affected_rows = cursor.rowcount
-            
-            result = {
-                "status": "success",
-                "affected_rows": affected_rows,
-                "message": f"Statement executed successfully. {affected_rows} rows affected."
-            }
-            
-            logger.info(f"Statement executed successfully. {affected_rows} rows affected.")
-            return result
-            
-        except Exception as exc:
-            logger.error(f"Statement execution failed: {exc}")
-            return {
-                "status": "error",
-                "affected_rows": 0,
-                "message": f"Statement execution failed: {exc}"
-            }
+        return self._execute_statement_with_connection(
+            self._connection, statement, allow_ddl=allow_ddl
+        )
 
     @staticmethod
     def _is_dml_statement(statement: str) -> bool:
@@ -533,8 +573,9 @@ class FabricSQLService:
     ) -> QueryResult:
         """Execute a SQL query against a Fabric SQL endpoint (Warehouse or Lakehouse).
         
-        This is a convenience method that connects to the SQL endpoint and executes
-        the query in one call.
+        This is a convenience method that creates an independent connection, executes
+        the query, and closes the connection. Safe for concurrent use — each call
+        gets its own connection.
         
         Args:
             sql_endpoint: The SQL endpoint URL 
@@ -554,11 +595,16 @@ class FabricSQLService:
             )
             ```
         """
-        self.connect(sql_endpoint, database)
+        connection = self._create_connection(sql_endpoint, database)
         try:
-            return self.execute_query(query)
+            return self._execute_query_with_connection(
+                connection, query, sql_endpoint, database
+            )
         finally:
-            self.close()
+            try:
+                connection.close()
+            except Exception:
+                pass
     
     def execute_sql_statement(
         self,
@@ -569,8 +615,9 @@ class FabricSQLService:
     ) -> Dict[str, Any]:
         """Execute a DML SQL statement against a Fabric SQL endpoint (Warehouse or Lakehouse).
         
-        This is a convenience method that connects to the SQL endpoint and executes
-        the statement in one call.
+        This is a convenience method that creates an independent connection, executes
+        the statement, and closes the connection. Safe for concurrent use — each call
+        gets its own connection.
         
         Args:
             sql_endpoint: The SQL endpoint URL 
@@ -592,11 +639,16 @@ class FabricSQLService:
             )
             ```
         """
-        self.connect(sql_endpoint, database)
+        connection = self._create_connection(sql_endpoint, database)
         try:
-            return self.execute_statement(statement, allow_ddl=allow_ddl)
+            return self._execute_statement_with_connection(
+                connection, statement, allow_ddl=allow_ddl
+            )
         finally:
-            self.close()
+            try:
+                connection.close()
+            except Exception:
+                pass
     
     def get_tables(self, schema: str = "dbo") -> List[str]:
         """Get list of tables in the specified schema.

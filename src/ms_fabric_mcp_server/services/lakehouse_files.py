@@ -37,9 +37,11 @@ class FabricLakehouseFileService:
         """List files in the lakehouse Files area."""
         filesystem_url = self._build_filesystem_url(
             workspace_id=workspace_id,
-            lakehouse_id=lakehouse_id,
         )
-        directory = self._build_directory_param(path)
+        directory = self._build_directory_param(
+            lakehouse_id=lakehouse_id,
+            path=path,
+        )
 
         params: Dict[str, Any] = {
             "resource": "filesystem",
@@ -212,6 +214,19 @@ class FabricLakehouseFileService:
         while parts and parts[0].lower() == "files":
             parts = parts[1:]
 
+        # Normalize accidental duplicated-prefix inputs like
+        # "mcp_tools_test/Files/mcp_tools_test/file.txt".
+        for idx in range(1, len(parts)):
+            if parts[idx].lower() != "files":
+                continue
+            prefix = parts[:idx]
+            suffix = parts[idx + 1 :]
+            if len(suffix) >= len(prefix) and all(
+                left.lower() == right.lower() for left, right in zip(prefix, suffix)
+            ):
+                parts = suffix
+                break
+
         if any(part == ".." for part in parts):
             raise FabricValidationError("path", trimmed, "Path cannot include '..'.")
 
@@ -232,14 +247,14 @@ class FabricLakehouseFileService:
             return base
         return f"{base}/{quote(normalized, safe='/')}"
 
-    def _build_filesystem_url(self, workspace_id: str, lakehouse_id: str) -> str:
-        return f"{self.ONELAKE_DFS_BASE_URL.rstrip('/')}/{workspace_id}/{lakehouse_id}"
+    def _build_filesystem_url(self, workspace_id: str) -> str:
+        return f"{self.ONELAKE_DFS_BASE_URL.rstrip('/')}/{workspace_id}"
 
-    def _build_directory_param(self, path: Optional[str]) -> str:
+    def _build_directory_param(self, lakehouse_id: str, path: Optional[str]) -> str:
         normalized = self._normalize_relative_path(path, allow_empty=True)
         if normalized:
-            return f"Files/{normalized}"
-        return "Files"
+            return f"{lakehouse_id}/Files/{normalized}"
+        return f"{lakehouse_id}/Files"
 
     def _ensure_directories(
         self,

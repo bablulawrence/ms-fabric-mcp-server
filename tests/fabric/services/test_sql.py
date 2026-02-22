@@ -298,67 +298,63 @@ class TestFabricSQLService:
         connection.rollback.assert_not_called()
 
     def test_execute_sql_query_calls_close_on_error(self, sql_service):
-        """execute_sql_query closes connection even on error."""
-        service, *_ = sql_service
-        service.connect = Mock()
-        service.close = Mock()
-        service.execute_query = Mock(side_effect=RuntimeError("boom"))
+        """execute_sql_query closes its own connection even on error."""
+        service, _, _, _, _ = sql_service
+        mock_conn = Mock()
+        cursor = Mock()
+        cursor.execute.side_effect = RuntimeError("boom")
+        mock_conn.cursor.return_value = cursor
+        service._create_connection = Mock(return_value=mock_conn)
 
-        with pytest.raises(RuntimeError):
-            service.execute_sql_query("endpoint", "SELECT 1")
+        result = service.execute_sql_query("endpoint", "SELECT 1")
 
-        service.close.assert_called_once()
+        assert result.status == "error"
+        mock_conn.close.assert_called_once()
 
     def test_execute_sql_query_closes_on_success(self, sql_service):
-        """execute_sql_query closes connection on success."""
-        service, *_ = sql_service
-        service.connect = Mock()
-        service.close = Mock()
-        service.execute_query = Mock(
-            return_value=QueryResult(
-                status="success",
-                data=[{"id": 1}],
-                columns=["id"],
-                row_count=1,
-            )
-        )
+        """execute_sql_query creates independent connection and closes it."""
+        service, _, _, _, _ = sql_service
+        cursor = Mock()
+        cursor.description = [("id",)]
+        cursor.fetchall.return_value = [(1,)]
+        mock_conn = Mock()
+        mock_conn.cursor.return_value = cursor
+        service._create_connection = Mock(return_value=mock_conn)
 
         result = service.execute_sql_query("endpoint", "SELECT 1")
 
         assert result.status == "success"
-        service.connect.assert_called_once_with("endpoint", "Metadata")
-        service.execute_query.assert_called_once_with("SELECT 1")
-        service.close.assert_called_once()
+        service._create_connection.assert_called_once_with("endpoint", "Metadata")
+        mock_conn.close.assert_called_once()
 
     def test_execute_sql_statement_calls_close_on_error(self, sql_service):
-        """execute_sql_statement closes connection even on error."""
-        service, *_ = sql_service
-        service.connect = Mock()
-        service.close = Mock()
-        service.execute_statement = Mock(side_effect=RuntimeError("boom"))
+        """execute_sql_statement closes its own connection even on error."""
+        service, _, _, _, _ = sql_service
+        mock_conn = Mock()
+        cursor = Mock()
+        cursor.execute.side_effect = RuntimeError("boom")
+        mock_conn.cursor.return_value = cursor
+        service._create_connection = Mock(return_value=mock_conn)
 
-        with pytest.raises(RuntimeError):
-            service.execute_sql_statement("endpoint", "UPDATE test SET a=1")
+        result = service.execute_sql_statement("endpoint", "UPDATE test SET a=1")
 
-        service.close.assert_called_once()
+        assert result["status"] == "error"
+        mock_conn.close.assert_called_once()
 
     def test_execute_sql_statement_closes_on_success(self, sql_service):
-        """execute_sql_statement closes connection on success."""
-        service, *_ = sql_service
-        service.connect = Mock()
-        service.close = Mock()
-        service.execute_statement = Mock(
-            return_value={"status": "success", "affected_rows": 1}
-        )
+        """execute_sql_statement creates independent connection and closes it."""
+        service, _, _, _, _ = sql_service
+        cursor = Mock()
+        cursor.rowcount = 1
+        mock_conn = Mock()
+        mock_conn.cursor.return_value = cursor
+        service._create_connection = Mock(return_value=mock_conn)
 
         result = service.execute_sql_statement("endpoint", "UPDATE test SET a=1")
 
         assert result["status"] == "success"
-        service.connect.assert_called_once_with("endpoint", "Metadata")
-        service.execute_statement.assert_called_once_with(
-            "UPDATE test SET a=1", allow_ddl=False
-        )
-        service.close.assert_called_once()
+        service._create_connection.assert_called_once_with("endpoint", "Metadata")
+        mock_conn.close.assert_called_once()
 
     def test_get_tables_success(self, sql_service):
         """get_tables returns table list on success."""
@@ -444,4 +440,47 @@ class TestFabricSQLService:
 
         service.close()
 
+        assert service._connection is None
+
+    def test_execute_sql_query_uses_independent_connections(self, sql_service):
+        """Concurrent execute_sql_query calls each get their own connection."""
+        service, _, _, _, _ = sql_service
+        conn1 = Mock()
+        conn2 = Mock()
+        cursor1 = Mock()
+        cursor1.description = [("id",)]
+        cursor1.fetchall.return_value = [(1,)]
+        cursor2 = Mock()
+        cursor2.description = [("id",)]
+        cursor2.fetchall.return_value = [(2,)]
+        conn1.cursor.return_value = cursor1
+        conn2.cursor.return_value = cursor2
+
+        # _create_connection returns different connections on each call
+        service._create_connection = Mock(side_effect=[conn1, conn2])
+
+        r1 = service.execute_sql_query("ep", "SELECT 1")
+        r2 = service.execute_sql_query("ep", "SELECT 2")
+
+        assert r1.status == "success"
+        assert r2.status == "success"
+        assert service._create_connection.call_count == 2
+        conn1.close.assert_called_once()
+        conn2.close.assert_called_once()
+        # Shared state should NOT have been touched
+        assert service._connection is None
+
+    def test_create_connection_returns_new_connection(self, sql_service):
+        """_create_connection creates a fresh pyodbc.Connection."""
+        service, _, _, pyodbc_mock, _ = sql_service
+        service._get_token_bytes = Mock(return_value=b"token")
+        pyodbc_mock.connect.return_value = Mock()
+
+        conn = service._create_connection("server-host", "mydb")
+
+        assert conn is not None
+        args, kwargs = pyodbc_mock.connect.call_args
+        assert "Server=server-host,1433" in args[0]
+        assert "Database=mydb" in args[0]
+        # Should NOT mutate self._connection
         assert service._connection is None

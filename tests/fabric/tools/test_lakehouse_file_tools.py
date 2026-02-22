@@ -38,7 +38,7 @@ class TestLakehouseFileTools:
         )
         lakehouse_file_service.list_files.return_value = [
             {
-                "name": "Files/raw/file.csv",
+                "name": "lh-1/Files/raw/file.csv",
                 "isDirectory": False,
                 "contentLength": "10",
                 "lastModified": "2024-01-01T00:00:00Z",

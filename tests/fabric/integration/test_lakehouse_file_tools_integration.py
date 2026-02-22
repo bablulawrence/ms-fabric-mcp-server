@@ -42,6 +42,8 @@ async def test_upload_list_delete_lakehouse_file(
         )
         assert upload_result["status"] == "success"
 
+        last_seen_names: list[str] = []
+
         async def _file_visible():
             list_result = await call_tool(
                 "list_lakehouse_files",
@@ -52,16 +54,30 @@ async def test_upload_list_delete_lakehouse_file(
             )
             if list_result.get("status") != "success":
                 return None
+            names = []
             for entry in list_result.get("files", []):
                 name = entry.get("name") or ""
+                names.append(name)
                 if destination_path in name:
+                    last_seen_names[:] = names
                     return list_result
+            last_seen_names[:] = names
             return None
 
         listed = await poll_until(
             _file_visible, timeout_seconds=180, interval_seconds=10
         )
-        assert listed is not None
+        assert listed is not None, f"File not visible; last names: {last_seen_names}"
+        names = [entry.get("name") or "" for entry in listed.get("files", [])]
+        nested_duplicate = (
+            f"Files/{destination_path.rsplit('/', 1)[0]}/Files/{destination_path}"
+        )
+        assert f"Files/{destination_path}" in names, (
+            f"Expected exact path Files/{destination_path}; got names: {names}"
+        )
+        assert nested_duplicate not in names, (
+            f"Unexpected nested duplicate path {nested_duplicate}; got names: {names}"
+        )
 
         delete_result = await call_tool(
             "delete_lakehouse_file",
