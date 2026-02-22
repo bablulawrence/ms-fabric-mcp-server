@@ -88,14 +88,18 @@ jobs:
           sudo apt-get update
           sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
 
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "**/uv.lock"
+
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev,sql,telemetry]"
+        run: uv sync --extra dev --extra sql --extra telemetry
 
       - name: Run integration tests
         run: |
-          pytest -m integration
+          uv run pytest -m integration
 
   publish:
     needs: [tests, integration]

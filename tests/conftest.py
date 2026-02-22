@@ -345,18 +345,18 @@ def mcp_server():
 
 @pytest_asyncio.fixture(scope="session")
 async def tool_registry(mcp_server):
-    """Return the registered tool mapping once per session."""
-    return await mcp_server.get_tools()
+    """Return the MCP server for tool lookups."""
+    return mcp_server
 
 
 @pytest.fixture(scope="session")
 def call_tool_session(tool_registry):
     """Session-scoped tool invoker for shared integration setup."""
     async def _call(tool_name: str, **kwargs):
-        tool = tool_registry.get(tool_name)
+        tool = await tool_registry.get_tool(tool_name)
         if tool is None:
             raise AssertionError(f"Tool not registered: {tool_name}")
-        result = await tool.run(kwargs)
+        result = await tool.run(arguments=kwargs)
         structured = result.structured_content
         if structured is None:
             raise AssertionError(f"Tool returned no structured content: {tool_name}")
@@ -369,10 +369,10 @@ def call_tool_session(tool_registry):
 def call_tool(tool_registry):
     """Invoke a tool by name and return structured content."""
     async def _call(tool_name: str, **kwargs):
-        tool = tool_registry.get(tool_name)
+        tool = await tool_registry.get_tool(tool_name)
         if tool is None:
             raise AssertionError(f"Tool not registered: {tool_name}")
-        result = await tool.run(kwargs)
+        result = await tool.run(arguments=kwargs)
         structured = result.structured_content
         if structured is None:
             raise AssertionError(f"Tool returned no structured content: {tool_name}")
@@ -629,8 +629,7 @@ def sql_dependencies_available(tool_registry):
     drivers = [driver.lower() for driver in pyodbc.drivers()]
     if not any("odbc driver" in driver and "sql server" in driver for driver in drivers):
         pytest.skip("SQL tests require a SQL Server ODBC driver")
-    if "get_sql_endpoint" not in tool_registry:
-        pytest.skip("SQL tools are not registered (pyodbc missing?)")
+    # SQL tools are registered whenever pyodbc is importable and ODBC driver exists
     return True
 
 

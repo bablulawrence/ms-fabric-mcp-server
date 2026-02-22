@@ -356,11 +356,39 @@ df.count()''',
             )
             
             logger.info(f"Successfully submitted statement: {result.get('id')}")
+
+            # Surface Spark execution errors at the top level for easier detection
+            output = result.get("output", {})
+            if isinstance(output, dict) and output.get("status") == "error":
+                ename = output.get("ename", "")
+                evalue = output.get("evalue", "")
+                result["status"] = "error"
+                result["error_summary"] = f"{ename}: {evalue}" if ename else str(evalue)
+
             return result
             
+        except FabricLivyTimeoutError as exc:
+            logger.error(f"Livy statement timed out in session {session_id}: {exc}")
+            return {
+                "status": "error",
+                "error_code": "LIVY_TIMEOUT",
+                "message": (
+                    f"Statement timed out after {timeout_seconds or 'default'}s. "
+                    f"The statement may still be running in the Spark session. "
+                    f"Use livy_get_statement_status to check, or "
+                    f"livy_cancel_statement to cancel it. Details: {exc}"
+                ),
+            }
         except FabricLivyError as exc:
             logger.error(f"Livy error running statement: {exc}")
             return {"status": "error", "message": str(exc)}
+        except Exception as exc:
+            logger.error(f"Unexpected error running Livy statement: {exc}", exc_info=True)
+            return {
+                "status": "error",
+                "error_code": "UNEXPECTED_ERROR",
+                "message": f"Unexpected error running statement: {exc}",
+            }
 
     @mcp.tool(title="Get Livy Statement Status")
     @handle_tool_errors
@@ -423,6 +451,14 @@ df.count()''',
             
             state = result.get("state", "unknown")
             logger.debug(f"Statement {statement_id} state: {state}")
+
+            # Surface Spark execution errors at the top level for easier detection
+            output = result.get("output", {})
+            if isinstance(output, dict) and output.get("status") == "error":
+                ename = output.get("ename", "")
+                evalue = output.get("evalue", "")
+                result["status"] = "error"
+                result["error_summary"] = f"{ename}: {evalue}" if ename else str(evalue)
             
             return result
             
