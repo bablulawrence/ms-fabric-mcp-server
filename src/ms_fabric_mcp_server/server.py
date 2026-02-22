@@ -25,7 +25,7 @@ def create_fabric_server(
     """Create a FastMCP server pre-configured with all Fabric tools.
     
     This is the main factory function for creating a ready-to-use MCP server
-    with all 35 Fabric tools registered.
+    with all Fabric tools registered.
     
     Args:
         name: Server name (default: from MCP_SERVER_NAME env var or 'ms-fabric-mcp-server')

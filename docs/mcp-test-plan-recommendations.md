@@ -8,13 +8,13 @@ They focus on speeding up future runs and reducing avoidable failures.
 1. **Add explicit create/availability waits**
    - **Issue observed:** immediate `get_*`/dependent calls returned “item not found” after create/rename.
    - **Reason:** item creation/rename is asynchronous in Fabric; metadata indexing and list APIs can lag behind create responses, so subsequent reads hit a different service replica that hasn’t seen the update yet.
-   - **Recommendation:** after `import_notebook_to_fabric`, `create_blank_pipeline`, `create_semantic_model`, add a short wait + `get_item`/`get_*_details` check before dependent calls.
+   - **Recommendation:** after `create_notebook`, `create_pipeline`, `create_semantic_model`, add a short wait + `get_item`/`get_*_details` check before dependent calls.
    - **Benefit:** prevents eventual-consistency failures and reduces retry loops.
 
 2. **Clarify lakehouse file paths**
    - **Issue observed:** deletes failed with `PathNotFound` and listings showed nested `Files/Files/...` after using `Files/` in destination paths.
-   - **Reason:** `upload_lakehouse_file` expects paths relative to the Files root; prefixing `Files/` in `destination_path` creates a new subfolder named `Files`, so delete/list calls must then target the nested path.
-   - **Recommendation:** document that `upload_lakehouse_file` paths are rooted under `Files/` and show example delete paths.
+   - **Reason:** path handling previously allowed duplicated `Files` segments in list/upload flows, which could surface nested-looking results.
+   - **Recommendation:** use paths relative to the Files root and verify list/upload expectations with exact-path checks.
    - **Benefit:** avoids misaligned paths and reduces cleanup retries.
 
 3. **Note `move_item_to_folder` root limitation**
