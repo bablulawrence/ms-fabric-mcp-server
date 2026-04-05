@@ -231,7 +231,7 @@ class TestDataflowTools:
         result = tools["create_dataflow"](
             workspace_name="Analytics",
             dataflow_name="FileDataflow",
-            mashup_file_path="/tmp/mashup.pq",
+            dataflow_file_path="/tmp/mashup.pq",
         )
         assert result["status"] == "success"
         assert result["dataflow_id"] == "df-file-123"
@@ -247,7 +247,7 @@ class TestDataflowTools:
             workspace_name="Analytics",
             dataflow_name="Conflict",
             mashup_content="section Section1;",
-            mashup_file_path="/tmp/mashup.pq",
+            dataflow_file_path="/tmp/mashup.pq",
         )
         assert result["status"] == "error"
 

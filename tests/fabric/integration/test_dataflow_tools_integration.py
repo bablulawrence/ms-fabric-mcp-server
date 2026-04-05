@@ -170,7 +170,7 @@ async def test_dataflow_create_from_file(
             "create_dataflow",
             workspace_name=workspace_name,
             dataflow_name=dataflow_name,
-            mashup_file_path=str(file_path),
+            dataflow_file_path=str(file_path),
         )
         assert create_result["status"] == "success"
 

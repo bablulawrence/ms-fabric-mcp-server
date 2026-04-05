@@ -81,7 +81,7 @@ class FabricDataflowService:
         local_path = Path(file_path)
         if not local_path.is_file():
             raise FabricValidationError(
-                "mashup_file_path",
+                "dataflow_file_path",
                 file_path,
                 "File does not exist or is not a file.",
             )
@@ -89,13 +89,13 @@ class FabricDataflowService:
             content = local_path.read_text(encoding="utf-8")
         except OSError as exc:
             raise FabricValidationError(
-                "mashup_file_path",
+                "dataflow_file_path",
                 file_path,
                 f"Cannot read file: {exc}",
             )
         if not content.strip():
             raise FabricValidationError(
-                "mashup_file_path",
+                "dataflow_file_path",
                 file_path,
                 "File must contain non-empty mashup content.",
             )

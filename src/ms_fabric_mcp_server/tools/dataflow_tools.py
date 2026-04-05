@@ -63,7 +63,7 @@ def register_dataflow_tools(
         workspace_name: str,
         dataflow_name: str,
         mashup_content: Optional[str] = None,
-        mashup_file_path: Optional[str] = None,
+        dataflow_file_path: Optional[str] = None,
         query_metadata: Optional[dict] = None,
         description: Optional[str] = None,
         folder_path: Optional[str] = None,
@@ -83,8 +83,8 @@ def register_dataflow_tools(
                     dataflow_name: Display name for the new dataflow.
                     mashup_content: Power Query M code in section format (mashup.pq content).
                                    Must include a section declaration and shared queries.
-                                   Mutually exclusive with *mashup_file_path*.
-                    mashup_file_path: Local file path to a mashup .pq file.
+                                   Mutually exclusive with *dataflow_file_path*.
+                    dataflow_file_path: Local file path to a file containing Power Query M code.
                                    Mutually exclusive with *mashup_content*.
                     query_metadata: Optional queryMetadata.json as dict. If omitted, it will
                                    be auto-generated from the mashup content.
@@ -119,23 +119,23 @@ def register_dataflow_tools(
             dataflow_name=dataflow_name,
             description=description,
             folder_path=folder_path,
-            mashup_file_path=mashup_file_path,
+            dataflow_file_path=dataflow_file_path,
         )
 
-        if mashup_content is not None and mashup_file_path is not None:
+        if mashup_content is not None and dataflow_file_path is not None:
             return format_error_response(
                 "VALIDATION_ERROR",
-                "Provide either mashup_content or mashup_file_path, not both.",
+                "Provide either mashup_content or dataflow_file_path, not both.",
             )
 
-        if mashup_content is None and mashup_file_path is None:
+        if mashup_content is None and dataflow_file_path is None:
             return format_error_response(
                 "VALIDATION_ERROR",
-                "Provide either mashup_content or mashup_file_path.",
+                "Provide either mashup_content or dataflow_file_path.",
             )
 
-        if mashup_file_path is not None:
-            mashup_content = dataflow_service._load_mashup_from_file(mashup_file_path)
+        if dataflow_file_path is not None:
+            mashup_content = dataflow_service._load_mashup_from_file(dataflow_file_path)
         logger.info(
             f"Creating dataflow '{dataflow_name}' in workspace '{workspace_name}'"
         )
