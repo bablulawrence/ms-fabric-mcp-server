@@ -8,12 +8,11 @@ import pytest
 
 from ms_fabric_mcp_server.client.exceptions import FabricValidationError
 from ms_fabric_mcp_server.models.item import FabricItem
-from ms_fabric_mcp_server.models.semantic_model import (
-    SemanticModelColumn,
-    SemanticModelMeasure,
-    DataType,
-)
-from ms_fabric_mcp_server.services.semantic_model import FabricSemanticModelService
+from ms_fabric_mcp_server.models.semantic_model import (DataType,
+                                                        SemanticModelColumn,
+                                                        SemanticModelMeasure)
+from ms_fabric_mcp_server.services.semantic_model import \
+    FabricSemanticModelService
 
 
 def _encode(definition: dict) -> str:
@@ -75,14 +74,29 @@ class TestFabricSemanticModelService:
     ):
         mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
         mock_item_service.get_item_by_name.side_effect = [
-            FabricItem(id="sm-1", display_name="Model", type="SemanticModel", workspace_id="ws-1"),
-            FabricItem(id="lh-1", display_name="Lake", type="Lakehouse", workspace_id="ws-1"),
+            FabricItem(
+                id="sm-1",
+                display_name="Model",
+                type="SemanticModel",
+                workspace_id="ws-1",
+            ),
+            FabricItem(
+                id="lh-1", display_name="Lake", type="Lakehouse", workspace_id="ws-1"
+            ),
         ]
         definition = {
             "definition": {
                 "parts": [
-                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
-                    {"path": "model.bim", "payload": _encode({"model": {}}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "definition.pbism",
+                        "payload": _encode({"version": "4.2"}),
+                        "payloadType": "InlineBase64",
+                    },
+                    {
+                        "path": "model.bim",
+                        "payload": _encode({"model": {}}),
+                        "payloadType": "InlineBase64",
+                    },
                 ]
             }
         }
@@ -116,14 +130,29 @@ class TestFabricSemanticModelService:
     ):
         mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
         mock_item_service.get_item_by_name.side_effect = [
-            FabricItem(id="sm-1", display_name="Model", type="SemanticModel", workspace_id="ws-1"),
-            FabricItem(id="lh-1", display_name="Lake", type="Lakehouse", workspace_id="ws-1"),
+            FabricItem(
+                id="sm-1",
+                display_name="Model",
+                type="SemanticModel",
+                workspace_id="ws-1",
+            ),
+            FabricItem(
+                id="lh-1", display_name="Lake", type="Lakehouse", workspace_id="ws-1"
+            ),
         ]
         definition = {
             "definition": {
                 "parts": [
-                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
-                    {"path": "model.bim", "payload": _encode({"model": {}}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "definition.pbism",
+                        "payload": _encode({"version": "4.2"}),
+                        "payloadType": "InlineBase64",
+                    },
+                    {
+                        "path": "model.bim",
+                        "payload": _encode({"model": {}}),
+                        "payloadType": "InlineBase64",
+                    },
                 ]
             }
         }
@@ -174,14 +203,31 @@ class TestFabricSemanticModelService:
     ):
         mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
         mock_item_service.get_item_by_name.side_effect = [
-            FabricItem(id="sm-1", display_name="Model", type="SemanticModel", workspace_id="ws-1"),
-            FabricItem(id="lh-1", display_name="Lake", type="Lakehouse", workspace_id="ws-1"),
+            FabricItem(
+                id="sm-1",
+                display_name="Model",
+                type="SemanticModel",
+                workspace_id="ws-1",
+            ),
+            FabricItem(
+                id="lh-1", display_name="Lake", type="Lakehouse", workspace_id="ws-1"
+            ),
         ]
         definition = {
             "definition": {
                 "parts": [
-                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
-                    {"path": "model.bim", "payload": _encode({"model": {"tables": [{"name": "Customers"}]}}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "definition.pbism",
+                        "payload": _encode({"version": "4.2"}),
+                        "payloadType": "InlineBase64",
+                    },
+                    {
+                        "path": "model.bim",
+                        "payload": _encode(
+                            {"model": {"tables": [{"name": "Customers"}]}}
+                        ),
+                        "payloadType": "InlineBase64",
+                    },
                 ]
             }
         }
@@ -190,27 +236,34 @@ class TestFabricSemanticModelService:
         columns = [SemanticModelColumn(name="id", data_type=DataType.INT64)]
 
         with pytest.raises(FabricValidationError):
-                semantic_model_service.add_table_to_semantic_model(
-                    workspace_name="Workspace",
-                    semantic_model_name="Model",
-                    lakehouse_name="Lake",
-                    table_name="Customers",
-                    columns=columns,
-                )
+            semantic_model_service.add_table_to_semantic_model(
+                workspace_name="Workspace",
+                semantic_model_name="Model",
+                lakehouse_name="Lake",
+                table_name="Customers",
+                columns=columns,
+            )
 
     def test_add_table_reuses_directlake_expression(
         self, semantic_model_service, mock_workspace_service, mock_item_service
     ):
         mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
         mock_item_service.get_item_by_name.side_effect = [
-            FabricItem(id="sm-1", display_name="Model", type="SemanticModel", workspace_id="ws-1"),
-            FabricItem(id="lh-1", display_name="Lake", type="Lakehouse", workspace_id="ws-1"),
+            FabricItem(
+                id="sm-1",
+                display_name="Model",
+                type="SemanticModel",
+                workspace_id="ws-1",
+            ),
+            FabricItem(
+                id="lh-1", display_name="Lake", type="Lakehouse", workspace_id="ws-1"
+            ),
         ]
         existing_expression = {
             "name": "DirectLakeExisting",
             "expression": [
                 "let",
-                "    Source = AzureStorage.DataLake(\"https://onelake.dfs.fabric.microsoft.com/ws-1/lh-1\", [HierarchicalNavigation=true])",
+                '    Source = AzureStorage.DataLake("https://onelake.dfs.fabric.microsoft.com/ws-1/lh-1", [HierarchicalNavigation=true])',
                 "in",
                 "    Source",
             ],
@@ -219,8 +272,18 @@ class TestFabricSemanticModelService:
         definition = {
             "definition": {
                 "parts": [
-                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
-                    {"path": "model.bim", "payload": _encode({"model": {"expressions": [existing_expression]}}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "definition.pbism",
+                        "payload": _encode({"version": "4.2"}),
+                        "payloadType": "InlineBase64",
+                    },
+                    {
+                        "path": "model.bim",
+                        "payload": _encode(
+                            {"model": {"expressions": [existing_expression]}}
+                        ),
+                        "payloadType": "InlineBase64",
+                    },
                 ]
             }
         }
@@ -243,7 +306,9 @@ class TestFabricSemanticModelService:
         model = bim["model"]
         assert len(model["expressions"]) == 1
         table = next(t for t in model["tables"] if t["name"] == "Customers")
-        assert table["partitions"][0]["source"]["expressionSource"] == "DirectLakeExisting"
+        assert (
+            table["partitions"][0]["source"]["expressionSource"] == "DirectLakeExisting"
+        )
 
     def test_add_relationship_to_semantic_model_success(
         self, semantic_model_service, mock_workspace_service, mock_item_service
@@ -258,8 +323,16 @@ class TestFabricSemanticModelService:
         definition = {
             "definition": {
                 "parts": [
-                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
-                    {"path": "model.bim", "payload": _encode({"model": {}}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "definition.pbism",
+                        "payload": _encode({"version": "4.2"}),
+                        "payloadType": "InlineBase64",
+                    },
+                    {
+                        "path": "model.bim",
+                        "payload": _encode({"model": {}}),
+                        "payloadType": "InlineBase64",
+                    },
                 ]
             }
         }
@@ -300,8 +373,16 @@ class TestFabricSemanticModelService:
         definition = {
             "definition": {
                 "parts": [
-                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
-                    {"path": "model.bim", "payload": _encode({"model": {}}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "definition.pbism",
+                        "payload": _encode({"version": "4.2"}),
+                        "payloadType": "InlineBase64",
+                    },
+                    {
+                        "path": "model.bim",
+                        "payload": _encode({"model": {}}),
+                        "payloadType": "InlineBase64",
+                    },
                 ]
             }
         }
@@ -414,8 +495,16 @@ class TestFabricSemanticModelService:
         definition = {
             "definition": {
                 "parts": [
-                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
-                    {"path": "model.bim", "payload": _encode({"model": {"tables": [{"name": "Sales"}]}}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "definition.pbism",
+                        "payload": _encode({"version": "4.2"}),
+                        "payloadType": "InlineBase64",
+                    },
+                    {
+                        "path": "model.bim",
+                        "payload": _encode({"model": {"tables": [{"name": "Sales"}]}}),
+                        "payloadType": "InlineBase64",
+                    },
                 ]
             }
         }
@@ -464,10 +553,25 @@ class TestFabricSemanticModelService:
         definition = {
             "definition": {
                 "parts": [
-                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "definition.pbism",
+                        "payload": _encode({"version": "4.2"}),
+                        "payloadType": "InlineBase64",
+                    },
                     {
                         "path": "model.bim",
-                        "payload": _encode({"model": {"tables": [{"name": "Sales", "measures": [{"name": "Total Sales"}]}]}}),
+                        "payload": _encode(
+                            {
+                                "model": {
+                                    "tables": [
+                                        {
+                                            "name": "Sales",
+                                            "measures": [{"name": "Total Sales"}],
+                                        }
+                                    ]
+                                }
+                            }
+                        ),
                         "payloadType": "InlineBase64",
                     },
                 ]
@@ -499,10 +603,28 @@ class TestFabricSemanticModelService:
         definition = {
             "definition": {
                 "parts": [
-                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "definition.pbism",
+                        "payload": _encode({"version": "4.2"}),
+                        "payloadType": "InlineBase64",
+                    },
                     {
                         "path": "model.bim",
-                        "payload": _encode({"model": {"tables": [{"name": "Sales", "measures": [{"name": "Total Sales"}, {"name": "Count Sales"}]}]}}),
+                        "payload": _encode(
+                            {
+                                "model": {
+                                    "tables": [
+                                        {
+                                            "name": "Sales",
+                                            "measures": [
+                                                {"name": "Total Sales"},
+                                                {"name": "Count Sales"},
+                                            ],
+                                        }
+                                    ]
+                                }
+                            }
+                        ),
                         "payloadType": "InlineBase64",
                     },
                 ]
@@ -539,8 +661,27 @@ class TestFabricSemanticModelService:
         definition = {
             "definition": {
                 "parts": [
-                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
-                    {"path": "model.bim", "payload": _encode({"model": {"tables": [{"name": "Sales", "measures": [{"name": "Total Sales"}]}]}}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "definition.pbism",
+                        "payload": _encode({"version": "4.2"}),
+                        "payloadType": "InlineBase64",
+                    },
+                    {
+                        "path": "model.bim",
+                        "payload": _encode(
+                            {
+                                "model": {
+                                    "tables": [
+                                        {
+                                            "name": "Sales",
+                                            "measures": [{"name": "Total Sales"}],
+                                        }
+                                    ]
+                                }
+                            }
+                        ),
+                        "payloadType": "InlineBase64",
+                    },
                 ]
             }
         }
@@ -565,7 +706,11 @@ class TestFabricSemanticModelService:
         definition = {
             "definition": {
                 "parts": [
-                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "definition.pbism",
+                        "payload": _encode({"version": "4.2"}),
+                        "payloadType": "InlineBase64",
+                    },
                     {
                         "path": "model.bim",
                         "payload": _encode(
@@ -621,7 +766,11 @@ class TestFabricSemanticModelService:
         definition = {
             "definition": {
                 "parts": [
-                    {"path": "definition.pbism", "payload": _encode({"version": "4.2"}), "payloadType": "InlineBase64"},
+                    {
+                        "path": "definition.pbism",
+                        "payload": _encode({"version": "4.2"}),
+                        "payloadType": "InlineBase64",
+                    },
                     {
                         "path": "model.bim",
                         "payload": _encode(
@@ -667,3 +816,115 @@ class TestFabricSemanticModelService:
                 semantic_model_name="Model",
                 semantic_model_id=None,
             )
+
+    def test_get_semantic_model_definition_save_to_path(
+        self,
+        semantic_model_service,
+        mock_workspace_service,
+        mock_item_service,
+        tmp_path,
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="sm-1",
+            display_name="Model",
+            type="SemanticModel",
+            workspace_id="ws-1",
+        )
+        definition = {
+            "definition": {"parts": [{"path": "model.bim", "payload": "abc"}]}
+        }
+        mock_item_service.get_item_definition.return_value = definition
+        out_file = str(tmp_path / "model.json")
+        semantic_model, result = semantic_model_service.get_semantic_model_definition(
+            workspace_name="Workspace",
+            semantic_model_name="Model",
+            format="TMSL",
+            save_to_path=out_file,
+        )
+        assert semantic_model.id == "sm-1"
+        assert result["file_path"] == out_file
+        assert result["size_bytes"] > 0
+        with open(out_file) as f:
+            saved = json.load(f)
+        assert saved == definition
+
+    def test_get_semantic_model_definition_save_to_path_bad_parent(
+        self, semantic_model_service
+    ):
+        with pytest.raises(FabricValidationError):
+            semantic_model_service.get_semantic_model_definition(
+                workspace_name="Workspace",
+                semantic_model_name="Model",
+                save_to_path="/nonexistent/dir/model.json",
+            )
+
+    def test_update_semantic_model_definition_success(
+        self, semantic_model_service, mock_workspace_service, mock_item_service
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="sm-1",
+            display_name="Model",
+            type="SemanticModel",
+            workspace_id="ws-1",
+        )
+        definition = {
+            "definition": {
+                "parts": [
+                    {"path": "definition.pbism", "payload": "abc"},
+                    {"path": "model.bim", "payload": "def"},
+                ]
+            }
+        }
+        result = semantic_model_service.update_semantic_model_definition(
+            workspace_name="Workspace",
+            definition=definition,
+            semantic_model_name="Model",
+        )
+        assert result.id == "sm-1"
+        mock_item_service.update_item_definition.assert_called_once_with(
+            "ws-1", "sm-1", definition
+        )
+
+    def test_update_semantic_model_definition_invalid(
+        self, semantic_model_service, mock_workspace_service, mock_item_service
+    ):
+        mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="sm-1",
+            display_name="Model",
+            type="SemanticModel",
+            workspace_id="ws-1",
+        )
+        with pytest.raises(FabricValidationError):
+            semantic_model_service.update_semantic_model_definition(
+                workspace_name="Workspace",
+                definition={"bad": "format"},
+                semantic_model_name="Model",
+            )
+
+    def test_load_definition_from_file_success(self, semantic_model_service, tmp_path):
+        content = {"definition": {"parts": [{"path": "model.bim"}]}}
+        file_path = tmp_path / "model.json"
+        file_path.write_text(json.dumps(content))
+        loaded = semantic_model_service._load_definition_from_file(str(file_path))
+        assert loaded == content
+
+    def test_load_definition_from_file_not_found(self, semantic_model_service):
+        with pytest.raises(FabricValidationError):
+            semantic_model_service._load_definition_from_file("/nonexistent/model.json")
+
+    def test_load_definition_from_file_invalid_json(
+        self, semantic_model_service, tmp_path
+    ):
+        file_path = tmp_path / "bad.json"
+        file_path.write_text("not json")
+        with pytest.raises(FabricValidationError):
+            semantic_model_service._load_definition_from_file(str(file_path))
+
+    def test_load_definition_from_file_empty(self, semantic_model_service, tmp_path):
+        file_path = tmp_path / "empty.json"
+        file_path.write_text("{}")
+        with pytest.raises(FabricValidationError):
+            semantic_model_service._load_definition_from_file(str(file_path))

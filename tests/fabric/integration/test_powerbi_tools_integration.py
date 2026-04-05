@@ -42,7 +42,9 @@ async def test_powerbi_tools_flow(
                     return result
             return None
 
-        found = await poll_until(_get_semantic_model, timeout_seconds=120, interval_seconds=10)
+        found = await poll_until(
+            _get_semantic_model, timeout_seconds=120, interval_seconds=10
+        )
         assert found is not None
 
         add_table_result = await call_tool(
@@ -57,7 +59,9 @@ async def test_powerbi_tools_flow(
         assert add_table_result["status"] == "success"
 
         measure_name = "Total Key"
-        measure_expression = f"SUM('{semantic_model_table}'[{semantic_model_columns[0]['name']}])"
+        measure_expression = (
+            f"SUM('{semantic_model_table}'[{semantic_model_columns[0]['name']}])"
+        )
 
         add_measures_result = await call_tool(
             "add_measures_to_semantic_model",
@@ -81,19 +85,23 @@ async def test_powerbi_tools_flow(
             workspace_name=workspace_name,
             semantic_model_name=semantic_model_name,
         )
-        assert refresh_result["status"] == "success", f"Refresh failed: {refresh_result}"
+        assert (
+            refresh_result["status"] == "success"
+        ), f"Refresh failed: {refresh_result}"
 
         dax_result = await call_tool(
             "execute_dax_query",
             workspace_name=workspace_name,
             semantic_model_name=semantic_model_name,
-            query=f"EVALUATE ROW(\"Result\", [{measure_name}])",
+            query=f'EVALUATE ROW("Result", [{measure_name}])',
         )
         # Skip DAX assertion if service principal lacks Dataset.Read.All permission
         if dax_result.get("status") == "error":
             message = dax_result.get("message", "")
             if "PowerBINotAuthorizedException" in message or "401" in message:
-                pytest.skip("DAX query requires Dataset.Read.All permission for service principal")
+                pytest.skip(
+                    "DAX query requires Dataset.Read.All permission for service principal"
+                )
         assert dax_result["status"] == "success"
         assert "response" in dax_result
 

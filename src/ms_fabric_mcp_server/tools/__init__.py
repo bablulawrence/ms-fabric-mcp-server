@@ -6,47 +6,40 @@ This module provides the main entry point for registering Microsoft Fabric MCP t
 Tools can be registered all at once or selectively by category.
 """
 
-from typing import TYPE_CHECKING
 import logging
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
 
-from ..client import FabricConfig, FabricClient
-from ..services import (
-    FabricWorkspaceService,
-    FabricItemService,
-    FabricNotebookService,
-    FabricJobService,
-    FabricSQLService,
-    FabricLivyService,
-    FabricPipelineService,
-    FabricDataflowService,
-    FabricSemanticModelService,
-    FabricPowerBIService,
-    FabricLakehouseFileService,
-)
-from .workspace_tools import register_workspace_tools
-from .item_tools import register_item_tools
-from .notebook_tools import register_notebook_tools
-from .job_tools import register_job_tools
-from .sql_tools import register_sql_tools
-from .livy_tools import register_livy_tools
-from .pipeline_tools import register_pipeline_tools
+from ..client import FabricClient, FabricConfig
+from ..services import (FabricDataflowService, FabricItemService,
+                        FabricJobService, FabricLakehouseFileService,
+                        FabricLivyService, FabricNotebookService,
+                        FabricPipelineService, FabricPowerBIService,
+                        FabricSemanticModelService, FabricSQLService,
+                        FabricWorkspaceService)
 from .dataflow_tools import register_dataflow_tools
-from .semantic_model_tools import register_semantic_model_tools
-from .powerbi_tools import register_powerbi_tools
+from .item_tools import register_item_tools
+from .job_tools import register_job_tools
 from .lakehouse_file_tools import register_lakehouse_file_tools
+from .livy_tools import register_livy_tools
+from .notebook_tools import register_notebook_tools
+from .pipeline_tools import register_pipeline_tools
+from .powerbi_tools import register_powerbi_tools
+from .semantic_model_tools import register_semantic_model_tools
+from .sql_tools import register_sql_tools
+from .workspace_tools import register_workspace_tools
 
 logger = logging.getLogger(__name__)
 
 
 def register_fabric_tools(mcp: "FastMCP"):
     """Register all Fabric MCP tools (workspace, item, notebook, job, SQL, Livy, pipeline, dataflow).
-    
+
     This is the main registration function that sets up all 60 Fabric tools.
     It initializes the service hierarchy and registers all tool categories.
-    
+
     Tool Categories:
     - Workspace tools (1): list_workspaces
     - Item tools (10): list_items, get_item, list_folders, create_folder, move_folder,
@@ -71,40 +64,48 @@ def register_fabric_tools(mcp: "FastMCP"):
     - Power BI tools (2): refresh_semantic_model, execute_dax_query
     - Lakehouse file tools (3): list_lakehouse_files, upload_lakehouse_file,
       delete_lakehouse_file
-    
+
     Args:
         mcp: FastMCP server instance to register tools on.
-        
+
     Raises:
         FabricError: If service initialization fails.
-        
+
     Example:
         ```python
         from fastmcp import FastMCP
         from ms_fabric_mcp_server import register_fabric_tools
-        
+
         mcp = FastMCP("my-server")
         register_fabric_tools(mcp)
-        
+
         if __name__ == "__main__":
             mcp.run()
         ```
     """
     logger.info("Initializing Fabric services for tool registration")
-    
+
     try:
         # Initialize service hierarchy
         config = FabricConfig.from_environment()
         fabric_client = FabricClient(config)
-        
+
         workspace_service = FabricWorkspaceService(fabric_client)
         item_service = FabricItemService(fabric_client)
-        notebook_service = FabricNotebookService(fabric_client, item_service, workspace_service, repo_root=None)
+        notebook_service = FabricNotebookService(
+            fabric_client, item_service, workspace_service, repo_root=None
+        )
         job_service = FabricJobService(fabric_client, workspace_service, item_service)
         livy_service = FabricLivyService(fabric_client)
-        pipeline_service = FabricPipelineService(fabric_client, workspace_service, item_service)
-        dataflow_service = FabricDataflowService(fabric_client, workspace_service, item_service)
-        semantic_model_service = FabricSemanticModelService(workspace_service, item_service)
+        pipeline_service = FabricPipelineService(
+            fabric_client, workspace_service, item_service
+        )
+        dataflow_service = FabricDataflowService(
+            fabric_client, workspace_service, item_service
+        )
+        semantic_model_service = FabricSemanticModelService(
+            workspace_service, item_service
+        )
         powerbi_service = FabricPowerBIService(
             fabric_client,
             workspace_service,
@@ -113,23 +114,25 @@ def register_fabric_tools(mcp: "FastMCP"):
             refresh_wait_timeout=config.POWERBI_REFRESH_WAIT_TIMEOUT,
         )
         lakehouse_file_service = FabricLakehouseFileService(fabric_client)
-        
+
         # SQL service is optional (requires pyodbc)
         sql_service = None
         try:
-            sql_service = FabricSQLService(fabric_client, workspace_service, item_service)
+            sql_service = FabricSQLService(
+                fabric_client, workspace_service, item_service
+            )
         except ImportError as sql_exc:
             logger.warning(f"SQL tools disabled: {sql_exc}")
-        
+
         logger.info("Fabric services initialized successfully")
-        
+
     except Exception as exc:
         logger.error(f"Failed to initialize Fabric services: {exc}")
         raise
-    
+
     # Register all tool categories
     logger.info("Registering all Fabric tool categories")
-    
+
     register_workspace_tools(mcp, workspace_service)
     register_item_tools(mcp, item_service, workspace_service)
     register_notebook_tools(mcp, notebook_service)
@@ -149,7 +152,7 @@ def register_fabric_tools(mcp: "FastMCP"):
         workspace_service,
         item_service,
     )
-    
+
     tool_count = 60 if sql_service else 57  # 3 SQL tools
     logger.info(f"All Fabric tools registered successfully ({tool_count} tools)")
 
@@ -158,7 +161,7 @@ def register_fabric_tools(mcp: "FastMCP"):
 __all__ = [
     "register_fabric_tools",
     "register_workspace_tools",
-    "register_item_tools", 
+    "register_item_tools",
     "register_notebook_tools",
     "register_job_tools",
     "register_sql_tools",

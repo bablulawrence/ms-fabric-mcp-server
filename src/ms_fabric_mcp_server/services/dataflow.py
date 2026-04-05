@@ -7,14 +7,12 @@ import json
 import logging
 import re
 import uuid
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from ..client.exceptions import (
-    FabricAPIError,
-    FabricError,
-    FabricItemNotFoundError,
-    FabricValidationError,
-)
+from ..client.exceptions import (FabricAPIError, FabricError,
+                                 FabricItemNotFoundError,
+                                 FabricValidationError)
 from ..client.http_client import FabricClient
 from ..models.results import RunJobResult
 from .item import FabricItemService
@@ -26,37 +24,37 @@ logger = logging.getLogger(__name__)
 class FabricDataflowService:
     """Service for Microsoft Fabric Dataflow Gen2 operations.
 
-    This service provides high-level operations for creating, inspecting, and
-    running Dataflow Gen2 items in Fabric workspaces.
+        This service provides high-level operations for creating, inspecting, and
+        running Dataflow Gen2 items in Fabric workspaces.
 
-    Example:
-        ```python
-        from ms_fabric_mcp_server import FabricConfig, FabricClient
-        from ms_fabric_mcp_server.services import (
-            FabricDataflowService,
-            FabricWorkspaceService,
-            FabricItemService
-        )
+        Example:
+            ```python
+            from ms_fabric_mcp_server import FabricConfig, FabricClient
+            from ms_fabric_mcp_server.services import (
+                FabricDataflowService,
+                FabricWorkspaceService,
+                FabricItemService
+            )
 
-        config = FabricConfig.from_environment()
-        client = FabricClient(config)
-        workspace_service = FabricWorkspaceService(client)
-        item_service = FabricItemService(client)
-        dataflow_service = FabricDataflowService(client, workspace_service, item_service)
+            config = FabricConfig.from_environment()
+            client = FabricClient(config)
+            workspace_service = FabricWorkspaceService(client)
+            item_service = FabricItemService(client)
+            dataflow_service = FabricDataflowService(client, workspace_service, item_service)
 
-        # Create a dataflow
-        dataflow_id = dataflow_service.create_dataflow(
-            workspace_id="12345678-1234-1234-1234-123456789abc",
-            dataflow_name="CustomerETL",
-            mashup_content=\"\"\"
-section Section1;
-shared Customers = let
-    Source = ...
-in
-    Source;
-\"\"\"
-        )
-        ```
+            # Create a dataflow
+            dataflow_id = dataflow_service.create_dataflow(
+                workspace_id="12345678-1234-1234-1234-123456789abc",
+                dataflow_name="CustomerETL",
+                mashup_content=\"\"\"
+    section Section1;
+    shared Customers = let
+        Source = ...
+    in
+        Source;
+    \"\"\"
+            )
+            ```
     """
 
     def __init__(
@@ -76,6 +74,32 @@ in
         self.workspace_service = workspace_service
         self.item_service = item_service
         logger.debug("FabricDataflowService initialized")
+
+    @staticmethod
+    def _load_mashup_from_file(file_path: str) -> str:
+        """Load and validate mashup content from a local file."""
+        local_path = Path(file_path)
+        if not local_path.is_file():
+            raise FabricValidationError(
+                "dataflow_file_path",
+                file_path,
+                "File does not exist or is not a file.",
+            )
+        try:
+            content = local_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise FabricValidationError(
+                "dataflow_file_path",
+                file_path,
+                f"Cannot read file: {exc}",
+            )
+        if not content.strip():
+            raise FabricValidationError(
+                "dataflow_file_path",
+                file_path,
+                "File must contain non-empty mashup content.",
+            )
+        return content
 
     def _parse_query_names_from_mashup(self, mashup_content: str) -> list[str]:
         """Extract query names from Power Query M code.
@@ -165,7 +189,11 @@ in
         if "section" not in mashup_content.lower():
             raise FabricValidationError(
                 field="mashup_content",
-                value=mashup_content[:50] + "..." if len(mashup_content) > 50 else mashup_content,
+                value=(
+                    mashup_content[:50] + "..."
+                    if len(mashup_content) > 50
+                    else mashup_content
+                ),
                 message="mashup_content must contain a section declaration (e.g., 'section Section1;')",
             )
 
@@ -194,7 +222,9 @@ in
             if msg:
                 return msg
 
-        pbi_error = payload.get("pbi.error") or payload.get("error", {}).get("pbi.error")
+        pbi_error = payload.get("pbi.error") or payload.get("error", {}).get(
+            "pbi.error"
+        )
         if isinstance(pbi_error, dict):
             for detail in pbi_error.get("details", []) or []:
                 if not isinstance(detail, dict):
@@ -250,12 +280,18 @@ in
 
         # Generate query metadata if not provided
         if query_metadata is None:
-            query_metadata = self._generate_query_metadata(dataflow_name, mashup_content)
+            query_metadata = self._generate_query_metadata(
+                dataflow_name, mashup_content
+            )
 
-        logger.info(f"Creating dataflow '{dataflow_name}' in workspace '{workspace_id}'")
+        logger.info(
+            f"Creating dataflow '{dataflow_name}' in workspace '{workspace_id}'"
+        )
 
         # Encode definition parts
-        mashup_encoded = base64.b64encode(mashup_content.encode("utf-8")).decode("utf-8")
+        mashup_encoded = base64.b64encode(mashup_content.encode("utf-8")).decode(
+            "utf-8"
+        )
         metadata_encoded = base64.b64encode(
             json.dumps(query_metadata).encode("utf-8")
         ).decode("utf-8")
@@ -313,20 +349,33 @@ in
         self,
         workspace_id: str,
         dataflow_id: str,
+        save_to_path: Optional[str] = None,
     ) -> Tuple[Dict[str, Any], str]:
         """Retrieve the full definition of a dataflow.
 
         Args:
             workspace_id: ID of the workspace containing the dataflow
             dataflow_id: ID of the dataflow
+            save_to_path: Optional local file path. When provided, the definition
+                is written to this file and a lightweight metadata dict is returned.
 
         Returns:
-            Tuple of (query_metadata dict, mashup_content string)
+            Tuple of (query_metadata dict, mashup_content string).
+            When *save_to_path* is set, returns (file_metadata dict, "").
 
         Raises:
             FabricItemNotFoundError: If dataflow not found
             FabricAPIError: If API request fails
         """
+        if save_to_path is not None:
+            parent = Path(save_to_path).parent
+            if not parent.is_dir():
+                raise FabricValidationError(
+                    "save_to_path",
+                    save_to_path,
+                    f"Parent directory does not exist: {parent}",
+                )
+
         logger.info(
             f"Getting definition for dataflow '{dataflow_id}' in workspace '{workspace_id}'"
         )
@@ -365,6 +414,27 @@ in
                 mashup_content = base64.b64decode(payload).decode("utf-8")
 
         logger.info(f"Successfully retrieved definition for dataflow '{dataflow_id}'")
+
+        if save_to_path is not None:
+            file_content = {
+                "query_metadata": query_metadata,
+                "mashup_content": mashup_content,
+            }
+            try:
+                with open(save_to_path, "w", encoding="utf-8") as f:
+                    json.dump(file_content, f, indent=1)
+            except OSError as exc:
+                raise FabricValidationError(
+                    "save_to_path",
+                    save_to_path,
+                    f"Cannot write file: {exc}",
+                )
+            size_bytes = Path(save_to_path).stat().st_size
+            logger.info(
+                f"Dataflow definition saved to {save_to_path} ({size_bytes} bytes)"
+            )
+            return {"file_path": save_to_path, "size_bytes": size_bytes}, ""
+
         return query_metadata, mashup_content
 
     def run_dataflow(
@@ -395,7 +465,9 @@ in
         )
 
         # Dataflow-specific Execute endpoint
-        endpoint = f"workspaces/{workspace_id}/dataflows/{dataflow_id}/jobs/Execute/instances"
+        endpoint = (
+            f"workspaces/{workspace_id}/dataflows/{dataflow_id}/jobs/Execute/instances"
+        )
 
         # Build request payload if execution data provided
         payload = None

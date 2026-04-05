@@ -22,11 +22,17 @@ class TestServerFactory:
             }
             return values.get(key, default)
 
-        with patch("ms_fabric_mcp_server.server.load_dotenv") as load_dotenv, \
-            patch("ms_fabric_mcp_server.server.os.getenv", side_effect=getenv) as getenv_mock, \
-            patch("ms_fabric_mcp_server.server.logging.basicConfig") as basic_config, \
-            patch("ms_fabric_mcp_server.server.FastMCP", return_value=mcp) as fastmcp, \
-            patch("ms_fabric_mcp_server.server.register_fabric_tools") as register_tools:
+        with (
+            patch("ms_fabric_mcp_server.server.load_dotenv") as load_dotenv,
+            patch(
+                "ms_fabric_mcp_server.server.os.getenv", side_effect=getenv
+            ) as getenv_mock,
+            patch("ms_fabric_mcp_server.server.logging.basicConfig") as basic_config,
+            patch("ms_fabric_mcp_server.server.FastMCP", return_value=mcp) as fastmcp,
+            patch(
+                "ms_fabric_mcp_server.server.register_fabric_tools"
+            ) as register_tools,
+        ):
             result = server.create_fabric_server()
 
         load_dotenv.assert_called_once_with()
@@ -43,11 +49,15 @@ class TestServerFactory:
 
         mcp = Mock()
 
-        with patch("ms_fabric_mcp_server.server.load_dotenv"), \
-            patch("ms_fabric_mcp_server.server.os.getenv") as getenv_mock, \
-            patch("ms_fabric_mcp_server.server.logging.basicConfig") as basic_config, \
-            patch("ms_fabric_mcp_server.server.FastMCP", return_value=mcp) as fastmcp, \
-            patch("ms_fabric_mcp_server.server.register_fabric_tools") as register_tools:
+        with (
+            patch("ms_fabric_mcp_server.server.load_dotenv"),
+            patch("ms_fabric_mcp_server.server.os.getenv") as getenv_mock,
+            patch("ms_fabric_mcp_server.server.logging.basicConfig") as basic_config,
+            patch("ms_fabric_mcp_server.server.FastMCP", return_value=mcp) as fastmcp,
+            patch(
+                "ms_fabric_mcp_server.server.register_fabric_tools"
+            ) as register_tools,
+        ):
             result = server.create_fabric_server(name="Custom", log_level="DEBUG")
 
         getenv_mock.assert_not_called()

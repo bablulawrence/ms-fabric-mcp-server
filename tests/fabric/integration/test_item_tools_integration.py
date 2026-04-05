@@ -244,7 +244,9 @@ async def test_move_item_to_folder_tool(
                     return listed
             return None
 
-        found = await poll_until(_find_moved_item, timeout_seconds=120, interval_seconds=10)
+        found = await poll_until(
+            _find_moved_item, timeout_seconds=120, interval_seconds=10
+        )
         assert found is not None
 
         move_root_result = await call_tool(

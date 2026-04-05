@@ -5,7 +5,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from ms_fabric_mcp_server.models.results import CreateNotebookResult, UpdateNotebookResult
+from ms_fabric_mcp_server.models.results import (CreateNotebookResult,
+                                                 UpdateNotebookResult)
 from ms_fabric_mcp_server.tools.notebook_tools import register_notebook_tools
 from tests.fabric.tools.utils import capture_tools
 
@@ -123,8 +124,11 @@ class TestNotebookTools:
         tools, mcp = capture_tools()
         notebook_service = Mock()
         notebook_service.update_notebook_definition.return_value = UpdateNotebookResult(
-            status="success", message="updated", notebook_id="nb-1",
-            notebook_name="NB", workspace_id="ws-1"
+            status="success",
+            message="updated",
+            notebook_id="nb-1",
+            notebook_name="NB",
+            workspace_id="ws-1",
         )
         register_notebook_tools(mcp, notebook_service)
 

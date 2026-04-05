@@ -2,10 +2,11 @@
 # ABOUTME: Provides refresh_semantic_model and execute_dax_query tools.
 """Power BI REST MCP tools."""
 
-from typing import Optional, TYPE_CHECKING
 import logging
+from typing import TYPE_CHECKING, Optional
 
 from ms_fabric_mcp_server.services.powerbi import FabricPowerBIService
+
 from .base import handle_tool_errors, log_tool_invocation
 
 if TYPE_CHECKING:

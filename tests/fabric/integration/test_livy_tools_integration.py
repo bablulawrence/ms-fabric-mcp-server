@@ -106,11 +106,20 @@ async def test_livy_cancel_statement(call_tool, lakehouse_id, workspace_id, poll
             if status.get("status") == "error":
                 return status
             state = status.get("state")
-            if state in ("waiting", "running", "available", "error", "cancelled", "cancelling"):
+            if state in (
+                "waiting",
+                "running",
+                "available",
+                "error",
+                "cancelled",
+                "cancelling",
+            ):
                 return status
             return None
 
-        status = await poll_until(_get_statement_state, timeout_seconds=120, interval_seconds=5)
+        status = await poll_until(
+            _get_statement_state, timeout_seconds=120, interval_seconds=5
+        )
         assert status is not None
         if status.get("state") == "available":
             pytest.skip("Statement completed before cancellation")

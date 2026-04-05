@@ -171,3 +171,127 @@ class TestPipelineTools:
             )["status"]
             == "success"
         )
+
+    def test_get_pipeline_definition_save_to_path(self):
+        tools, mcp = capture_tools()
+        pipeline_service = Mock()
+        workspace_service = Mock()
+        item_service = Mock()
+        workspace_service.resolve_workspace_id.return_value = "ws-1"
+        workspace_service.get_workspace_by_id.return_value = SimpleNamespace(
+            display_name="Workspace"
+        )
+        item_service.get_item_by_name.return_value = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        pipeline_service.get_pipeline_definition.return_value = {
+            "file_path": "/tmp/pipeline.json",
+            "size_bytes": 1234,
+        }
+        register_pipeline_tools(mcp, pipeline_service, workspace_service, item_service)
+        result = tools["get_pipeline_definition"](
+            workspace_name="Workspace",
+            pipeline_name="Pipe",
+            save_to_path="/tmp/pipeline.json",
+        )
+        assert result["status"] == "success"
+        assert result["file_path"] == "/tmp/pipeline.json"
+        assert result["size_bytes"] == 1234
+        assert "pipeline_content_json" not in result
+
+    def test_create_pipeline_from_file(self):
+        tools, mcp = capture_tools()
+        pipeline_service = Mock()
+        workspace_service = Mock()
+        item_service = Mock()
+        workspace_service.resolve_workspace_id.return_value = "ws-1"
+        workspace_service.get_workspace_by_id.return_value = SimpleNamespace(
+            display_name="Workspace"
+        )
+        pipeline_service._load_pipeline_from_file.return_value = {
+            "properties": {"activities": []}
+        }
+        pipeline_service.create_pipeline_with_definition.return_value = "pipe-new"
+        register_pipeline_tools(mcp, pipeline_service, workspace_service, item_service)
+        result = tools["create_pipeline"](
+            workspace_name="Workspace",
+            pipeline_name="NewPipe",
+            pipeline_file_path="/tmp/pipeline.json",
+        )
+        assert result["status"] == "success"
+        assert result["pipeline_id"] == "pipe-new"
+        pipeline_service._load_pipeline_from_file.assert_called_once_with(
+            "/tmp/pipeline.json"
+        )
+
+    def test_create_pipeline_mutual_exclusion(self):
+        tools, mcp = capture_tools()
+        pipeline_service = Mock()
+        workspace_service = Mock()
+        item_service = Mock()
+        register_pipeline_tools(mcp, pipeline_service, workspace_service, item_service)
+        result = tools["create_pipeline"](
+            workspace_name="Workspace",
+            pipeline_name="Pipe",
+            pipeline_content_json={"properties": {}},
+            pipeline_file_path="/tmp/pipeline.json",
+        )
+        assert result["status"] == "error"
+
+    def test_update_pipeline_definition_from_file(self):
+        tools, mcp = capture_tools()
+        pipeline_service = Mock()
+        workspace_service = Mock()
+        item_service = Mock()
+        workspace_service.resolve_workspace_id.return_value = "ws-1"
+        workspace_service.get_workspace_by_id.return_value = SimpleNamespace(
+            display_name="Workspace"
+        )
+        item_service.get_item_by_name.return_value = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        pipeline_service._load_pipeline_from_file.return_value = {
+            "properties": {"activities": []}
+        }
+        pipeline_service.update_pipeline_definition.return_value = None
+        register_pipeline_tools(mcp, pipeline_service, workspace_service, item_service)
+        result = tools["update_pipeline_definition"](
+            workspace_name="Workspace",
+            pipeline_name="Pipe",
+            pipeline_file_path="/tmp/pipeline.json",
+        )
+        assert result["status"] == "success"
+        pipeline_service._load_pipeline_from_file.assert_called_once_with(
+            "/tmp/pipeline.json"
+        )
+
+    def test_update_pipeline_definition_mutual_exclusion(self):
+        tools, mcp = capture_tools()
+        pipeline_service = Mock()
+        workspace_service = Mock()
+        item_service = Mock()
+        register_pipeline_tools(mcp, pipeline_service, workspace_service, item_service)
+        result = tools["update_pipeline_definition"](
+            workspace_name="Workspace",
+            pipeline_name="Pipe",
+            pipeline_content_json={"properties": {}},
+            pipeline_file_path="/tmp/pipeline.json",
+        )
+        assert result["status"] == "error"
+
+    def test_update_pipeline_definition_neither_provided(self):
+        tools, mcp = capture_tools()
+        pipeline_service = Mock()
+        workspace_service = Mock()
+        item_service = Mock()
+        register_pipeline_tools(mcp, pipeline_service, workspace_service, item_service)
+        result = tools["update_pipeline_definition"](
+            workspace_name="Workspace", pipeline_name="Pipe"
+        )
+        assert result["status"] == "error"

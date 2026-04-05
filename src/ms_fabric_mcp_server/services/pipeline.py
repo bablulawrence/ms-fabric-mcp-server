@@ -5,6 +5,7 @@
 import base64
 import json
 import logging
+from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
@@ -72,6 +73,40 @@ class FabricPipelineService:
         self.workspace_service = workspace_service
         self.item_service = item_service
         logger.debug("FabricPipelineService initialized")
+
+    @staticmethod
+    def _load_pipeline_from_file(file_path: str) -> Dict[str, Any]:
+        """Load and validate pipeline definition from a local JSON file."""
+        local_path = Path(file_path)
+        if not local_path.is_file():
+            raise FabricValidationError(
+                "pipeline_file_path",
+                file_path,
+                "File does not exist or is not a file.",
+            )
+        try:
+            with open(local_path, "r", encoding="utf-8") as f:
+                content = json.load(f)
+        except json.JSONDecodeError as exc:
+            raise FabricValidationError(
+                "pipeline_file_path",
+                file_path,
+                f"File is not valid JSON: {exc}",
+            )
+        except OSError as exc:
+            raise FabricValidationError(
+                "pipeline_file_path",
+                file_path,
+                f"Cannot read file: {exc}",
+            )
+        if not isinstance(content, dict) or not content:
+            raise FabricValidationError(
+                "pipeline_file_path",
+                file_path,
+                "File must contain a non-empty JSON object.",
+            )
+        logger.debug(f"Loaded pipeline definition from file: {file_path}")
+        return content
 
     def create_pipeline_with_copy_activity(
         self,
@@ -822,12 +857,22 @@ class FabricPipelineService:
         workspace_id: str,
         pipeline_id: str,
         format: Optional[str] = None,
+        save_to_path: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Get a DataPipeline definition using the DataPipeline-specific API."""
         logger.info(
             f"Fetching pipeline definition for pipeline '{pipeline_id}' in workspace {workspace_id}"
         )
         self._validate_pipeline_definition_inputs(workspace_id, pipeline_id)
+
+        if save_to_path is not None:
+            parent = Path(save_to_path).parent
+            if not parent.is_dir():
+                raise FabricValidationError(
+                    "save_to_path",
+                    save_to_path,
+                    f"Parent directory does not exist: {parent}",
+                )
 
         try:
             params: Dict[str, str] = {}
@@ -874,10 +919,31 @@ class FabricPipelineService:
                     except Exception:
                         platform = decoded_platform
 
-            return {
+            result = {
                 "pipeline_content_json": pipeline_content_json,
                 "platform": platform,
             }
+
+            if save_to_path is not None:
+                try:
+                    with open(save_to_path, "w", encoding="utf-8") as f:
+                        json.dump(result, f, indent=1)
+                except OSError as exc:
+                    raise FabricValidationError(
+                        "save_to_path",
+                        save_to_path,
+                        f"Cannot write file: {exc}",
+                    )
+                size_bytes = Path(save_to_path).stat().st_size
+                logger.info(
+                    f"Pipeline definition saved to {save_to_path} ({size_bytes} bytes)"
+                )
+                return {
+                    "file_path": save_to_path,
+                    "size_bytes": size_bytes,
+                }
+
+            return result
 
         except FabricValidationError:
             raise
@@ -1314,10 +1380,7 @@ class FabricPipelineService:
         except FabricItemNotFoundError:
             raise
         except FabricAPIError as exc:
-            if (
-                source_access_mode == "sql"
-                and "SqlAnalyticsEndpoint" in str(exc)
-            ):
+            if source_access_mode == "sql" and "SqlAnalyticsEndpoint" in str(exc):
                 raise FabricValidationError(
                     "source_connection_id",
                     source_connection_id,

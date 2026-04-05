@@ -6,13 +6,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ms_fabric_mcp_server.client.exceptions import (
-    FabricAPIError,
-    FabricLivyError,
-    FabricLivySessionError,
-    FabricLivyStatementError,
-    FabricLivyTimeoutError,
-)
+from ms_fabric_mcp_server.client.exceptions import (FabricAPIError,
+                                                    FabricLivyError,
+                                                    FabricLivySessionError,
+                                                    FabricLivyStatementError,
+                                                    FabricLivyTimeoutError)
 
 
 def _make_response(status_code=200, json_data=None, text_data: str | None = None):
@@ -42,7 +40,9 @@ def livy_service(mock_fabric_client):
 class TestFabricLivyService:
     """Test suite for FabricLivyService."""
 
-    def test_create_session_payload_includes_environment(self, livy_service, mock_fabric_client):
+    def test_create_session_payload_includes_environment(
+        self, livy_service, mock_fabric_client
+    ):
         """Create session payload includes environment details."""
         response = _make_response(200, {"id": 1, "state": "starting"})
         mock_fabric_client.make_api_request.return_value = response
@@ -64,7 +64,9 @@ class TestFabricLivyService:
         env_details = json.loads(payload["conf"]["spark.fabric.environmentDetails"])
         assert env_details["id"] == "env-1"
 
-    def test_create_session_includes_fallback_info(self, livy_service, mock_fabric_client):
+    def test_create_session_includes_fallback_info(
+        self, livy_service, mock_fabric_client
+    ):
         """Create session surfaces fallback warnings from tags."""
         response = _make_response(
             200,
@@ -88,9 +90,13 @@ class TestFabricLivyService:
         assert result["fallback_reasons"] == ["env"]
         assert result["fallback_messages"] == ["Using base environment"]
 
-    def test_create_session_with_wait_uses_wait_for_session(self, livy_service, mock_fabric_client):
+    def test_create_session_with_wait_uses_wait_for_session(
+        self, livy_service, mock_fabric_client
+    ):
         """with_wait True delegates to wait_for_session."""
-        mock_fabric_client.make_api_request.return_value = _make_response(200, {"id": 7})
+        mock_fabric_client.make_api_request.return_value = _make_response(
+            200, {"id": 7}
+        )
         livy_service.wait_for_session = Mock(return_value={"id": 7, "state": "idle"})
 
         result = livy_service.create_session(
@@ -202,8 +208,12 @@ class TestFabricLivyService:
 
     def test_run_statement_with_wait_true(self, livy_service, mock_fabric_client):
         """Run statement waits for completion when with_wait True."""
-        mock_fabric_client.make_api_request.return_value = _make_response(200, {"id": 4})
-        livy_service.wait_for_statement = Mock(return_value={"id": 4, "state": "available"})
+        mock_fabric_client.make_api_request.return_value = _make_response(
+            200, {"id": 4}
+        )
+        livy_service.wait_for_statement = Mock(
+            return_value={"id": 4, "state": "available"}
+        )
 
         result = livy_service.run_statement(
             workspace_id="ws-1",
@@ -268,14 +278,18 @@ class TestFabricLivyService:
         livy_service.get_session_status = Mock(return_value={"state": "idle"})
 
         with patch("time.sleep", return_value=None):
-            result = livy_service.wait_for_session("ws-1", "lh-1", "1", timeout_seconds=2)
+            result = livy_service.wait_for_session(
+                "ws-1", "lh-1", "1", timeout_seconds=2
+            )
 
         assert result["state"] == "idle"
 
     @pytest.mark.parametrize("state", ["error", "dead", "killed"])
     def test_wait_for_session_error_state_with_logs(self, livy_service, state):
         """Error states raise FabricLivySessionError with log details."""
-        livy_service.get_session_status = Mock(return_value={"state": state, "log": ["a", "b"]})
+        livy_service.get_session_status = Mock(
+            return_value={"state": state, "log": ["a", "b"]}
+        )
 
         with patch("time.sleep", return_value=None):
             with pytest.raises(FabricLivySessionError):
@@ -283,7 +297,9 @@ class TestFabricLivyService:
 
     def test_wait_for_session_error_state_no_logs(self, livy_service):
         """Error session raises FabricLivySessionError when logs empty."""
-        livy_service.get_session_status = Mock(return_value={"state": "error", "log": []})
+        livy_service.get_session_status = Mock(
+            return_value={"state": "error", "log": []}
+        )
 
         with patch("time.sleep", return_value=None):
             with pytest.raises(FabricLivySessionError):
@@ -302,7 +318,9 @@ class TestFabricLivyService:
         livy_service.get_statement_status = Mock(return_value={"state": "available"})
 
         with patch("time.sleep", return_value=None):
-            result = livy_service.wait_for_statement("ws-1", "lh-1", "1", "1", timeout_seconds=2)
+            result = livy_service.wait_for_statement(
+                "ws-1", "lh-1", "1", "1", timeout_seconds=2
+            )
 
         assert result["state"] == "available"
 
@@ -314,7 +332,9 @@ class TestFabricLivyService:
 
         with patch("time.sleep", return_value=None):
             with pytest.raises(FabricLivyStatementError):
-                livy_service.wait_for_statement("ws-1", "lh-1", "1", "1", timeout_seconds=2)
+                livy_service.wait_for_statement(
+                    "ws-1", "lh-1", "1", "1", timeout_seconds=2
+                )
 
     def test_wait_for_statement_cancelled_state(self, livy_service):
         """Cancelled statement raises FabricLivyStatementError."""
@@ -324,7 +344,9 @@ class TestFabricLivyService:
 
         with patch("time.sleep", return_value=None):
             with pytest.raises(FabricLivyStatementError):
-                livy_service.wait_for_statement("ws-1", "lh-1", "1", "1", timeout_seconds=2)
+                livy_service.wait_for_statement(
+                    "ws-1", "lh-1", "1", "1", timeout_seconds=2
+                )
 
     def test_wait_for_statement_timeout(self, livy_service):
         """Timeout raises FabricLivyTimeoutError."""
@@ -332,21 +354,29 @@ class TestFabricLivyService:
 
         with patch("time.time", side_effect=itertools.chain([0], itertools.repeat(10))):
             with pytest.raises(FabricLivyTimeoutError):
-                livy_service.wait_for_statement("ws-1", "lh-1", "1", "1", timeout_seconds=1)
+                livy_service.wait_for_statement(
+                    "ws-1", "lh-1", "1", "1", timeout_seconds=1
+                )
 
     def test_wait_for_session_retries_on_transient_404(self, livy_service):
         """Transient 404 errors are retried during session polling."""
         # Simulate 2x 404 errors, then success
         livy_service.get_session_status = Mock(
             side_effect=[
-                FabricLivySessionError("1", "Failed to get session: API error 404: ..."),
-                FabricLivySessionError("1", "Failed to get session: API error 404: ..."),
+                FabricLivySessionError(
+                    "1", "Failed to get session: API error 404: ..."
+                ),
+                FabricLivySessionError(
+                    "1", "Failed to get session: API error 404: ..."
+                ),
                 {"id": 1, "state": "idle"},
             ]
         )
 
         with patch("time.sleep", return_value=None):
-            result = livy_service.wait_for_session("ws-1", "lh-1", "1", timeout_seconds=10)
+            result = livy_service.wait_for_session(
+                "ws-1", "lh-1", "1", timeout_seconds=10
+            )
 
         assert result["state"] == "idle"
         assert livy_service.get_session_status.call_count == 3
@@ -355,7 +385,9 @@ class TestFabricLivyService:
         """Exceeding max 404 retries raises FabricLivySessionError."""
         # Simulate repeated 404 errors exceeding max retries (5)
         livy_service.get_session_status = Mock(
-            side_effect=FabricLivySessionError("1", "Failed to get session: API error 404: ...")
+            side_effect=FabricLivySessionError(
+                "1", "Failed to get session: API error 404: ..."
+            )
         )
 
         with patch("time.sleep", return_value=None):

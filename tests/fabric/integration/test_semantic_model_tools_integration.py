@@ -1,5 +1,7 @@
 """Integration tests for semantic model tools."""
 
+import json
+
 import pytest
 
 from tests.conftest import unique_name
@@ -44,7 +46,9 @@ async def test_semantic_model_tools_flow(
                     return result
             return None
 
-        found = await poll_until(_get_semantic_model, timeout_seconds=120, interval_seconds=10)
+        found = await poll_until(
+            _get_semantic_model, timeout_seconds=120, interval_seconds=10
+        )
         assert found is not None
 
         add_table_result = await call_tool(
@@ -126,7 +130,9 @@ async def test_get_semantic_model_details_and_definition(
                     return result
             return None
 
-        found = await poll_until(_get_semantic_model, timeout_seconds=120, interval_seconds=10)
+        found = await poll_until(
+            _get_semantic_model, timeout_seconds=120, interval_seconds=10
+        )
         assert found is not None
 
         details_result = await call_tool(
@@ -164,7 +170,11 @@ async def test_semantic_model_table_with_schema_refresh(
     semantic_model_table_2,
     semantic_model_columns_2,
 ):
-    if not semantic_model_table or not semantic_model_columns or not semantic_model_schema:
+    if (
+        not semantic_model_table
+        or not semantic_model_columns
+        or not semantic_model_schema
+    ):
         pytest.skip("Missing semantic model table/columns/schema inputs")
     if any(sep in semantic_model_table for sep in (".", "/", "\\")):
         pytest.skip("Semantic model table must be unqualified when using schema")
@@ -193,7 +203,9 @@ async def test_semantic_model_table_with_schema_refresh(
                     return result
             return None
 
-        found = await poll_until(_get_semantic_model, timeout_seconds=120, interval_seconds=10)
+        found = await poll_until(
+            _get_semantic_model, timeout_seconds=120, interval_seconds=10
+        )
         assert found is not None
 
         add_table_result = await call_tool(
@@ -304,7 +316,9 @@ async def test_delete_table_from_semantic_model(
                     return result
             return None
 
-        found = await poll_until(_get_semantic_model, timeout_seconds=120, interval_seconds=10)
+        found = await poll_until(
+            _get_semantic_model, timeout_seconds=120, interval_seconds=10
+        )
         assert found is not None
 
         add_table_result = await call_tool(
@@ -353,13 +367,17 @@ async def test_delete_relationship_from_semantic_model(
     semantic_model_table_2,
     semantic_model_columns_2,
 ):
-    if not all([
-        semantic_model_table,
-        semantic_model_columns,
-        semantic_model_table_2,
-        semantic_model_columns_2,
-    ]):
-        pytest.skip("Missing semantic model tables/columns inputs for relationship delete")
+    if not all(
+        [
+            semantic_model_table,
+            semantic_model_columns,
+            semantic_model_table_2,
+            semantic_model_columns_2,
+        ]
+    ):
+        pytest.skip(
+            "Missing semantic model tables/columns inputs for relationship delete"
+        )
 
     semantic_model_name = unique_name("e2e_semantic_model_delete_relationship")
     try:
@@ -383,7 +401,9 @@ async def test_delete_relationship_from_semantic_model(
                     return result
             return None
 
-        found = await poll_until(_get_semantic_model, timeout_seconds=120, interval_seconds=10)
+        found = await poll_until(
+            _get_semantic_model, timeout_seconds=120, interval_seconds=10
+        )
         assert found is not None
 
         add_table_result = await call_tool(
@@ -449,5 +469,121 @@ async def test_delete_relationship_from_semantic_model(
             and rel.get("toColumn") == to_column
             for rel in relationships
         )
+    finally:
+        await delete_item_if_exists(semantic_model_name, "SemanticModel")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_get_semantic_model_definition_save_to_path(
+    call_tool, delete_item_if_exists, poll_until, workspace_name, tmp_path
+):
+    """Test saving semantic model definition to a local file."""
+    semantic_model_name = unique_name("e2e_semantic_model_save")
+    try:
+        create_result = await call_tool(
+            "create_semantic_model",
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+        )
+        assert create_result["status"] == "success"
+
+        async def _get_semantic_model():
+            result = await call_tool(
+                "list_items",
+                workspace_name=workspace_name,
+                item_type="SemanticModel",
+            )
+            if result.get("status") != "success":
+                return result
+            for item in result.get("items", []):
+                if item.get("display_name") == semantic_model_name:
+                    return result
+            return None
+
+        found = await poll_until(
+            _get_semantic_model, timeout_seconds=120, interval_seconds=10
+        )
+        assert found is not None
+
+        out_file = str(tmp_path / "semantic_model_def.json")
+        definition_result = await call_tool(
+            "get_semantic_model_definition",
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+            format="TMSL",
+            save_to_path=out_file,
+        )
+        assert definition_result["status"] == "success"
+        assert definition_result["file_path"] == out_file
+        assert definition_result["size_bytes"] > 0
+        assert "definition" not in definition_result
+
+        with open(out_file) as f:
+            saved = json.load(f)
+        assert "definition" in saved
+    finally:
+        await delete_item_if_exists(semantic_model_name, "SemanticModel")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_semantic_model_definition_file_roundtrip(
+    call_tool, delete_item_if_exists, poll_until, workspace_name, tmp_path
+):
+    """Test full roundtrip: get definition to file, update from file."""
+    semantic_model_name = unique_name("e2e_semantic_model_file_rt")
+    try:
+        create_result = await call_tool(
+            "create_semantic_model",
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+        )
+        assert create_result["status"] == "success"
+
+        async def _get_semantic_model():
+            result = await call_tool(
+                "list_items",
+                workspace_name=workspace_name,
+                item_type="SemanticModel",
+            )
+            if result.get("status") != "success":
+                return result
+            for item in result.get("items", []):
+                if item.get("display_name") == semantic_model_name:
+                    return result
+            return None
+
+        found = await poll_until(
+            _get_semantic_model, timeout_seconds=120, interval_seconds=10
+        )
+        assert found is not None
+
+        out_file = str(tmp_path / "semantic_model_rt.json")
+        get_result = await call_tool(
+            "get_semantic_model_definition",
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+            format="TMSL",
+            save_to_path=out_file,
+        )
+        assert get_result["status"] == "success"
+
+        update_result = await call_tool(
+            "update_semantic_model_definition",
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+            definition_file_path=out_file,
+        )
+        assert update_result["status"] == "success"
+
+        verify_result = await call_tool(
+            "get_semantic_model_definition",
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+            format="TMSL",
+        )
+        assert verify_result["status"] == "success"
+        assert verify_result.get("definition") is not None
     finally:
         await delete_item_if_exists(semantic_model_name, "SemanticModel")

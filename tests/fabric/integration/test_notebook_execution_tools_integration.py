@@ -26,12 +26,16 @@ async def test_notebook_execution_tools(
             limit=5,
         )
         if history.get("status") == "error" and _is_scp_claim_error(history):
-            pytest.skip("Notebook execution history requires delegated token (scp claim)")
+            pytest.skip(
+                "Notebook execution history requires delegated token (scp claim)"
+            )
         if history.get("status") == "success" and history.get("sessions"):
             return history
         return None
 
-    history = await poll_until(_get_executions, timeout_seconds=300, interval_seconds=10)
+    history = await poll_until(
+        _get_executions, timeout_seconds=300, interval_seconds=10
+    )
     assert history is not None
     assert history["status"] == "success"
 
@@ -43,7 +47,9 @@ async def test_notebook_execution_tools(
             job_instance_id=job_instance_id,
         )
         if details.get("status") == "error" and _is_scp_claim_error(details):
-            pytest.skip("Notebook execution details require delegated token (scp claim)")
+            pytest.skip(
+                "Notebook execution details require delegated token (scp claim)"
+            )
         if details.get("status") == "success":
             return details
         return None

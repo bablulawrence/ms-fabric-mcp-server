@@ -153,7 +153,9 @@ class TestFabricLakehouseFileService:
         assert "/Files/raw/sample.csv" in create_url
         assert "/Files/Files/raw/sample.csv" not in create_url
 
-    def test_upload_file_strips_duplicate_files_prefix(self, mock_fabric_client, tmp_path: Path):
+    def test_upload_file_strips_duplicate_files_prefix(
+        self, mock_fabric_client, tmp_path: Path
+    ):
         service = FabricLakehouseFileService(mock_fabric_client)
         mock_fabric_client.get_auth_token = Mock(return_value="token")
         session = Mock()

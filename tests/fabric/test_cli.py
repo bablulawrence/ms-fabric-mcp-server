@@ -24,7 +24,9 @@ class TestCLI:
 
         server = Mock()
 
-        with patch("ms_fabric_mcp_server.cli.create_fabric_server", return_value=server) as create_server:
+        with patch(
+            "ms_fabric_mcp_server.cli.create_fabric_server", return_value=server
+        ) as create_server:
             cli.main(["--log-level", "WARNING"])
 
         create_server.assert_called_once_with(log_level="WARNING")
@@ -37,8 +39,10 @@ class TestCLI:
         server = Mock()
         server.run.side_effect = KeyboardInterrupt()
 
-        with patch("ms_fabric_mcp_server.cli.create_fabric_server", return_value=server), \
-            patch("ms_fabric_mcp_server.cli.sys.exit") as exit_mock:
+        with (
+            patch("ms_fabric_mcp_server.cli.create_fabric_server", return_value=server),
+            patch("ms_fabric_mcp_server.cli.sys.exit") as exit_mock,
+        ):
             cli.main([])
 
         exit_mock.assert_called_once_with(0)
@@ -50,8 +54,10 @@ class TestCLI:
         server = Mock()
         server.run.side_effect = RuntimeError("boom")
 
-        with patch("ms_fabric_mcp_server.cli.create_fabric_server", return_value=server), \
-            patch("ms_fabric_mcp_server.cli.sys.exit") as exit_mock:
+        with (
+            patch("ms_fabric_mcp_server.cli.create_fabric_server", return_value=server),
+            patch("ms_fabric_mcp_server.cli.sys.exit") as exit_mock,
+        ):
             cli.main([])
 
         exit_mock.assert_called_once_with(1)

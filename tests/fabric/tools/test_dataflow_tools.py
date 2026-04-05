@@ -200,3 +200,62 @@ class TestDataflowTools:
             assert tool_name in tools, f"Tool '{tool_name}' not registered"
 
         assert len(tools) == 3
+
+    def test_get_dataflow_definition_save_to_path(self, mock_services):
+        dataflow_service, workspace_service, item_service = mock_services
+        tools, mcp = capture_tools()
+        dataflow_service.get_dataflow_definition.return_value = (
+            {"file_path": "/tmp/dataflow.json", "size_bytes": 2345},
+            "",
+        )
+        register_dataflow_tools(mcp, dataflow_service, workspace_service, item_service)
+        result = tools["get_dataflow_definition"](
+            workspace_name="Analytics",
+            dataflow_name="TestDataflow",
+            save_to_path="/tmp/dataflow.json",
+        )
+        assert result["status"] == "success"
+        assert result["file_path"] == "/tmp/dataflow.json"
+        assert result["size_bytes"] == 2345
+        assert "query_metadata" not in result
+        assert "mashup_content" not in result
+
+    def test_create_dataflow_from_file(self, mock_services):
+        dataflow_service, workspace_service, item_service = mock_services
+        tools, mcp = capture_tools()
+        dataflow_service._load_mashup_from_file.return_value = (
+            "section Section1;\nshared Query = 1;"
+        )
+        dataflow_service.create_dataflow.return_value = "df-file-123"
+        register_dataflow_tools(mcp, dataflow_service, workspace_service, item_service)
+        result = tools["create_dataflow"](
+            workspace_name="Analytics",
+            dataflow_name="FileDataflow",
+            dataflow_file_path="/tmp/mashup.pq",
+        )
+        assert result["status"] == "success"
+        assert result["dataflow_id"] == "df-file-123"
+        dataflow_service._load_mashup_from_file.assert_called_once_with(
+            "/tmp/mashup.pq"
+        )
+
+    def test_create_dataflow_mutual_exclusion(self, mock_services):
+        dataflow_service, workspace_service, item_service = mock_services
+        tools, mcp = capture_tools()
+        register_dataflow_tools(mcp, dataflow_service, workspace_service, item_service)
+        result = tools["create_dataflow"](
+            workspace_name="Analytics",
+            dataflow_name="Conflict",
+            mashup_content="section Section1;",
+            dataflow_file_path="/tmp/mashup.pq",
+        )
+        assert result["status"] == "error"
+
+    def test_create_dataflow_neither_provided(self, mock_services):
+        dataflow_service, workspace_service, item_service = mock_services
+        tools, mcp = capture_tools()
+        register_dataflow_tools(mcp, dataflow_service, workspace_service, item_service)
+        result = tools["create_dataflow"](
+            workspace_name="Analytics", dataflow_name="NoContent"
+        )
+        assert result["status"] == "error"

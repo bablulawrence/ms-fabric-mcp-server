@@ -27,6 +27,6 @@ class TestPowerBITools:
         dax = tools["execute_dax_query"](
             workspace_name="Workspace",
             semantic_model_name="Model",
-            query="EVALUATE ROW(\"x\", 1)",
+            query='EVALUATE ROW("x", 1)',
         )
         assert dax["status"] == "success"

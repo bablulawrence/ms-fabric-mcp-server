@@ -6,11 +6,9 @@ import logging
 import time
 from typing import Any, Dict, Optional
 
-from ms_fabric_mcp_server.client.exceptions import (
-    FabricAPIError,
-    FabricError,
-    FabricValidationError,
-)
+from ms_fabric_mcp_server.client.exceptions import (FabricAPIError,
+                                                    FabricError,
+                                                    FabricValidationError)
 from ms_fabric_mcp_server.client.http_client import FabricClient
 from ms_fabric_mcp_server.services.item import FabricItemService
 from ms_fabric_mcp_server.services.workspace import FabricWorkspaceService
@@ -197,4 +195,3 @@ class FabricPowerBIService:
         return self.item_service.get_item_by_name(
             workspace_id, semantic_model_name, "SemanticModel"
         )
-

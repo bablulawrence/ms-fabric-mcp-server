@@ -7,19 +7,20 @@ from typing import Optional
 
 class FabricError(Exception):
     """Base exception for all Fabric operations."""
+
     pass
 
 
 class FabricAuthError(FabricError):
     """Authentication-related errors."""
-    
+
     def __init__(self, message: str = "Authentication failed"):
         super().__init__(message)
 
 
 class FabricItemNotFoundError(FabricError):
     """Item not found errors."""
-    
+
     def __init__(self, item_type: str, item_name: str, workspace_name: str):
         message = f"{item_type} '{item_name}' not found in workspace '{workspace_name}'"
         super().__init__(message)
@@ -30,7 +31,7 @@ class FabricItemNotFoundError(FabricError):
 
 class FabricWorkspaceNotFoundError(FabricError):
     """Workspace not found errors."""
-    
+
     def __init__(self, workspace_name: str):
         message = f"Workspace '{workspace_name}' not found"
         super().__init__(message)
@@ -39,7 +40,7 @@ class FabricWorkspaceNotFoundError(FabricError):
 
 class FabricJobTimeoutError(FabricError):
     """Job execution timeout errors."""
-    
+
     def __init__(self, timeout_minutes: int):
         message = f"Job timed out after {timeout_minutes} minutes"
         super().__init__(message)
@@ -48,8 +49,10 @@ class FabricJobTimeoutError(FabricError):
 
 class FabricAPIError(FabricError):
     """API request errors."""
-    
-    def __init__(self, status_code: int, message: str, response_body: Optional[str] = None):
+
+    def __init__(
+        self, status_code: int, message: str, response_body: Optional[str] = None
+    ):
         full_message = f"API error {status_code}: {message}"
         if response_body:
             full_message += f" - Response: {response_body}"
@@ -60,7 +63,7 @@ class FabricAPIError(FabricError):
 
 class FabricValidationError(FabricError):
     """Validation errors for input parameters."""
-    
+
     def __init__(self, field: str, value: str, message: str):
         full_message = f"Validation error for {field}='{value}': {message}"
         super().__init__(full_message)
@@ -70,21 +73,21 @@ class FabricValidationError(FabricError):
 
 class FabricConfigError(FabricError):
     """Configuration-related errors."""
-    
+
     def __init__(self, message: str = "Configuration error"):
         super().__init__(message)
 
 
 class FabricConnectionError(FabricError):
     """Network connection errors."""
-    
+
     def __init__(self, message: str = "Connection failed"):
         super().__init__(message)
 
 
 class FabricRateLimitError(FabricError):
     """Rate limiting errors."""
-    
+
     def __init__(self, retry_after: Optional[int] = None):
         message = "Rate limit exceeded"
         if retry_after:
@@ -95,22 +98,25 @@ class FabricRateLimitError(FabricError):
 
 class FabricLivyError(FabricError):
     """Base exception for Livy-related errors."""
+
     pass
 
 
 class FabricLivySessionError(FabricLivyError):
     """Livy session-related errors."""
+
     pass
 
 
 class FabricLivyStatementError(FabricLivyError):
     """Livy statement execution errors."""
+
     pass
 
 
 class FabricLivyTimeoutError(FabricLivyError):
     """Livy operation timeout errors."""
-    
+
     def __init__(self, operation: str, timeout_seconds: int):
         message = f"Livy {operation} timed out after {timeout_seconds} seconds"
         super().__init__(message)
