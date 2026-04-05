@@ -5,7 +5,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ms_fabric_mcp_server.client.exceptions import FabricConnectionError, FabricError
+from ms_fabric_mcp_server.client.exceptions import (FabricConnectionError,
+                                                    FabricError)
 from ms_fabric_mcp_server.models.item import FabricItem
 from ms_fabric_mcp_server.models.results import QueryResult
 
@@ -41,7 +42,9 @@ def sql_service(mock_fabric_client, sql_module, monkeypatch):
 class TestFabricSQLService:
     """Test suite for FabricSQLService."""
 
-    def test_init_missing_pyodbc_raises(self, sql_module, mock_fabric_client, monkeypatch):
+    def test_init_missing_pyodbc_raises(
+        self, sql_module, mock_fabric_client, monkeypatch
+    ):
         """Missing pyodbc raises ImportError."""
         monkeypatch.setattr(sql_module, "PYODBC_AVAILABLE", False)
         with pytest.raises(ImportError):
@@ -91,7 +94,9 @@ class TestFabricSQLService:
             "GET", "workspaces/ws-1/lakehouses/lh-1"
         )
 
-    def test_get_sql_endpoint_missing_connection_string(self, sql_service, mock_fabric_client):
+    def test_get_sql_endpoint_missing_connection_string(
+        self, sql_service, mock_fabric_client
+    ):
         """Missing connection string raises FabricError."""
         service, workspace_service, item_service, _, _ = sql_service
         workspace_service.resolve_workspace_id.return_value = "ws-1"
@@ -126,7 +131,9 @@ class TestFabricSQLService:
 
         token_bytes = service._get_token_bytes()
 
-        azure_cred_instance.get_token.assert_called_once_with("https://database.windows.net/.default")
+        azure_cred_instance.get_token.assert_called_once_with(
+            "https://database.windows.net/.default"
+        )
         length = struct.unpack("<i", token_bytes[:4])[0]
         assert length == len(token_bytes[4:])
 
@@ -213,8 +220,9 @@ class TestFabricSQLService:
         service._sql_endpoint = None
         service._database = None
 
-        with patch("ms_fabric_mcp_server.services.sql.time.sleep") as sleep_mock, patch(
-            "ms_fabric_mcp_server.services.sql.random.uniform", return_value=5.0
+        with (
+            patch("ms_fabric_mcp_server.services.sql.time.sleep") as sleep_mock,
+            patch("ms_fabric_mcp_server.services.sql.random.uniform", return_value=5.0),
         ):
             result = service.execute_query("SELECT 1")
 

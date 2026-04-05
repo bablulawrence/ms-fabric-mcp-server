@@ -63,7 +63,9 @@ async def test_update_notebook_definition(
     lakehouse_name,
 ):
     notebook_name = unique_name("e2e_notebook_update")
-    notebook_path = Path(__file__).resolve().parents[2] / "fixtures" / "minimal_notebook.ipynb"
+    notebook_path = (
+        Path(__file__).resolve().parents[2] / "fixtures" / "minimal_notebook.ipynb"
+    )
     notebook_content = json.loads(notebook_path.read_text())
 
     async def _get_definition():
@@ -202,7 +204,9 @@ async def test_create_notebook_with_file_path(
 ):
     """create_notebook with notebook_file_path reads content from disk."""
     notebook_name = unique_name("e2e_nb_from_file")
-    notebook_path = Path(__file__).resolve().parents[2] / "fixtures" / "minimal_notebook.ipynb"
+    notebook_path = (
+        Path(__file__).resolve().parents[2] / "fixtures" / "minimal_notebook.ipynb"
+    )
 
     try:
         result = await call_tool(
@@ -227,7 +231,9 @@ async def test_notebook_file_path_round_trip(
 ):
     """Full round-trip: create → download to file → edit → re-upload from file."""
     notebook_name = unique_name("e2e_nb_roundtrip")
-    notebook_path = Path(__file__).resolve().parents[2] / "fixtures" / "minimal_notebook.ipynb"
+    notebook_path = (
+        Path(__file__).resolve().parents[2] / "fixtures" / "minimal_notebook.ipynb"
+    )
     notebook_content = json.loads(notebook_path.read_text())
 
     async def _get_definition():
@@ -299,10 +305,7 @@ async def test_notebook_file_path_round_trip(
             if result.get("status") != "success":
                 return None
             cells = result.get("definition", {}).get("cells", [])
-            if any(
-                "roundtrip marker" in "".join(c.get("source", []))
-                for c in cells
-            ):
+            if any("roundtrip marker" in "".join(c.get("source", [])) for c in cells):
                 return result
             return None
 

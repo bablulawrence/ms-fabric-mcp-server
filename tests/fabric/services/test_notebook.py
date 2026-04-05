@@ -6,12 +6,10 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ms_fabric_mcp_server.client.exceptions import (
-    FabricAPIError,
-    FabricError,
-    FabricItemNotFoundError,
-    FabricValidationError,
-)
+from ms_fabric_mcp_server.client.exceptions import (FabricAPIError,
+                                                    FabricError,
+                                                    FabricItemNotFoundError,
+                                                    FabricValidationError)
 from ms_fabric_mcp_server.models.item import FabricItem
 from ms_fabric_mcp_server.models.job import FabricJob
 from ms_fabric_mcp_server.models.results import JobStatusResult
@@ -112,9 +110,13 @@ class TestFabricNotebookService:
 
         assert definition["folderId"] == "folder-1"
 
-    def test_create_notebook_success(self, notebook_service, mock_item_service, mock_workspace_service):
+    def test_create_notebook_success(
+        self, notebook_service, mock_item_service, mock_workspace_service
+    ):
         """Create notebook returns success result."""
-        notebook_service._create_notebook_definition = Mock(return_value={"definition": {}})
+        notebook_service._create_notebook_definition = Mock(
+            return_value={"definition": {}}
+        )
         mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
         mock_item_service.resolve_folder_id_from_path.return_value = "folder-1"
         mock_item_service.create_item.return_value = FabricItem(
@@ -173,7 +175,9 @@ class TestFabricNotebookService:
 
     def test_create_notebook_unexpected_error(self, notebook_service):
         """Unexpected exceptions return error with prefix."""
-        notebook_service._create_notebook_definition = Mock(side_effect=RuntimeError("boom"))
+        notebook_service._create_notebook_definition = Mock(
+            side_effect=RuntimeError("boom")
+        )
 
         result = notebook_service.create_notebook(
             workspace_name="Workspace",
@@ -184,7 +188,13 @@ class TestFabricNotebookService:
         assert result.status == "error"
         assert "Unexpected error" in result.message
 
-    def test_get_notebook_definition_success(self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client):
+    def test_get_notebook_definition_success(
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
+    ):
         """Get notebook content decodes ipynb payload."""
         mock_workspace_service.resolve_workspace_id.return_value = "ws-123"
         mock_item_service.get_item_by_name.return_value = FabricItem(
@@ -215,7 +225,13 @@ class TestFabricNotebookService:
         assert result == notebook_content
         mock_fabric_client.make_api_request.assert_called_once()
 
-    def test_get_notebook_definition_lro_success(self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client):
+    def test_get_notebook_definition_lro_success(
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
+    ):
         """Handle 202 LRO with success status."""
         mock_workspace_service.resolve_workspace_id.return_value = "ws-123"
         mock_item_service.get_item_by_name.return_value = FabricItem(
@@ -238,7 +254,9 @@ class TestFabricNotebookService:
             }
         }
 
-        initial = _make_response(202, headers={"Location": "https://poll", "Retry-After": "0"})
+        initial = _make_response(
+            202, headers={"Location": "https://poll", "Retry-After": "0"}
+        )
         poll = _make_response(200, {"status": "Succeeded"})
         result_resp = _make_response(200, definition_response)
 
@@ -249,7 +267,13 @@ class TestFabricNotebookService:
 
         assert result == notebook_content
 
-    def test_get_notebook_definition_lro_failed(self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client):
+    def test_get_notebook_definition_lro_failed(
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
+    ):
         """LRO failed status raises FabricError."""
         mock_workspace_service.resolve_workspace_id.return_value = "ws-123"
         mock_item_service.get_item_by_name.return_value = FabricItem(
@@ -259,7 +283,9 @@ class TestFabricNotebookService:
             workspace_id="ws-123",
         )
 
-        initial = _make_response(202, headers={"Location": "https://poll", "Retry-After": "0"})
+        initial = _make_response(
+            202, headers={"Location": "https://poll", "Retry-After": "0"}
+        )
         poll = _make_response(200, {"status": "Failed", "error": {"message": "boom"}})
         mock_fabric_client.make_api_request.side_effect = [initial, poll]
 
@@ -268,7 +294,11 @@ class TestFabricNotebookService:
                 notebook_service.get_notebook_definition("Workspace", "Notebook")
 
     def test_get_notebook_definition_lro_retry_after_non_integer(
-        self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
     ):
         """LRO handles non-integer Retry-After headers."""
         mock_workspace_service.resolve_workspace_id.return_value = "ws-123"
@@ -294,7 +324,10 @@ class TestFabricNotebookService:
 
         initial = _make_response(
             202,
-            headers={"Location": "https://poll", "Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT"},
+            headers={
+                "Location": "https://poll",
+                "Retry-After": "Wed, 21 Oct 2015 07:28:00 GMT",
+            },
         )
         poll = _make_response(200, {"status": "Succeeded"})
         result_resp = _make_response(200, definition_response)
@@ -306,7 +339,13 @@ class TestFabricNotebookService:
         assert result == notebook_content
         sleep_mock.assert_called_once_with(5)
 
-    def test_get_notebook_definition_lro_in_progress(self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client):
+    def test_get_notebook_definition_lro_in_progress(
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
+    ):
         """LRO continues polling on non-terminal status."""
         mock_workspace_service.resolve_workspace_id.return_value = "ws-123"
         mock_item_service.get_item_by_name.return_value = FabricItem(
@@ -329,8 +368,12 @@ class TestFabricNotebookService:
             }
         }
 
-        initial = _make_response(202, headers={"Location": "https://poll", "Retry-After": "0"})
-        poll_running = _make_response(200, {"status": "Running"}, headers={"Retry-After": "0"})
+        initial = _make_response(
+            202, headers={"Location": "https://poll", "Retry-After": "0"}
+        )
+        poll_running = _make_response(
+            200, {"status": "Running"}, headers={"Retry-After": "0"}
+        )
         poll_accepted = _make_response(202, headers={"Retry-After": "0"})
         poll_succeeded = _make_response(200, {"status": "Succeeded"})
         result_resp = _make_response(200, definition_response)
@@ -348,7 +391,13 @@ class TestFabricNotebookService:
 
         assert result == notebook_content
 
-    def test_get_notebook_definition_lro_timeout(self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client):
+    def test_get_notebook_definition_lro_timeout(
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
+    ):
         """LRO timeout raises FabricError after max retries."""
         mock_workspace_service.resolve_workspace_id.return_value = "ws-123"
         mock_item_service.get_item_by_name.return_value = FabricItem(
@@ -358,7 +407,9 @@ class TestFabricNotebookService:
             workspace_id="ws-123",
         )
 
-        initial = _make_response(202, headers={"Location": "https://poll", "Retry-After": "0"})
+        initial = _make_response(
+            202, headers={"Location": "https://poll", "Retry-After": "0"}
+        )
         poll = _make_response(202, headers={"Retry-After": "0"})
         mock_fabric_client.make_api_request.side_effect = [initial] + [poll] * 30
 
@@ -366,7 +417,13 @@ class TestFabricNotebookService:
             with pytest.raises(FabricError):
                 notebook_service.get_notebook_definition("Workspace", "Notebook")
 
-    def test_get_notebook_definition_lro_missing_location(self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client):
+    def test_get_notebook_definition_lro_missing_location(
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
+    ):
         """LRO without Location header raises FabricError."""
         mock_workspace_service.resolve_workspace_id.return_value = "ws-123"
         mock_item_service.get_item_by_name.return_value = FabricItem(
@@ -382,7 +439,13 @@ class TestFabricNotebookService:
         with pytest.raises(FabricError):
             notebook_service.get_notebook_definition("Workspace", "Notebook")
 
-    def test_get_notebook_definition_returns_raw_definition(self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client):
+    def test_get_notebook_definition_returns_raw_definition(
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
+    ):
         """Return raw definition when no ipynb part exists."""
         mock_workspace_service.resolve_workspace_id.return_value = "ws-123"
         mock_item_service.get_item_by_name.return_value = FabricItem(
@@ -410,12 +473,18 @@ class TestFabricNotebookService:
 
         assert result == definition_response
 
-    def test_list_notebooks(self, notebook_service, mock_item_service, mock_workspace_service):
+    def test_list_notebooks(
+        self, notebook_service, mock_item_service, mock_workspace_service
+    ):
         """List notebooks delegates to item service."""
         mock_workspace_service.resolve_workspace_id.return_value = "ws-123"
         items = [
-            FabricItem(id="nb-1", display_name="A", type="Notebook", workspace_id="ws-123"),
-            FabricItem(id="nb-2", display_name="B", type="Notebook", workspace_id="ws-123"),
+            FabricItem(
+                id="nb-1", display_name="A", type="Notebook", workspace_id="ws-123"
+            ),
+            FabricItem(
+                id="nb-2", display_name="B", type="Notebook", workspace_id="ws-123"
+            ),
         ]
         mock_item_service.list_items.return_value = items
 
@@ -424,41 +493,66 @@ class TestFabricNotebookService:
         assert result == items
         mock_item_service.list_items.assert_called_once_with("ws-123", "Notebook")
 
-    def test_get_notebook_by_name(self, notebook_service, mock_item_service, mock_workspace_service):
+    def test_get_notebook_by_name(
+        self, notebook_service, mock_item_service, mock_workspace_service
+    ):
         """Get notebook by name delegates to item service."""
         mock_workspace_service.resolve_workspace_id.return_value = "ws-123"
-        item = FabricItem(id="nb-1", display_name="Notebook", type="Notebook", workspace_id="ws-123")
+        item = FabricItem(
+            id="nb-1", display_name="Notebook", type="Notebook", workspace_id="ws-123"
+        )
         mock_item_service.get_item_by_name.return_value = item
 
         result = notebook_service.get_notebook_by_name("Workspace", "Notebook")
 
         assert result == item
-        mock_item_service.get_item_by_name.assert_called_once_with("ws-123", "Notebook", "Notebook")
+        mock_item_service.get_item_by_name.assert_called_once_with(
+            "ws-123", "Notebook", "Notebook"
+        )
 
-    def test_update_notebook_metadata(self, notebook_service, mock_item_service, mock_workspace_service):
+    def test_update_notebook_metadata(
+        self, notebook_service, mock_item_service, mock_workspace_service
+    ):
         """Update notebook metadata delegates to item service."""
         mock_workspace_service.resolve_workspace_id.return_value = "ws-123"
-        notebook = FabricItem(id="nb-1", display_name="Notebook", type="Notebook", workspace_id="ws-123")
-        updated = FabricItem(id="nb-1", display_name="Notebook v2", type="Notebook", workspace_id="ws-123")
+        notebook = FabricItem(
+            id="nb-1", display_name="Notebook", type="Notebook", workspace_id="ws-123"
+        )
+        updated = FabricItem(
+            id="nb-1",
+            display_name="Notebook v2",
+            type="Notebook",
+            workspace_id="ws-123",
+        )
         mock_item_service.get_item_by_name.return_value = notebook
         mock_item_service.update_item.return_value = updated
 
-        result = notebook_service.update_notebook_metadata("Workspace", "Notebook", {"displayName": "Notebook v2"})
+        result = notebook_service.update_notebook_metadata(
+            "Workspace", "Notebook", {"displayName": "Notebook v2"}
+        )
 
         assert result == updated
-        mock_item_service.update_item.assert_called_once_with("ws-123", "nb-1", {"displayName": "Notebook v2"})
+        mock_item_service.update_item.assert_called_once_with(
+            "ws-123", "nb-1", {"displayName": "Notebook v2"}
+        )
 
-    def test_delete_notebook(self, notebook_service, mock_item_service, mock_workspace_service):
+    def test_delete_notebook(
+        self, notebook_service, mock_item_service, mock_workspace_service
+    ):
         """Delete notebook delegates to item service."""
         mock_workspace_service.resolve_workspace_id.return_value = "ws-123"
-        notebook = FabricItem(id="nb-1", display_name="Notebook", type="Notebook", workspace_id="ws-123")
+        notebook = FabricItem(
+            id="nb-1", display_name="Notebook", type="Notebook", workspace_id="ws-123"
+        )
         mock_item_service.get_item_by_name.return_value = notebook
 
         notebook_service.delete_notebook("Workspace", "Notebook")
 
         mock_item_service.delete_item.assert_called_once_with("ws-123", "nb-1")
 
-    def test_execute_notebook_success(self, notebook_service, mock_workspace_service, mock_item_service):
+    def test_execute_notebook_success(
+        self, notebook_service, mock_workspace_service, mock_item_service
+    ):
         """Execute notebook returns mapped ExecuteNotebookResult."""
         job = FabricJob(
             job_instance_id="job-1",
@@ -472,9 +566,13 @@ class TestFabricNotebookService:
         )
         job_result = JobStatusResult(status="success", job=job, message="ok")
 
-        with patch("ms_fabric_mcp_server.services.job.FabricJobService") as mock_job_service:
+        with patch(
+            "ms_fabric_mcp_server.services.job.FabricJobService"
+        ) as mock_job_service:
             mock_job_service.return_value.run_notebook_job.return_value = job_result
-            result = notebook_service.execute_notebook("Workspace", "Notebook", parameters={"a": 1})
+            result = notebook_service.execute_notebook(
+                "Workspace", "Notebook", parameters={"a": 1}
+            )
 
         assert result.status == "success"
         assert result.job_instance_id == "job-1"
@@ -484,7 +582,9 @@ class TestFabricNotebookService:
         """Execute notebook returns error when job result is error."""
         job_result = JobStatusResult(status="error", message="boom")
 
-        with patch("ms_fabric_mcp_server.services.job.FabricJobService") as mock_job_service:
+        with patch(
+            "ms_fabric_mcp_server.services.job.FabricJobService"
+        ) as mock_job_service:
             mock_job_service.return_value.run_notebook_job.return_value = job_result
             result = notebook_service.execute_notebook("Workspace", "Notebook")
 
@@ -493,32 +593,59 @@ class TestFabricNotebookService:
 
     def test_execute_notebook_wait_false_success(self, notebook_service):
         """Execute notebook succeeds when wait=False returns job metadata."""
-        job_result = JobStatusResult(status="success", job_instance_id="job-2", message="started")
+        job_result = JobStatusResult(
+            status="success", job_instance_id="job-2", message="started"
+        )
 
-        with patch("ms_fabric_mcp_server.services.job.FabricJobService") as mock_job_service:
+        with patch(
+            "ms_fabric_mcp_server.services.job.FabricJobService"
+        ) as mock_job_service:
             mock_job_service.return_value.run_notebook_job.return_value = job_result
-            result = notebook_service.execute_notebook("Workspace", "Notebook", wait=False)
+            result = notebook_service.execute_notebook(
+                "Workspace", "Notebook", wait=False
+            )
 
         assert result.status == "success"
         assert result.job_instance_id == "job-2"
 
     def test_execute_notebook_unexpected_error(self, notebook_service):
         """Execute notebook wraps unexpected exceptions."""
-        with patch("ms_fabric_mcp_server.services.job.FabricJobService") as mock_job_service:
-            mock_job_service.return_value.run_notebook_job.side_effect = RuntimeError("boom")
+        with patch(
+            "ms_fabric_mcp_server.services.job.FabricJobService"
+        ) as mock_job_service:
+            mock_job_service.return_value.run_notebook_job.side_effect = RuntimeError(
+                "boom"
+            )
             result = notebook_service.execute_notebook("Workspace", "Notebook")
 
         assert result.status == "error"
         assert "Unexpected error" in result.message
 
     def test_update_notebook_definition_with_lakehouse(
-        self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
     ):
         """Update notebook definition applies lakehouse dependencies when provided."""
-        mock_workspace_service.resolve_workspace_id.side_effect = ["workspace-123", "workspace-123"]
+        mock_workspace_service.resolve_workspace_id.side_effect = [
+            "workspace-123",
+            "workspace-123",
+        ]
 
-        notebook = FabricItem(id="nb-1", display_name="Notebook", type="Notebook", workspace_id="workspace-123")
-        lakehouse = FabricItem(id="lh-1", display_name="Lakehouse", type="Lakehouse", workspace_id="workspace-123")
+        notebook = FabricItem(
+            id="nb-1",
+            display_name="Notebook",
+            type="Notebook",
+            workspace_id="workspace-123",
+        )
+        lakehouse = FabricItem(
+            id="lh-1",
+            display_name="Lakehouse",
+            type="Lakehouse",
+            workspace_id="workspace-123",
+        )
         mock_item_service.get_item_by_name.side_effect = [notebook, lakehouse]
 
         existing_payload = {"cells": [], "metadata": {}}
@@ -557,12 +684,21 @@ class TestFabricNotebookService:
         assert lakehouse_meta["known_lakehouses"] == [{"id": "lh-1"}]
 
     def test_update_notebook_definition_preserves_dependencies(
-        self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
     ):
         """Update notebook definition preserves existing dependencies when no lakehouse specified."""
         mock_workspace_service.resolve_workspace_id.return_value = "workspace-123"
 
-        notebook = FabricItem(id="nb-1", display_name="Notebook", type="Notebook", workspace_id="workspace-123")
+        notebook = FabricItem(
+            id="nb-1",
+            display_name="Notebook",
+            type="Notebook",
+            workspace_id="workspace-123",
+        )
         mock_item_service.get_item_by_name.return_value = notebook
 
         existing_payload = {"cells": [], "metadata": {"dependencies": {"foo": "bar"}}}
@@ -596,13 +732,30 @@ class TestFabricNotebookService:
         assert decoded["metadata"]["dependencies"] == {"foo": "bar"}
 
     def test_update_notebook_definition_uses_existing_definition(
-        self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
     ):
         """Update notebook definition can reuse existing definition when content omitted."""
-        mock_workspace_service.resolve_workspace_id.side_effect = ["workspace-123", "workspace-123"]
+        mock_workspace_service.resolve_workspace_id.side_effect = [
+            "workspace-123",
+            "workspace-123",
+        ]
 
-        notebook = FabricItem(id="nb-1", display_name="Notebook", type="Notebook", workspace_id="workspace-123")
-        lakehouse = FabricItem(id="lh-1", display_name="Lakehouse", type="Lakehouse", workspace_id="workspace-123")
+        notebook = FabricItem(
+            id="nb-1",
+            display_name="Notebook",
+            type="Notebook",
+            workspace_id="workspace-123",
+        )
+        lakehouse = FabricItem(
+            id="lh-1",
+            display_name="Lakehouse",
+            type="Lakehouse",
+            workspace_id="workspace-123",
+        )
         mock_item_service.get_item_by_name.side_effect = [notebook, lakehouse]
 
         existing_payload = {"cells": [], "metadata": {"dependencies": {"foo": "bar"}}}
@@ -634,15 +787,26 @@ class TestFabricNotebookService:
         payload = update_call.kwargs["payload"]
         encoded = payload["definition"]["parts"][0]["payload"]
         decoded = json.loads(base64.b64decode(encoded).decode("utf-8"))
-        assert decoded["metadata"]["dependencies"]["lakehouse"]["default_lakehouse"] == "lh-1"
+        assert (
+            decoded["metadata"]["dependencies"]["lakehouse"]["default_lakehouse"]
+            == "lh-1"
+        )
 
     def test_update_notebook_definition_missing_lakehouse(
         self, notebook_service, mock_item_service, mock_workspace_service
     ):
         """Missing lakehouse returns error result."""
-        mock_workspace_service.resolve_workspace_id.side_effect = ["workspace-123", "workspace-123"]
+        mock_workspace_service.resolve_workspace_id.side_effect = [
+            "workspace-123",
+            "workspace-123",
+        ]
 
-        notebook = FabricItem(id="nb-1", display_name="Notebook", type="Notebook", workspace_id="workspace-123")
+        notebook = FabricItem(
+            id="nb-1",
+            display_name="Notebook",
+            type="Notebook",
+            workspace_id="workspace-123",
+        )
         mock_item_service.get_item_by_name.side_effect = [
             notebook,
             FabricItemNotFoundError("Lakehouse", "Lakehouse", "workspace-123"),
@@ -658,11 +822,20 @@ class TestFabricNotebookService:
         assert result.status == "error"
 
     def test_get_notebook_run_details_success(
-        self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
     ):
         """Return execution details and summary."""
         mock_workspace_service.resolve_workspace_id.return_value = "workspace-123"
-        notebook = FabricItem(id="nb-1", display_name="Notebook", type="Notebook", workspace_id="workspace-123")
+        notebook = FabricItem(
+            id="nb-1",
+            display_name="Notebook",
+            type="Notebook",
+            workspace_id="workspace-123",
+        )
         mock_item_service.get_item_by_name.return_value = notebook
 
         list_response = _make_response(
@@ -707,45 +880,73 @@ class TestFabricNotebookService:
             job_response,
         ]
 
-        result = notebook_service.get_notebook_run_details("Workspace", "Notebook", "job-1")
+        result = notebook_service.get_notebook_run_details(
+            "Workspace", "Notebook", "job-1"
+        )
 
         assert result["status"] == "success"
         assert result["execution_summary"]["failure_reason"] == {"message": "none"}
         assert result["notebook_id"] == "nb-1"
 
     def test_get_notebook_run_details_no_session(
-        self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
     ):
         """Return error when no matching session found."""
         mock_workspace_service.resolve_workspace_id.return_value = "workspace-123"
-        notebook = FabricItem(id="nb-1", display_name="Notebook", type="Notebook", workspace_id="workspace-123")
+        notebook = FabricItem(
+            id="nb-1",
+            display_name="Notebook",
+            type="Notebook",
+            workspace_id="workspace-123",
+        )
         mock_item_service.get_item_by_name.return_value = notebook
 
         list_response = _make_response(200, {"value": []})
         mock_fabric_client.make_api_request.return_value = list_response
 
-        result = notebook_service.get_notebook_run_details("Workspace", "Notebook", "job-1")
+        result = notebook_service.get_notebook_run_details(
+            "Workspace", "Notebook", "job-1"
+        )
 
         assert result["status"] == "error"
         assert result["available_sessions"] == 0
 
     def test_get_notebook_run_details_api_error(
-        self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
     ):
         """API errors return error status."""
         mock_workspace_service.resolve_workspace_id.return_value = "workspace-123"
-        notebook = FabricItem(id="nb-1", display_name="Notebook", type="Notebook", workspace_id="workspace-123")
+        notebook = FabricItem(
+            id="nb-1",
+            display_name="Notebook",
+            type="Notebook",
+            workspace_id="workspace-123",
+        )
         mock_item_service.get_item_by_name.return_value = notebook
 
         mock_fabric_client.make_api_request.side_effect = FabricAPIError(500, "boom")
 
-        result = notebook_service.get_notebook_run_details("Workspace", "Notebook", "job-1")
+        result = notebook_service.get_notebook_run_details(
+            "Workspace", "Notebook", "job-1"
+        )
 
         assert result["status"] == "error"
         assert "boom" in result["message"]
 
     def test_get_notebook_run_details_falls_back_to_job_instance_when_renamed(
-        self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
     ):
         """If name lookup fails, resolve notebook by matching job instance across notebooks."""
         mock_workspace_service.resolve_workspace_id.return_value = "workspace-123"
@@ -762,7 +963,9 @@ class TestFabricNotebookService:
 
         mock_fabric_client.make_api_request.side_effect = [
             _make_response(200, {"status": "Completed"}),
-            _make_response(200, {"value": [{"jobInstanceId": "job-1", "livyId": "livy-1"}]}),
+            _make_response(
+                200, {"value": [{"jobInstanceId": "job-1", "livyId": "livy-1"}]}
+            ),
             _make_response(
                 200,
                 {
@@ -775,17 +978,28 @@ class TestFabricNotebookService:
             _make_response(200, {"failureReason": None}),
         ]
 
-        result = notebook_service.get_notebook_run_details("Workspace", "OldNotebook", "job-1")
+        result = notebook_service.get_notebook_run_details(
+            "Workspace", "OldNotebook", "job-1"
+        )
 
         assert result["status"] == "success"
         assert result["notebook_id"] == "nb-1"
 
     def test_list_notebook_runs_success_with_limit(
-        self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
     ):
         """List executions applies limit to session summaries."""
         mock_workspace_service.resolve_workspace_id.return_value = "workspace-123"
-        notebook = FabricItem(id="nb-1", display_name="Notebook", type="Notebook", workspace_id="workspace-123")
+        notebook = FabricItem(
+            id="nb-1",
+            display_name="Notebook",
+            type="Notebook",
+            workspace_id="workspace-123",
+        )
         mock_item_service.get_item_by_name.return_value = notebook
 
         list_response = _make_response(
@@ -810,18 +1024,29 @@ class TestFabricNotebookService:
     ):
         """Item not found maps to error response."""
         mock_workspace_service.resolve_workspace_id.return_value = "workspace-123"
-        mock_item_service.get_item_by_name.side_effect = FabricItemNotFoundError("Notebook", "Notebook", "workspace-123")
+        mock_item_service.get_item_by_name.side_effect = FabricItemNotFoundError(
+            "Notebook", "Notebook", "workspace-123"
+        )
 
         result = notebook_service.list_notebook_runs("Workspace", "Notebook")
 
         assert result["status"] == "error"
 
     def test_get_notebook_driver_logs_success_truncated(
-        self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
     ):
         """Driver log retrieval truncates to max lines."""
         mock_workspace_service.resolve_workspace_id.return_value = "workspace-123"
-        notebook = FabricItem(id="nb-1", display_name="Notebook", type="Notebook", workspace_id="workspace-123")
+        notebook = FabricItem(
+            id="nb-1",
+            display_name="Notebook",
+            type="Notebook",
+            workspace_id="workspace-123",
+        )
         mock_item_service.get_item_by_name.return_value = notebook
 
         notebook_service.get_notebook_run_details = Mock(
@@ -886,17 +1111,29 @@ class TestFabricNotebookService:
         assert result["status"] == "error"
 
     def test_get_notebook_driver_logs_api_error(
-        self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
     ):
         """API errors are mapped to error result."""
         mock_workspace_service.resolve_workspace_id.return_value = "workspace-123"
-        notebook = FabricItem(id="nb-1", display_name="Notebook", type="Notebook", workspace_id="workspace-123")
+        notebook = FabricItem(
+            id="nb-1",
+            display_name="Notebook",
+            type="Notebook",
+            workspace_id="workspace-123",
+        )
         mock_item_service.get_item_by_name.return_value = notebook
         notebook_service.get_notebook_run_details = Mock(
             return_value={
                 "status": "success",
                 "notebook_id": "nb-1",
-                "execution_summary": {"livy_id": "livy-1", "spark_application_id": "app-1"},
+                "execution_summary": {
+                    "livy_id": "livy-1",
+                    "spark_application_id": "app-1",
+                },
             }
         )
         mock_fabric_client.make_api_request.side_effect = FabricAPIError(500, "boom")
@@ -908,7 +1145,11 @@ class TestFabricNotebookService:
         assert result["status"] == "error"
 
     def test_get_notebook_driver_logs_retries_transient_404(
-        self, notebook_service, mock_item_service, mock_workspace_service, mock_fabric_client
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
     ):
         """Transient 404s on log endpoints are retried."""
         mock_workspace_service.resolve_workspace_id.return_value = "workspace-123"
@@ -988,7 +1229,9 @@ class TestFabricNotebookService:
         finally:
             nb_file.chmod(0o644)
 
-    def test_create_notebook_mutual_exclusivity_empty_dict(self, notebook_service, tmp_path):
+    def test_create_notebook_mutual_exclusivity_empty_dict(
+        self, notebook_service, tmp_path
+    ):
         """Empty dict notebook_content + notebook_file_path still triggers mutual exclusivity."""
         nb_file = tmp_path / "nb.ipynb"
         nb_file.write_text('{"cells": []}')
@@ -1001,7 +1244,9 @@ class TestFabricNotebookService:
                 notebook_file_path=str(nb_file),
             )
 
-    def test_update_notebook_mutual_exclusivity_empty_dict(self, notebook_service, tmp_path):
+    def test_update_notebook_mutual_exclusivity_empty_dict(
+        self, notebook_service, tmp_path
+    ):
         """Empty dict notebook_content + notebook_file_path still triggers mutual exclusivity."""
         nb_file = tmp_path / "nb.ipynb"
         nb_file.write_text('{"cells": []}')
@@ -1022,7 +1267,9 @@ class TestFabricNotebookService:
         nb_file = tmp_path / "nb.ipynb"
         nb_file.write_text(json.dumps(nb))
 
-        notebook_service._create_notebook_definition = Mock(return_value={"definition": {}})
+        notebook_service._create_notebook_definition = Mock(
+            return_value={"definition": {}}
+        )
         mock_workspace_service.resolve_workspace_id.return_value = "ws-1"
         mock_item_service.resolve_folder_id_from_path.return_value = None
         mock_item_service.create_item.return_value = FabricItem(
@@ -1060,8 +1307,12 @@ class TestFabricNotebookService:
             )
 
     def test_update_notebook_with_file_path(
-        self, notebook_service, mock_item_service, mock_workspace_service,
-        mock_fabric_client, tmp_path
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
+        tmp_path,
     ):
         """Update notebook definition from a local file path."""
         existing = {"cells": [], "metadata": {}}
@@ -1084,7 +1335,9 @@ class TestFabricNotebookService:
                 ]
             }
         }
-        mock_fabric_client.make_api_request.return_value = _make_response(200, definition_response)
+        mock_fabric_client.make_api_request.return_value = _make_response(
+            200, definition_response
+        )
 
         result = notebook_service.update_notebook_definition(
             workspace_name="WS",
@@ -1108,8 +1361,12 @@ class TestFabricNotebookService:
             )
 
     def test_get_notebook_definition_save_to_path(
-        self, notebook_service, mock_item_service, mock_workspace_service,
-        mock_fabric_client, tmp_path
+        self,
+        notebook_service,
+        mock_item_service,
+        mock_workspace_service,
+        mock_fabric_client,
+        tmp_path,
     ):
         """save_to_path writes content to file and returns metadata."""
         notebook_content = {"cells": [{"cell_type": "code", "source": ["x=1"]}]}
@@ -1129,7 +1386,9 @@ class TestFabricNotebookService:
         mock_item_service.get_item_by_name.return_value = FabricItem(
             id="nb-1", display_name="NB", type="Notebook", workspace_id="ws-1"
         )
-        mock_fabric_client.make_api_request.return_value = _make_response(200, definition_response)
+        mock_fabric_client.make_api_request.return_value = _make_response(
+            200, definition_response
+        )
 
         out_file = tmp_path / "saved.ipynb"
         result = notebook_service.get_notebook_definition(

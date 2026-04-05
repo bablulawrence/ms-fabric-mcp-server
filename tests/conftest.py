@@ -6,12 +6,12 @@ import os
 import sys
 import time
 import uuid
+from pathlib import Path
+from typing import Any, Dict
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
 import pytest_asyncio
-from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
-from typing import Dict, Any
-
 from dotenv import load_dotenv
 
 # Ensure local src/ is used instead of any installed package.
@@ -31,6 +31,7 @@ if _ENV_INTEGRATION_PATH.exists():
 # Environment Setup
 # ============================================================================
 
+
 @pytest.fixture(autouse=True)
 def mock_environment(monkeypatch, request):
     """Set up test environment variables for all tests."""
@@ -45,7 +46,7 @@ def mock_environment(monkeypatch, request):
     ]
     for var in env_vars_to_clear:
         monkeypatch.delenv(var, raising=False)
-    
+
     # Set test defaults
     monkeypatch.setenv("FABRIC_BASE_URL", "https://api.fabric.microsoft.com/v1")
     monkeypatch.setenv("FABRIC_API_TIMEOUT", "30")
@@ -96,6 +97,7 @@ def sample_llms_txt_file(temp_repo_dir: Path, sample_llms_txt_content: str) -> P
 # Fabric Client Fixtures
 # ============================================================================
 
+
 @pytest.fixture
 def mock_fabric_config():
     """Mock Fabric configuration."""
@@ -125,21 +127,27 @@ def mock_azure_credential():
 @pytest.fixture
 def mock_fabric_client(mock_fabric_config, mock_azure_credential):
     """Mock FabricClient for testing services."""
-    with patch("ms_fabric_mcp_server.client.http_client.DefaultAzureCredential", return_value=mock_azure_credential):
+    with patch(
+        "ms_fabric_mcp_server.client.http_client.DefaultAzureCredential",
+        return_value=mock_azure_credential,
+    ):
         from ms_fabric_mcp_server.client.http_client import FabricClient
-        
+
         client = FabricClient(mock_fabric_config)
-        
+
         # Mock the make_api_request method
         client.make_api_request = Mock()
-        
+
         return client
 
 
 @pytest.fixture
 def mock_requests_response():
     """Factory for creating mock requests.Response objects."""
-    def _create_response(status_code: int = 200, json_data: Dict[str, Any] = None, text: str = ""):
+
+    def _create_response(
+        status_code: int = 200, json_data: Dict[str, Any] = None, text: str = ""
+    ):
         response = Mock()
         response.status_code = status_code
         response.ok = 200 <= status_code < 300
@@ -147,12 +155,14 @@ def mock_requests_response():
         response.text = text
         response.headers = {}
         return response
+
     return _create_response
 
 
 # ============================================================================
 # Fabric Service Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def sample_workspace_data() -> Dict[str, Any]:
@@ -162,7 +172,7 @@ def sample_workspace_data() -> Dict[str, Any]:
         "displayName": "Test Workspace",
         "description": "A test workspace",
         "type": "Workspace",
-        "capacityId": "capacity-456"
+        "capacityId": "capacity-456",
     }
 
 
@@ -174,7 +184,7 @@ def sample_item_data() -> Dict[str, Any]:
         "displayName": "Test Notebook",
         "type": "Notebook",
         "workspaceId": "workspace-123",
-        "description": "A test notebook"
+        "description": "A test notebook",
     }
 
 
@@ -187,9 +197,9 @@ def sample_notebook_definition() -> Dict[str, Any]:
             {
                 "path": "notebook-content.py",
                 "payload": "eyJjZWxscyI6W119",  # Base64 encoded {"cells":[]}
-                "payloadType": "InlineBase64"
+                "payloadType": "InlineBase64",
             }
-        ]
+        ],
     }
 
 
@@ -204,11 +214,8 @@ def sample_livy_session() -> Dict[str, Any]:
         "proxyUser": None,
         "state": "idle",
         "kind": "pyspark",
-        "appInfo": {
-            "driverLogUrl": None,
-            "sparkUiUrl": None
-        },
-        "log": []
+        "appInfo": {"driverLogUrl": None, "sparkUiUrl": None},
+        "log": [],
     }
 
 
@@ -222,11 +229,9 @@ def sample_livy_statement() -> Dict[str, Any]:
         "output": {
             "status": "ok",
             "execution_count": 0,
-            "data": {
-                "text/plain": "hello"
-            }
+            "data": {"text/plain": "hello"},
         },
-        "progress": 1.0
+        "progress": 1.0,
     }
 
 
@@ -240,13 +245,14 @@ def sample_job_instance() -> Dict[str, Any]:
         "invokeType": "Manual",
         "status": "Completed",
         "startTimeUtc": "2025-10-14T10:00:00Z",
-        "endTimeUtc": "2025-10-14T10:05:00Z"
+        "endTimeUtc": "2025-10-14T10:05:00Z",
     }
 
 
 # ============================================================================
 # FastMCP Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def mock_fastmcp():
@@ -255,13 +261,14 @@ def mock_fastmcp():
     mcp.name = "test-server"
     mcp.instructions = "Test instructions"
     mcp.add_middleware = Mock()
-    
+
     # Mock the tool decorator - it accepts kwargs (like title=) and returns a decorator
     def mock_tool_decorator(**kwargs):
         def decorator(func):
             return func
+
         return decorator
-    
+
     mcp.tool = Mock(side_effect=mock_tool_decorator)
     return mcp
 
@@ -270,16 +277,22 @@ def mock_fastmcp():
 # Marker Configuration
 # ============================================================================
 
+
 def pytest_configure(config):
     """Register custom markers."""
-    config.addinivalue_line("markers", "unit: Unit tests (fast, no external dependencies)")
-    config.addinivalue_line("markers", "integration: Integration tests (require live services)")
+    config.addinivalue_line(
+        "markers", "unit: Unit tests (fast, no external dependencies)"
+    )
+    config.addinivalue_line(
+        "markers", "integration: Integration tests (require live services)"
+    )
     config.addinivalue_line("markers", "slow: Slow running tests")
 
 
 # ============================================================================
 # Integration Test Fixtures
 # ============================================================================
+
 
 @pytest.fixture(autouse=True)
 def integration_enabled(request):
@@ -336,6 +349,7 @@ def poll_until():
 def mcp_server():
     """Create a real FastMCP server with Fabric tools registered."""
     from fastmcp import FastMCP
+
     from ms_fabric_mcp_server import register_fabric_tools
 
     mcp = FastMCP("integration-tests")
@@ -352,6 +366,7 @@ async def tool_registry(mcp_server):
 @pytest.fixture(scope="session")
 def call_tool_session(tool_registry):
     """Session-scoped tool invoker for shared integration setup."""
+
     async def _call(tool_name: str, **kwargs):
         tool = await tool_registry.get_tool(tool_name)
         if tool is None:
@@ -368,6 +383,7 @@ def call_tool_session(tool_registry):
 @pytest.fixture
 def call_tool(tool_registry):
     """Invoke a tool by name and return structured content."""
+
     async def _call(tool_name: str, **kwargs):
         tool = await tool_registry.get_tool(tool_name)
         if tool is None:
@@ -438,7 +454,9 @@ async def workspace_id(call_tool, workspace_name):
 @pytest_asyncio.fixture
 async def lakehouse_id(call_tool, workspace_name, lakehouse_name):
     """Resolve lakehouse ID from display name."""
-    result = await call_tool("list_items", workspace_name=workspace_name, item_type="Lakehouse")
+    result = await call_tool(
+        "list_items", workspace_name=workspace_name, item_type="Lakehouse"
+    )
     if result.get("status") != "success":
         raise AssertionError(f"Failed to list lakehouses: {result}")
     for item in result.get("items", []):
@@ -457,14 +475,16 @@ def pipeline_copy_inputs():
     dest_connection_id = get_env_optional("FABRIC_TEST_DEST_CONNECTION_ID")
     dest_table = get_env_optional("FABRIC_TEST_DEST_TABLE_NAME") or source_table
 
-    if not all([
-        source_connection_id,
-        source_type,
-        source_schema,
-        source_table,
-        dest_connection_id,
-        dest_table,
-    ]):
+    if not all(
+        [
+            source_connection_id,
+            source_type,
+            source_schema,
+            source_table,
+            dest_connection_id,
+            dest_table,
+        ]
+    ):
         return None
 
     return {
@@ -487,13 +507,15 @@ def pipeline_copy_sql_inputs():
     dest_table = get_env_optional("FABRIC_TEST_DEST_TABLE_NAME") or source_table
     source_sql_query = get_env_optional("FABRIC_TEST_SOURCE_SQL_QUERY")
 
-    if not all([
-        source_connection_id,
-        source_schema,
-        source_table,
-        dest_connection_id,
-        dest_table,
-    ]):
+    if not all(
+        [
+            source_connection_id,
+            source_schema,
+            source_table,
+            dest_connection_id,
+            dest_table,
+        ]
+    ):
         return None
 
     return {
@@ -543,7 +565,9 @@ in
         description="Fixture dataflow for integration tests",
     )
     if create_result.get("status") != "success":
-        pytest.skip(f"Failed to create fixture dataflow: {create_result.get('message')}")
+        pytest.skip(
+            f"Failed to create fixture dataflow: {create_result.get('message')}"
+        )
 
     # Wait for dataflow to be available
     await poll_until(_check_dataflow_ready, timeout_seconds=120, interval_seconds=10)
@@ -627,7 +651,9 @@ def sql_dependencies_available(tool_registry):
     """Skip SQL tests if dependencies or tools are unavailable."""
     pyodbc = pytest.importorskip("pyodbc")
     drivers = [driver.lower() for driver in pyodbc.drivers()]
-    if not any("odbc driver" in driver and "sql server" in driver for driver in drivers):
+    if not any(
+        "odbc driver" in driver and "sql server" in driver for driver in drivers
+    ):
         pytest.skip("SQL tests require a SQL Server ODBC driver")
     # SQL tools are registered whenever pyodbc is importable and ODBC driver exists
     return True
@@ -636,6 +662,7 @@ def sql_dependencies_available(tool_registry):
 @pytest.fixture
 def delete_item_if_exists(call_tool, workspace_name):
     """Delete an item and ignore not-found errors."""
+
     async def _delete(item_name: str, item_type: str):
         result = await call_tool(
             "delete_item",
@@ -646,7 +673,9 @@ def delete_item_if_exists(call_tool, workspace_name):
         if result.get("status") == "error":
             message = (result.get("message") or "").lower()
             if "not found" not in message:
-                raise AssertionError(f"Failed to delete {item_type} '{item_name}': {result}")
+                raise AssertionError(
+                    f"Failed to delete {item_type} '{item_name}': {result}"
+                )
         return result
 
     return _delete
@@ -678,7 +707,10 @@ async def executed_notebook_context(
 
     def _is_transient_job_error(result: dict) -> bool:
         message = (result.get("message") or "").lower()
-        return any(token in message for token in ("not found", "404", "does not exist", "not yet"))
+        return any(
+            token in message
+            for token in ("not found", "404", "does not exist", "not yet")
+        )
 
     async def _wait_for_job():
         status_result = await call_tool_session(
@@ -709,7 +741,9 @@ async def executed_notebook_context(
         )
         assert import_result["status"] == "success"
 
-        content_result = await _poll_until(_get_content, timeout_seconds=300, interval_seconds=10)
+        content_result = await _poll_until(
+            _get_content, timeout_seconds=300, interval_seconds=10
+        )
         assert content_result is not None
         assert content_result["status"] == "success"
 
@@ -735,7 +769,9 @@ async def executed_notebook_context(
         assert job_instance_id
         assert location_url
 
-        status_result = await _poll_until(_wait_for_job, timeout_seconds=1800, interval_seconds=15)
+        status_result = await _poll_until(
+            _wait_for_job, timeout_seconds=1800, interval_seconds=15
+        )
         assert status_result is not None
         assert status_result["status"] == "success"
         job = status_result.get("job", {})
@@ -757,4 +793,6 @@ async def executed_notebook_context(
         if result.get("status") == "error":
             message = (result.get("message") or "").lower()
             if "not found" not in message:
-                raise AssertionError(f"Failed to delete Notebook '{notebook_name}': {result}")
+                raise AssertionError(
+                    f"Failed to delete Notebook '{notebook_name}': {result}"
+                )

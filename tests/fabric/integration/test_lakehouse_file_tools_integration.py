@@ -72,12 +72,12 @@ async def test_upload_list_delete_lakehouse_file(
         nested_duplicate = (
             f"Files/{destination_path.rsplit('/', 1)[0]}/Files/{destination_path}"
         )
-        assert f"Files/{destination_path}" in names, (
-            f"Expected exact path Files/{destination_path}; got names: {names}"
-        )
-        assert nested_duplicate not in names, (
-            f"Unexpected nested duplicate path {nested_duplicate}; got names: {names}"
-        )
+        assert (
+            f"Files/{destination_path}" in names
+        ), f"Expected exact path Files/{destination_path}; got names: {names}"
+        assert (
+            nested_duplicate not in names
+        ), f"Unexpected nested duplicate path {nested_duplicate}; got names: {names}"
 
         delete_result = await call_tool(
             "delete_lakehouse_file",

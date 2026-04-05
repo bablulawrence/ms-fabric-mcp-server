@@ -217,7 +217,6 @@ async def test_add_notebook_activity_to_pipeline(
         assert add_result["status"] == "success"
     finally:
         await delete_item_if_exists(pipeline_name, "DataPipeline")
-        await delete_item_if_exists(notebook_name, "Notebook")
 
 
 @pytest.mark.integration
@@ -595,5 +594,127 @@ async def test_get_pipeline_activity_runs(
             or wait_activity["status"] == "InProgress"
         )
 
+    finally:
+        await delete_item_if_exists(pipeline_name, "DataPipeline")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_pipeline_definition_save_to_path(
+    call_tool, delete_item_if_exists, workspace_name, tmp_path
+):
+    """Test saving pipeline definition to a local file."""
+    pipeline_name = unique_name("e2e_pipeline_save")
+    try:
+        create_result = await call_tool(
+            "create_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            pipeline_content_json={"properties": {"activities": []}},
+        )
+        assert create_result["status"] == "success"
+
+        out_file = str(tmp_path / "pipeline_def.json")
+        get_result = await call_tool(
+            "get_pipeline_definition",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            save_to_path=out_file,
+        )
+        assert get_result["status"] == "success"
+        assert get_result["file_path"] == out_file
+        assert get_result["size_bytes"] > 0
+        assert "pipeline_content_json" not in get_result
+
+        with open(out_file) as f:
+            saved = json.load(f)
+        assert "pipeline_content_json" in saved
+    finally:
+        await delete_item_if_exists(pipeline_name, "DataPipeline")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_pipeline_create_from_file(
+    call_tool, delete_item_if_exists, workspace_name, tmp_path
+):
+    """Test creating a pipeline from a local definition file."""
+    pipeline_name = unique_name("e2e_pipeline_from_file")
+    definition = {"properties": {"activities": []}}
+    file_path = tmp_path / "pipeline_def.json"
+    file_path.write_text(json.dumps(definition))
+    try:
+        create_result = await call_tool(
+            "create_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            pipeline_file_path=str(file_path),
+        )
+        assert create_result["status"] == "success"
+        assert create_result.get("pipeline_id") is not None
+    finally:
+        await delete_item_if_exists(pipeline_name, "DataPipeline")
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_pipeline_definition_file_roundtrip(
+    call_tool, delete_item_if_exists, workspace_name, tmp_path
+):
+    """Test full roundtrip: get definition to file, update from file."""
+    pipeline_name = unique_name("e2e_pipeline_file_rt")
+    try:
+        create_result = await call_tool(
+            "create_pipeline",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            pipeline_content_json={"properties": {"activities": []}},
+        )
+        assert create_result["status"] == "success"
+
+        out_file = str(tmp_path / "pipeline_rt.json")
+        get_result = await call_tool(
+            "get_pipeline_definition",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            save_to_path=out_file,
+        )
+        assert get_result["status"] == "success"
+
+        with open(out_file) as f:
+            saved = json.load(f)
+        saved["pipeline_content_json"]["properties"]["activities"] = [
+            {
+                "name": "WaitFromFile",
+                "type": "Wait",
+                "dependsOn": [],
+                "typeProperties": {"waitTimeInSeconds": 1},
+            }
+        ]
+
+        modified_file = str(tmp_path / "pipeline_modified.json")
+        with open(modified_file, "w") as f:
+            json.dump(saved["pipeline_content_json"], f)
+
+        update_result = await call_tool(
+            "update_pipeline_definition",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+            pipeline_file_path=modified_file,
+        )
+        assert update_result["status"] == "success"
+
+        verify_result = await call_tool(
+            "get_pipeline_definition",
+            workspace_name=workspace_name,
+            pipeline_name=pipeline_name,
+        )
+        assert verify_result["status"] == "success"
+        activities = (
+            verify_result.get("pipeline_content_json", {})
+            .get("properties", {})
+            .get("activities", [])
+        )
+        assert any(a.get("name") == "WaitFromFile" for a in activities)
     finally:
         await delete_item_if_exists(pipeline_name, "DataPipeline")

@@ -4,7 +4,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ms_fabric_mcp_server.client.exceptions import FabricAPIError, FabricItemNotFoundError
+from ms_fabric_mcp_server.client.exceptions import (FabricAPIError,
+                                                    FabricItemNotFoundError)
 from ms_fabric_mcp_server.models.item import FabricItem
 from ms_fabric_mcp_server.models.job import FabricJob
 from ms_fabric_mcp_server.models.results import JobStatusResult, RunJobResult
@@ -42,7 +43,9 @@ def mock_item_service():
 def job_service(mock_fabric_client, mock_workspace_service, mock_item_service):
     from ms_fabric_mcp_server.services.job import FabricJobService
 
-    return FabricJobService(mock_fabric_client, mock_workspace_service, mock_item_service)
+    return FabricJobService(
+        mock_fabric_client, mock_workspace_service, mock_item_service
+    )
 
 
 @pytest.mark.unit
@@ -79,7 +82,9 @@ class TestFabricJobService:
             FabricAPIError(500, "boom"),
         ],
     )
-    def test_run_on_demand_job_expected_errors(self, job_service, mock_workspace_service, mock_item_service, exception):
+    def test_run_on_demand_job_expected_errors(
+        self, job_service, mock_workspace_service, mock_item_service, exception
+    ):
         """Known errors return error result."""
         if isinstance(exception, FabricItemNotFoundError):
             mock_item_service.get_item_by_name.side_effect = exception
@@ -177,7 +182,9 @@ class TestFabricJobService:
             "https://api.fabric.microsoft.com/v1/workspaces/ws",
         ],
     )
-    def test_get_job_status_by_url_invalid(self, job_service, mock_fabric_client, location_url):
+    def test_get_job_status_by_url_invalid(
+        self, job_service, mock_fabric_client, location_url
+    ):
         """Invalid URLs return error results without calling API."""
         result = job_service.get_job_status_by_url(location_url)
 
@@ -411,7 +418,9 @@ class TestFabricJobService:
         assert result.job is not None
         assert result.job.status == "Completed"
 
-    def test_wait_for_job_completion_by_url_terminal_without_end_time(self, job_service):
+    def test_wait_for_job_completion_by_url_terminal_without_end_time(
+        self, job_service
+    ):
         """Terminal status by URL returns even without end_time_utc."""
         completed = JobStatusResult(
             status="success",
@@ -433,6 +442,7 @@ class TestFabricJobService:
 
         assert result.job is not None
         assert result.job.status == "Completed"
+
     def test_wait_for_job_completion_by_url_timeout(self, job_service):
         """Timeout path returns final status with timeout message."""
         final = JobStatusResult(

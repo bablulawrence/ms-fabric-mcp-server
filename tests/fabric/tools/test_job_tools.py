@@ -5,7 +5,8 @@ from unittest.mock import Mock
 import pytest
 
 from ms_fabric_mcp_server.models.job import FabricJob
-from ms_fabric_mcp_server.models.results import JobStatusResult, OperationResult, RunJobResult
+from ms_fabric_mcp_server.models.results import (JobStatusResult,
+                                                 OperationResult, RunJobResult)
 from ms_fabric_mcp_server.tools.job_tools import register_job_tools
 from tests.fabric.tools.utils import capture_tools
 

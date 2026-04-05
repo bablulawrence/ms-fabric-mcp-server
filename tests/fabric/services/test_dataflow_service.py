@@ -6,11 +6,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from ms_fabric_mcp_server.client.exceptions import (
-    FabricAPIError,
-    FabricItemNotFoundError,
-    FabricValidationError,
-)
+from ms_fabric_mcp_server.client.exceptions import (FabricAPIError,
+                                                    FabricItemNotFoundError,
+                                                    FabricValidationError)
 from ms_fabric_mcp_server.services.dataflow import FabricDataflowService
 
 
@@ -159,14 +157,25 @@ shared Customers = let Source = 1 in Source;
             ({"moreDetails": [{"message": "detail"}]}, "detail"),
             ({"moreDetails": [{"detail": {"value": "detail-value"}}]}, "detail-value"),
             (
-                {"pbi.error": {"details": [{"code": "DetailsMessage", "detail": {"value": "pbi"}}]}},
+                {
+                    "pbi.error": {
+                        "details": [
+                            {"code": "DetailsMessage", "detail": {"value": "pbi"}}
+                        ]
+                    }
+                },
                 "pbi",
             ),
             (
                 {
                     "error": {
                         "pbi.error": {
-                            "details": [{"code": "DetailsMessage", "detail": {"value": "pbi-nested"}}]
+                            "details": [
+                                {
+                                    "code": "DetailsMessage",
+                                    "detail": {"value": "pbi-nested"},
+                                }
+                            ]
                         }
                     }
                 },
@@ -278,20 +287,22 @@ shared Customers = let Source = 1 in Source;
         mashup = "section Section1;\nshared Query = 1;"
         metadata = {"name": "TestDF", "queriesMetadata": {}}
 
-        mock_client.make_api_request.return_value = _mock_response({
-            "definition": {
-                "parts": [
-                    {
-                        "path": "mashup.pq",
-                        "payload": _encode_payload(mashup),
-                    },
-                    {
-                        "path": "queryMetadata.json",
-                        "payload": _encode_payload(json.dumps(metadata)),
-                    },
-                ]
+        mock_client.make_api_request.return_value = _mock_response(
+            {
+                "definition": {
+                    "parts": [
+                        {
+                            "path": "mashup.pq",
+                            "payload": _encode_payload(mashup),
+                        },
+                        {
+                            "path": "queryMetadata.json",
+                            "payload": _encode_payload(json.dumps(metadata)),
+                        },
+                    ]
+                }
             }
-        })
+        )
 
         result_metadata, result_mashup = dataflow_service.get_dataflow_definition(
             workspace_id="ws-123",
@@ -389,3 +400,61 @@ shared Customers = let Source = 1 in Source;
             )
 
         assert "Something went wrong" in str(exc_info.value)
+
+    def test_get_dataflow_definition_save_to_path(
+        self, dataflow_service, mock_client, tmp_path
+    ):
+        mashup = "section Section1;\nshared Query = 1;"
+        metadata = {"name": "TestDF", "queriesMetadata": {}}
+        mock_client.make_api_request.return_value = _mock_response(
+            {
+                "definition": {
+                    "parts": [
+                        {
+                            "path": "mashup.pq",
+                            "payload": _encode_payload(mashup),
+                        },
+                        {
+                            "path": "queryMetadata.json",
+                            "payload": _encode_payload(json.dumps(metadata)),
+                        },
+                    ]
+                }
+            }
+        )
+        out_file = str(tmp_path / "dataflow.json")
+        result_metadata, result_mashup = dataflow_service.get_dataflow_definition(
+            workspace_id="ws-123", dataflow_id="df-123", save_to_path=out_file
+        )
+        assert result_metadata["file_path"] == out_file
+        assert result_metadata["size_bytes"] > 0
+        assert result_mashup == ""
+        with open(out_file) as f:
+            saved = json.load(f)
+        assert saved["mashup_content"] == mashup
+        assert saved["query_metadata"] == metadata
+
+    def test_get_dataflow_definition_save_to_path_bad_parent(self, dataflow_service):
+        with pytest.raises(FabricValidationError):
+            dataflow_service.get_dataflow_definition(
+                workspace_id="ws-123",
+                dataflow_id="df-123",
+                save_to_path="/nonexistent/dir/dataflow.json",
+            )
+
+    def test_load_mashup_from_file_success(self, dataflow_service, tmp_path):
+        content = "section Section1;\nshared Query = 1;"
+        file_path = tmp_path / "mashup.pq"
+        file_path.write_text(content)
+        loaded = dataflow_service._load_mashup_from_file(str(file_path))
+        assert loaded == content
+
+    def test_load_mashup_from_file_not_found(self, dataflow_service):
+        with pytest.raises(FabricValidationError):
+            dataflow_service._load_mashup_from_file("/nonexistent/mashup.pq")
+
+    def test_load_mashup_from_file_empty(self, dataflow_service, tmp_path):
+        file_path = tmp_path / "empty.pq"
+        file_path.write_text("")
+        with pytest.raises(FabricValidationError):
+            dataflow_service._load_mashup_from_file(str(file_path))

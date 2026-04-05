@@ -4,7 +4,7 @@ import base64
 
 import pytest
 
-from ms_fabric_mcp_server.client import FabricConfig, FabricClient
+from ms_fabric_mcp_server.client import FabricClient, FabricConfig
 from ms_fabric_mcp_server.services import FabricWorkspaceService
 from tests.conftest import unique_name
 
@@ -30,7 +30,9 @@ async def test_get_operation_result_from_async_call(
         async def _wait_for_operation(operation_id: str, timeout_seconds: int = 300):
             async def _check():
                 try:
-                    status_response = client.make_api_request("GET", f"operations/{operation_id}")
+                    status_response = client.make_api_request(
+                        "GET", f"operations/{operation_id}"
+                    )
                     status_payload = status_response.json()
                 except Exception:
                     return None
@@ -39,7 +41,9 @@ async def test_get_operation_result_from_async_call(
                     return status_payload
                 return None
 
-            return await poll_until(_check, timeout_seconds=timeout_seconds, interval_seconds=10)
+            return await poll_until(
+                _check, timeout_seconds=timeout_seconds, interval_seconds=10
+            )
 
         notebook_bytes = notebook_fixture_path.read_bytes()
         notebook_payload = base64.b64encode(notebook_bytes).decode("utf-8")

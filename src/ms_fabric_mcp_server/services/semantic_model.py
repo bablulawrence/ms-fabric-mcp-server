@@ -5,19 +5,16 @@
 import base64
 import json
 import logging
-import uuid
 import time
+import uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from ms_fabric_mcp_server.client.exceptions import (
-    FabricAPIError,
-    FabricError,
-    FabricValidationError,
-)
-from ms_fabric_mcp_server.models.semantic_model import (
-    SemanticModelColumn,
-    SemanticModelMeasure,
-)
+from ms_fabric_mcp_server.client.exceptions import (FabricAPIError,
+                                                    FabricError,
+                                                    FabricValidationError)
+from ms_fabric_mcp_server.models.semantic_model import (SemanticModelColumn,
+                                                        SemanticModelMeasure)
 from ms_fabric_mcp_server.services.item import FabricItemService
 from ms_fabric_mcp_server.services.workspace import FabricWorkspaceService
 
@@ -155,7 +152,9 @@ class FabricSemanticModelService:
             raise FabricValidationError(
                 "model_table_name", model_table_name, "Model table name cannot be empty"
             )
-        if table_schema and ("/" in table_name or "\\" in table_name or "." in table_name):
+        if table_schema and (
+            "/" in table_name or "\\" in table_name or "." in table_name
+        ):
             raise FabricValidationError(
                 "table_name",
                 table_name,
@@ -180,9 +179,12 @@ class FabricSemanticModelService:
             expressions = model.setdefault("expressions", [])
             tables = model.setdefault("tables", [])
 
-            expression_name = self._find_directlake_expression_name(
-                expressions, workspace_id, lakehouse_id
-            ) or f"DirectLake - {lakehouse_name}"
+            expression_name = (
+                self._find_directlake_expression_name(
+                    expressions, workspace_id, lakehouse_id
+                )
+                or f"DirectLake - {lakehouse_name}"
+            )
             if not self._find_list_item(expressions, "name", expression_name):
                 expressions.append(
                     {
@@ -319,7 +321,9 @@ class FabricSemanticModelService:
     ) -> SemanticModelReference:
         """Add measures to a table in an existing semantic model."""
         if not measures:
-            raise FabricValidationError("measures", "empty", "Measures list cannot be empty")
+            raise FabricValidationError(
+                "measures", "empty", "Measures list cannot be empty"
+            )
 
         workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
         semantic_model = self._resolve_semantic_model(
@@ -408,16 +412,20 @@ class FabricSemanticModelService:
             relationships = model.get("relationships", [])
             kept: List[Dict[str, Any]] = []
             for relationship in relationships:
-                if relationship.get("fromTable") == table_name or relationship.get(
-                    "toTable"
-                ) == table_name:
+                if (
+                    relationship.get("fromTable") == table_name
+                    or relationship.get("toTable") == table_name
+                ):
                     removed_relationships += 1
                     continue
                 kept.append(relationship)
             model["relationships"] = kept
 
         self._update_definition(workspace_id, semantic_model.id, definition, bim)
-        return SemanticModelReference(workspace_id, semantic_model.id), removed_relationships
+        return (
+            SemanticModelReference(workspace_id, semantic_model.id),
+            removed_relationships,
+        )
 
     def delete_relationship_from_semantic_model(
         self,
@@ -555,8 +563,18 @@ class FabricSemanticModelService:
         semantic_model_name: Optional[str] = None,
         semantic_model_id: Optional[str] = None,
         format: str = "TMSL",
+        save_to_path: Optional[str] = None,
     ) -> tuple[Any, Dict[str, Any]]:
         """Get the semantic model definition in the requested format."""
+        if save_to_path is not None:
+            parent = Path(save_to_path).parent
+            if not parent.is_dir():
+                raise FabricValidationError(
+                    "save_to_path",
+                    save_to_path,
+                    f"Parent directory does not exist: {parent}",
+                )
+
         workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
         semantic_model = self._resolve_semantic_model(
             workspace_id, semantic_model_name, semantic_model_id
@@ -566,11 +584,88 @@ class FabricSemanticModelService:
         definition = self.item_service.get_item_definition(
             workspace_id, semantic_model.id, format=normalized_format
         )
+
+        if save_to_path is not None:
+            try:
+                with open(save_to_path, "w", encoding="utf-8") as f:
+                    json.dump(definition, f, indent=1)
+            except OSError as exc:
+                raise FabricValidationError(
+                    "save_to_path",
+                    save_to_path,
+                    f"Cannot write file: {exc}",
+                )
+            size_bytes = Path(save_to_path).stat().st_size
+            logger.info(
+                f"Semantic model definition saved to {save_to_path} ({size_bytes} bytes)"
+            )
+            return semantic_model, {
+                "file_path": save_to_path,
+                "size_bytes": size_bytes,
+            }
+
         return semantic_model, definition
 
     def decode_model_bim(self, definition: Dict[str, Any]) -> Dict[str, Any]:
         """Decode the model.bim payload from a TMSL definition."""
         return self._get_bim(definition)
+
+    def update_semantic_model_definition(
+        self,
+        workspace_name: str,
+        definition: Dict[str, Any],
+        semantic_model_name: Optional[str] = None,
+        semantic_model_id: Optional[str] = None,
+    ) -> "SemanticModelReference":
+        """Update a semantic model definition."""
+        workspace_id = self.workspace_service.resolve_workspace_id(workspace_name)
+        semantic_model = self._resolve_semantic_model(
+            workspace_id, semantic_model_name, semantic_model_id
+        )
+        parts = definition.get("definition", {}).get("parts")
+        if not parts:
+            raise FabricValidationError(
+                "definition",
+                str(type(definition)),
+                "Definition must contain 'definition.parts' list",
+            )
+        self.item_service.update_item_definition(
+            workspace_id, semantic_model.id, definition
+        )
+        return SemanticModelReference(workspace_id, semantic_model.id)
+
+    @staticmethod
+    def _load_definition_from_file(file_path: str) -> Dict[str, Any]:
+        """Load and validate semantic model definition from a local JSON file."""
+        local_path = Path(file_path)
+        if not local_path.is_file():
+            raise FabricValidationError(
+                "definition_file_path",
+                file_path,
+                "File does not exist or is not a file.",
+            )
+        try:
+            with open(local_path, "r", encoding="utf-8") as f:
+                content = json.load(f)
+        except json.JSONDecodeError as exc:
+            raise FabricValidationError(
+                "definition_file_path",
+                file_path,
+                f"File is not valid JSON: {exc}",
+            )
+        except OSError as exc:
+            raise FabricValidationError(
+                "definition_file_path",
+                file_path,
+                f"Cannot read file: {exc}",
+            )
+        if not isinstance(content, dict) or not content:
+            raise FabricValidationError(
+                "definition_file_path",
+                file_path,
+                "File must contain a non-empty JSON object.",
+            )
+        return content
 
     def _validate_relationship_params(
         self, cardinality: str, cross_filter_direction: str
@@ -658,7 +753,9 @@ class FabricSemanticModelService:
             definition = self.item_service.get_item_definition(
                 workspace_id, semantic_model_id, format=format
             )
-            parts = definition.get("definition", {}).get("parts") if definition else None
+            parts = (
+                definition.get("definition", {}).get("parts") if definition else None
+            )
             if definition and parts:
                 return definition
             if attempt < retries - 1:

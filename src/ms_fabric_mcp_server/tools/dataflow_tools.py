@@ -15,7 +15,8 @@ if TYPE_CHECKING:
 from ..services.dataflow import FabricDataflowService
 from ..services.item import FabricItemService
 from ..services.workspace import FabricWorkspaceService
-from .base import handle_tool_errors, log_tool_invocation
+from .base import (format_error_response, handle_tool_errors,
+                   log_tool_invocation)
 
 logger = logging.getLogger(__name__)
 
@@ -61,52 +62,56 @@ def register_dataflow_tools(
     def create_dataflow(
         workspace_name: str,
         dataflow_name: str,
-        mashup_content: str,
+        mashup_content: Optional[str] = None,
+        mashup_file_path: Optional[str] = None,
         query_metadata: Optional[dict] = None,
         description: Optional[str] = None,
         folder_path: Optional[str] = None,
     ) -> dict:
         """Create a Dataflow Gen2 item with Power Query M code.
 
-        Creates a new Dataflow Gen2 in the specified workspace with the provided
-        Power Query M code. The dataflow can transform data from various sources.
+                Creates a new Dataflow Gen2 in the specified workspace with the provided
+                Power Query M code. The dataflow can transform data from various sources.
 
-        **Use this tool when:**
-        - You need to create a new dataflow for data transformation
-        - You want to define Power Query M transformations programmatically
-        - You're building ETL pipelines that require Power Query logic
+                **Use this tool when:**
+                - You need to create a new dataflow for data transformation
+                - You want to define Power Query M transformations programmatically
+                - You're building ETL pipelines that require Power Query logic
 
-        Parameters:
-            workspace_name: The display name of the target workspace.
-            dataflow_name: Display name for the new dataflow.
-            mashup_content: Power Query M code in section format (mashup.pq content).
-                           Must include a section declaration and shared queries.
-            query_metadata: Optional queryMetadata.json as dict. If omitted, it will
-                           be auto-generated from the mashup content.
-            description: Optional description for the dataflow.
-            folder_path: Optional folder path (e.g., "etl/daily") to place the dataflow.
-                        Defaults to the workspace root when omitted.
+                Parameters:
+                    workspace_name: The display name of the target workspace.
+                    dataflow_name: Display name for the new dataflow.
+                    mashup_content: Power Query M code in section format (mashup.pq content).
+                                   Must include a section declaration and shared queries.
+                                   Mutually exclusive with *mashup_file_path*.
+                    mashup_file_path: Local file path to a mashup .pq file.
+                                   Mutually exclusive with *mashup_content*.
+                    query_metadata: Optional queryMetadata.json as dict. If omitted, it will
+                                   be auto-generated from the mashup content.
+                    description: Optional description for the dataflow.
+                    folder_path: Optional folder path (e.g., "etl/daily") to place the dataflow.
+                                Defaults to the workspace root when omitted.
 
-        Returns:
-            Dictionary with status, dataflow_id, dataflow_name, and workspace_name.
+                Returns:
+                    Dictionary with status, dataflow_id, dataflow_name, and workspace_name.
 
-        Example:
-            ```python
-            result = create_dataflow(
-                workspace_name="Analytics",
-                dataflow_name="CustomerETL",
-                mashup_content=\"\"\"
-section Section1;
-shared Customers = let
-    Source = Lakehouse.Contents([]),
-    Nav1 = Source{[workspaceId = "..."]}[Data],
-    Result = Nav1{[lakehouseId = "..."]}[Data]
-in
-    Result;
-\"\"\",
-                description="Customer data transformation"
-            )
-            ```
+                Example:
+                    ```python
+                    result = create_dataflow(
+                        workspace_name="Analytics",
+                        dataflow_name="CustomerETL",
+                        mashup_content=\"\"\"
+        section Section1;
+        shared Customers = let
+            Source = Lakehouse.Contents([]),
+            Nav1 = Source{[workspaceId = "..."]}[Data],
+            Result = Nav1{[lakehouseId = "..."]}[Data]
+        in
+            Result;
+        \"\"\",
+                        description="Customer data transformation"
+                    )
+                    ```
         """
         log_tool_invocation(
             "create_dataflow",
@@ -114,7 +119,23 @@ in
             dataflow_name=dataflow_name,
             description=description,
             folder_path=folder_path,
+            mashup_file_path=mashup_file_path,
         )
+
+        if mashup_content is not None and mashup_file_path is not None:
+            return format_error_response(
+                "VALIDATION_ERROR",
+                "Provide either mashup_content or mashup_file_path, not both.",
+            )
+
+        if mashup_content is None and mashup_file_path is None:
+            return format_error_response(
+                "VALIDATION_ERROR",
+                "Provide either mashup_content or mashup_file_path.",
+            )
+
+        if mashup_file_path is not None:
+            mashup_content = dataflow_service._load_mashup_from_file(mashup_file_path)
         logger.info(
             f"Creating dataflow '{dataflow_name}' in workspace '{workspace_name}'"
         )
@@ -150,6 +171,7 @@ in
     def get_dataflow_definition(
         workspace_name: str,
         dataflow_name: str,
+        save_to_path: Optional[str] = None,
     ) -> dict:
         """Retrieve the full definition of an existing dataflow.
 
@@ -164,6 +186,8 @@ in
         Parameters:
             workspace_name: The display name of the workspace containing the dataflow.
             dataflow_name: Name of the dataflow to retrieve.
+            save_to_path: Optional local file path. When provided, the definition
+                is written to this file and a lightweight metadata dict is returned.
 
         Returns:
             Dictionary with status, dataflow_id, dataflow_name, workspace_name,
@@ -186,6 +210,7 @@ in
             "get_dataflow_definition",
             workspace_name=workspace_name,
             dataflow_name=dataflow_name,
+            save_to_path=save_to_path,
         )
         logger.info(
             f"Getting definition for dataflow '{dataflow_name}' in workspace '{workspace_name}'"
@@ -204,7 +229,19 @@ in
         query_metadata, mashup_content = dataflow_service.get_dataflow_definition(
             workspace_id=workspace_id,
             dataflow_id=dataflow.id,
+            save_to_path=save_to_path,
         )
+
+        if save_to_path is not None:
+            result = {
+                "status": "success",
+                "dataflow_id": dataflow.id,
+                "dataflow_name": dataflow_name,
+                "workspace_name": workspace_name,
+                **query_metadata,
+            }
+            logger.info(f"Dataflow definition saved for '{dataflow_name}'")
+            return result
 
         logger.info(f"Successfully retrieved definition for dataflow '{dataflow_name}'")
         return {

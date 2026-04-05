@@ -75,6 +75,7 @@ def register_pipeline_tools(
         description: Optional[str] = None,
         folder_path: Optional[str] = None,
         pipeline_content_json: Optional[Dict[str, Any]] = None,
+        pipeline_file_path: Optional[str] = None,
         platform: Optional[Dict[str, Any]] = None,
     ) -> dict:
         """Create a Fabric pipeline.
@@ -89,6 +90,8 @@ def register_pipeline_tools(
             folder_path: Optional folder path (e.g., "pipelines/daily") to place the pipeline.
                          Defaults to the workspace root when omitted.
             pipeline_content_json: Optional pipeline definition JSON.
+            pipeline_file_path: Optional local file path to a pipeline JSON file.
+                Mutually exclusive with *pipeline_content_json*.
             platform: Optional .platform JSON definition.
 
         Returns:
@@ -99,7 +102,19 @@ def register_pipeline_tools(
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
             folder_path=folder_path,
+            pipeline_file_path=pipeline_file_path,
         )
+
+        if pipeline_content_json is not None and pipeline_file_path is not None:
+            return format_error_response(
+                "VALIDATION_ERROR",
+                "Provide either pipeline_content_json or pipeline_file_path, not both.",
+            )
+
+        if pipeline_file_path is not None:
+            pipeline_content_json = pipeline_service._load_pipeline_from_file(
+                pipeline_file_path
+            )
 
         logger.info(
             f"Creating pipeline '{pipeline_name}' in workspace '{workspace_name}'"
@@ -657,6 +672,7 @@ def register_pipeline_tools(
         workspace_name: str,
         pipeline_name: str,
         format: Optional[str] = None,
+        save_to_path: Optional[str] = None,
     ) -> dict:
         """Get a Fabric pipeline definition (decoded JSON).
 
@@ -664,6 +680,8 @@ def register_pipeline_tools(
             workspace_name: The display name of the workspace containing the pipeline.
             pipeline_name: Name of the pipeline.
             format: Optional format hint for the definition (pass-through).
+            save_to_path: Optional local file path. When provided, the definition
+                is written to this file and a lightweight metadata dict is returned.
 
         Returns:
             Dictionary with status, pipeline metadata, pipeline_content_json, and optional platform.
@@ -673,6 +691,7 @@ def register_pipeline_tools(
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
             format=format,
+            save_to_path=save_to_path,
         )
 
         logger.info(
@@ -689,7 +708,22 @@ def register_pipeline_tools(
             workspace_id=workspace_id,
             pipeline_id=pipeline.id,
             format=format,
+            save_to_path=save_to_path,
         )
+
+        if save_to_path is not None:
+            result = {
+                "status": "success",
+                "pipeline_id": pipeline.id,
+                "pipeline_name": pipeline.display_name,
+                "workspace_name": workspace.display_name,
+                "workspace_id": workspace_id,
+                **definition_result,
+            }
+            logger.info(
+                f"Pipeline definition saved for {pipeline.display_name} ({pipeline.id})"
+            )
+            return result
 
         result = {
             "status": "success",
@@ -714,7 +748,8 @@ def register_pipeline_tools(
     def update_pipeline_definition(
         workspace_name: str,
         pipeline_name: str,
-        pipeline_content_json: dict,
+        pipeline_content_json: Optional[dict] = None,
+        pipeline_file_path: Optional[str] = None,
         platform: Optional[dict] = None,
         update_metadata: bool = False,
     ) -> dict:
@@ -724,6 +759,9 @@ def register_pipeline_tools(
             workspace_name: The display name of the workspace containing the pipeline.
             pipeline_name: Name of the pipeline.
             pipeline_content_json: Pipeline definition JSON to upload.
+                Mutually exclusive with *pipeline_file_path*.
+            pipeline_file_path: Local file path to a pipeline JSON file.
+                Mutually exclusive with *pipeline_content_json*.
             platform: Optional .platform JSON definition.
             update_metadata: Whether to apply metadata updates (requires platform).
 
@@ -734,8 +772,26 @@ def register_pipeline_tools(
             "update_pipeline_definition",
             workspace_name=workspace_name,
             pipeline_name=pipeline_name,
+            pipeline_file_path=pipeline_file_path,
             update_metadata=update_metadata,
         )
+
+        if pipeline_content_json is not None and pipeline_file_path is not None:
+            return format_error_response(
+                "VALIDATION_ERROR",
+                "Provide either pipeline_content_json or pipeline_file_path, not both.",
+            )
+
+        if pipeline_content_json is None and pipeline_file_path is None:
+            return format_error_response(
+                "VALIDATION_ERROR",
+                "Provide either pipeline_content_json or pipeline_file_path.",
+            )
+
+        if pipeline_file_path is not None:
+            pipeline_content_json = pipeline_service._load_pipeline_from_file(
+                pipeline_file_path
+            )
 
         logger.info(
             f"Updating definition for pipeline '{pipeline_name}' in workspace '{workspace_name}'"

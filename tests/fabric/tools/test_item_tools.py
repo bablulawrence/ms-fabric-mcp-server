@@ -111,7 +111,9 @@ class TestItemTools:
 
         assert result["status"] == "success"
         assert result["item"]["id"] == "item-2"
-        item_service.get_item_by_name.assert_called_once_with("ws-1", "Pipe", "DataPipeline")
+        item_service.get_item_by_name.assert_called_once_with(
+            "ws-1", "Pipe", "DataPipeline"
+        )
 
     def test_list_folders_root_folder_path(self):
         tools, tool_decorator = _capture_tools()

@@ -5,14 +5,14 @@
 This module provides MCP tools for generic Fabric item and folder operations.
 """
 
-from typing import Optional, TYPE_CHECKING
 import logging
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
 
-from ..services import FabricItemService, FabricWorkspaceService
 from ..client.exceptions import FabricItemNotFoundError, FabricValidationError
+from ..services import FabricItemService, FabricWorkspaceService
 from .base import handle_tool_errors, log_tool_invocation
 
 logger = logging.getLogger(__name__)
@@ -21,10 +21,10 @@ logger = logging.getLogger(__name__)
 def register_item_tools(
     mcp: "FastMCP",
     item_service: FabricItemService,
-    workspace_service: FabricWorkspaceService
+    workspace_service: FabricWorkspaceService,
 ):
     """Register item management MCP tools.
-    
+
     This function registers item-related tools:
     - list_items: List items in a workspace with optional type filter
     - get_item: Get an item by ID or display name/type
@@ -36,12 +36,12 @@ def register_item_tools(
     - delete_item: Delete an item by name and type
     - rename_item: Rename an item by ID
     - move_item_to_folder: Move an item to a folder by ID
-    
+
     Args:
         mcp: FastMCP server instance to register tools on.
         item_service: Initialized FabricItemService instance.
         workspace_service: Initialized FabricWorkspaceService instance for name resolution.
-        
+
     Example:
         ```python
         from ms_fabric_mcp_server import (
@@ -49,16 +49,16 @@ def register_item_tools(
             FabricWorkspaceService, FabricItemService
         )
         from ms_fabric_mcp_server.tools import register_item_tools
-        
+
         config = FabricConfig.from_environment()
         client = FabricClient(config)
         workspace_service = FabricWorkspaceService(client)
         item_service = FabricItemService(client)
-        
+
         register_item_tools(mcp, item_service, workspace_service)
         ```
     """
-    
+
     @mcp.tool(title="List Items in Workspace")
     @handle_tool_errors
     def list_items(
@@ -69,12 +69,12 @@ def register_item_tools(
         recursive: bool = True,
     ) -> dict:
         """List all items in a Fabric workspace, optionally filtered by type.
-        
+
         Returns all items in the specified workspace. If item_type is provided,
         only items of that type are returned. Supported types include: Notebook,
         Lakehouse, Warehouse, Pipeline, DataPipeline, Report, SemanticModel,
         Dashboard, Dataflow, Dataset, and 40+ other Fabric item types.
-        
+
         Parameters:
             workspace_name: The display name of the workspace.
             item_type: Optional item type filter (e.g., "Notebook", "Lakehouse").
@@ -83,17 +83,17 @@ def register_item_tools(
             root_folder_path: Optional folder path to scope the listing (e.g., "team/etl").
                               Defaults to the workspace root when omitted.
             recursive: Whether to include items in subfolders (default True).
-                      
+
         Returns:
             Dictionary with status, workspace_name, item_type_filter, item_count,
             and list of items. Each item contains: id, display_name, type, description,
             folder_id, created_date, modified_date.
-            
+
         Example:
             ```python
             # List all items
             result = list_items("My Workspace")
-            
+
             # List only notebooks
             result = list_items("My Workspace", item_type="Notebook")
             ```
@@ -106,12 +106,14 @@ def register_item_tools(
             root_folder_path=root_folder_path,
             recursive=recursive,
         )
-        logger.info(f"Listing items in workspace '{workspace_name}'" + 
-                   (f" (type: {item_type})" if item_type else " (all types)"))
-        
+        logger.info(
+            f"Listing items in workspace '{workspace_name}'"
+            + (f" (type: {item_type})" if item_type else " (all types)")
+        )
+
         # Resolve workspace ID
         workspace_id = workspace_service.resolve_workspace_id(workspace_name)
-        
+
         if root_folder_id and root_folder_path:
             raise FabricValidationError(
                 "root_folder_path",
@@ -131,7 +133,7 @@ def register_item_tools(
             root_folder_id=root_folder_id,
             recursive=recursive,
         )
-        
+
         result = {
             "status": "success",
             "workspace_name": workspace_name,
@@ -148,11 +150,13 @@ def register_item_tools(
                     "modified_date": item.modified_date,
                 }
                 for item in items
-            ]
+            ],
         }
-        
+
         type_filter_msg = f" of type '{item_type}'" if item_type else ""
-        logger.info(f"Found {len(items)} items{type_filter_msg} in workspace '{workspace_name}'")
+        logger.info(
+            f"Found {len(items)} items{type_filter_msg} in workspace '{workspace_name}'"
+        )
         return result
 
     @mcp.tool(title="Get Item")
@@ -444,7 +448,9 @@ def register_item_tools(
                 workspace_id, folder_path, create_missing=False
             )
 
-        folder = item_service.delete_folder(workspace_id=workspace_id, folder_id=folder_id)
+        folder = item_service.delete_folder(
+            workspace_id=workspace_id, folder_id=folder_id
+        )
 
         return {
             "status": "success",
@@ -499,30 +505,25 @@ def register_item_tools(
             "message": f"Lakehouse '{lakehouse.display_name}' created successfully",
         }
 
-
     @mcp.tool(title="Delete Item from Workspace")
     @handle_tool_errors
-    def delete_item(
-        workspace_name: str,
-        item_name: str,
-        item_type: str
-    ) -> dict:
+    def delete_item(workspace_name: str, item_name: str, item_type: str) -> dict:
         """Delete an item from a Fabric workspace.
-        
+
         Deletes the specified item from the workspace. The item is identified by
         its display name and type. Common item types include: Notebook, Lakehouse,
         Warehouse, Pipeline, Report, SemanticModel, Dashboard, etc.
-        
+
         Parameters:
             workspace_name: The display name of the workspace.
             item_name: Name of the item to delete.
             item_type: Type of the item to delete (e.g., "Notebook", "Lakehouse").
                       Supported types: Notebook, Lakehouse, Warehouse, Pipeline,
                       DataPipeline, Report, SemanticModel, Dashboard, Dataflow, Dataset.
-                      
+
         Returns:
             Dictionary with status and success/error message.
-            
+
         Example:
             ```python
             result = delete_item(
@@ -532,34 +533,39 @@ def register_item_tools(
             )
             ```
         """
-        log_tool_invocation("delete_item", workspace_name=workspace_name,
-                          item_name=item_name, item_type=item_type)
-        logger.info(f"Deleting {item_type} '{item_name}' from workspace '{workspace_name}'")
-        
+        log_tool_invocation(
+            "delete_item",
+            workspace_name=workspace_name,
+            item_name=item_name,
+            item_type=item_type,
+        )
+        logger.info(
+            f"Deleting {item_type} '{item_name}' from workspace '{workspace_name}'"
+        )
+
         try:
             # Resolve workspace ID
             workspace_id = workspace_service.resolve_workspace_id(workspace_name)
-            
+
             # Find the item
             item = item_service.get_item_by_name(workspace_id, item_name, item_type)
-            
+
             # Delete the item
             item_service.delete_item(workspace_id, item.id)
-            
+
             logger.info(f"Successfully deleted {item_type} '{item_name}'")
             return {
                 "status": "success",
-                "message": f"Successfully deleted {item_type} '{item_name}'"
+                "message": f"Successfully deleted {item_type} '{item_name}'",
             }
-            
+
         except FabricItemNotFoundError:
-            error_msg = f"{item_type} '{item_name}' not found in workspace '{workspace_name}'"
+            error_msg = (
+                f"{item_type} '{item_name}' not found in workspace '{workspace_name}'"
+            )
             logger.error(error_msg)
-            return {
-                "status": "error",
-                "message": error_msg
-            }
-    
+            return {"status": "error", "message": error_msg}
+
     @mcp.tool(title="Rename Item")
     @handle_tool_errors
     def rename_item(

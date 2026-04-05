@@ -2,20 +2,20 @@
 # ABOUTME: Provides tools to create semantic models and add tables/relationships.
 """Semantic model management MCP tools."""
 
-from typing import Optional, TYPE_CHECKING
 import logging
+from typing import TYPE_CHECKING, Optional
 
 from ms_fabric_mcp_server.client.exceptions import FabricValidationError
-from ms_fabric_mcp_server.models.semantic_model import (
-    SemanticModelColumn,
-    SemanticModelMeasure,
-)
-from ms_fabric_mcp_server.services.semantic_model import FabricSemanticModelService
+from ms_fabric_mcp_server.models.semantic_model import (SemanticModelColumn,
+                                                        SemanticModelMeasure)
+from ms_fabric_mcp_server.services.semantic_model import \
+    FabricSemanticModelService
 
 if TYPE_CHECKING:
     from fastmcp import FastMCP
 
-from .base import handle_tool_errors, log_tool_invocation
+from .base import (format_error_response, handle_tool_errors,
+                   log_tool_invocation)
 
 logger = logging.getLogger(__name__)
 
@@ -342,6 +342,7 @@ def register_semantic_model_tools(
         semantic_model_id: Optional[str] = None,
         format: str = "TMSL",
         decode_model_bim: bool = False,
+        save_to_path: Optional[str] = None,
     ) -> dict:
         """Get semantic model definition parts in the requested format."""
         log_tool_invocation(
@@ -351,14 +352,31 @@ def register_semantic_model_tools(
             semantic_model_id=semantic_model_id,
             format=format,
             decode_model_bim=decode_model_bim,
+            save_to_path=save_to_path,
         )
 
-        semantic_model, definition = semantic_model_service.get_semantic_model_definition(
-            workspace_name=workspace_name,
-            semantic_model_name=semantic_model_name,
-            semantic_model_id=semantic_model_id,
-            format=format,
+        semantic_model, definition = (
+            semantic_model_service.get_semantic_model_definition(
+                workspace_name=workspace_name,
+                semantic_model_name=semantic_model_name,
+                semantic_model_id=semantic_model_id,
+                format=format,
+                save_to_path=save_to_path,
+            )
         )
+
+        if save_to_path is not None:
+            result = {
+                "status": "success",
+                "workspace_name": workspace_name,
+                "semantic_model_name": semantic_model.display_name,
+                "semantic_model_id": semantic_model.id,
+                **definition,
+            }
+            logger.info(
+                f"Semantic model definition saved in workspace '{workspace_name}'"
+            )
+            return result
 
         result = {
             "status": "success",
@@ -381,6 +399,73 @@ def register_semantic_model_tools(
 
         logger.info(
             f"Semantic model definition retrieved in workspace '{workspace_name}'"
+        )
+        return result
+
+    @mcp.tool(title="Update Semantic Model Definition")
+    @handle_tool_errors
+    def update_semantic_model_definition(
+        workspace_name: str,
+        semantic_model_name: Optional[str] = None,
+        semantic_model_id: Optional[str] = None,
+        definition: Optional[dict] = None,
+        definition_file_path: Optional[str] = None,
+    ) -> dict:
+        """Update a semantic model definition.
+
+        Parameters:
+            workspace_name: The display name of the workspace.
+            semantic_model_name: Name of the semantic model (optional if ID provided).
+            semantic_model_id: ID of the semantic model (optional if name provided).
+            definition: Definition dict to upload. Mutually exclusive with *definition_file_path*.
+            definition_file_path: Local file path to a definition JSON file.
+                Mutually exclusive with *definition*.
+
+        Returns:
+            Dictionary with status and semantic_model_id.
+        """
+        log_tool_invocation(
+            "update_semantic_model_definition",
+            workspace_name=workspace_name,
+            semantic_model_name=semantic_model_name,
+            semantic_model_id=semantic_model_id,
+            definition_file_path=definition_file_path,
+        )
+
+        if definition is not None and definition_file_path is not None:
+            return format_error_response(
+                "VALIDATION_ERROR",
+                "Provide either definition or definition_file_path, not both.",
+            )
+
+        if definition is None and definition_file_path is None:
+            return format_error_response(
+                "VALIDATION_ERROR",
+                "Provide either definition or definition_file_path.",
+            )
+
+        if definition_file_path is not None:
+            definition = semantic_model_service._load_definition_from_file(
+                definition_file_path
+            )
+
+        ref = semantic_model_service.update_semantic_model_definition(
+            workspace_name=workspace_name,
+            definition=definition,
+            semantic_model_name=semantic_model_name,
+            semantic_model_id=semantic_model_id,
+        )
+
+        result = {
+            "status": "success",
+            "semantic_model_id": ref.id,
+            "workspace_name": workspace_name,
+            "workspace_id": ref.workspace_id,
+            "message": "Semantic model definition updated successfully",
+        }
+
+        logger.info(
+            f"Semantic model definition updated in workspace '{workspace_name}'"
         )
         return result
 

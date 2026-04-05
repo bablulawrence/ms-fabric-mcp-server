@@ -584,6 +584,66 @@ class TestFabricPipelineService:
                 update_metadata=True,
             )
 
+    def test_get_pipeline_definition_save_to_path(
+        self, pipeline_service, mock_client, tmp_path
+    ):
+        """Saves pipeline definition to file and returns metadata."""
+        definition_payload = {"properties": {"activities": []}}
+        encoded_definition = pipeline_service._encode_definition(definition_payload)
+        response = Mock()
+        response.json.return_value = {
+            "definition": {
+                "parts": [
+                    {
+                        "path": "pipeline-content.json",
+                        "payload": encoded_definition,
+                    }
+                ]
+            }
+        }
+        mock_client.make_api_request.return_value = response
+        out_file = str(tmp_path / "pipeline.json")
+        result = pipeline_service.get_pipeline_definition(
+            workspace_id="ws-1", pipeline_id="pipe-1", save_to_path=out_file
+        )
+        assert result["file_path"] == out_file
+        assert result["size_bytes"] > 0
+        assert "pipeline_content_json" not in result
+        with open(out_file) as f:
+            saved = json.load(f)
+        assert saved["pipeline_content_json"] == definition_payload
+
+    def test_get_pipeline_definition_save_to_path_bad_parent(self, pipeline_service):
+        with pytest.raises(FabricValidationError):
+            pipeline_service.get_pipeline_definition(
+                workspace_id="ws-1",
+                pipeline_id="pipe-1",
+                save_to_path="/nonexistent/dir/pipeline.json",
+            )
+
+    def test_load_pipeline_from_file_success(self, pipeline_service, tmp_path):
+        content = {"properties": {"activities": [{"name": "Copy"}]}}
+        file_path = tmp_path / "pipeline.json"
+        file_path.write_text(json.dumps(content))
+        loaded = pipeline_service._load_pipeline_from_file(str(file_path))
+        assert loaded == content
+
+    def test_load_pipeline_from_file_not_found(self, pipeline_service):
+        with pytest.raises(FabricValidationError):
+            pipeline_service._load_pipeline_from_file("/nonexistent/pipeline.json")
+
+    def test_load_pipeline_from_file_invalid_json(self, pipeline_service, tmp_path):
+        file_path = tmp_path / "bad.json"
+        file_path.write_text("not json")
+        with pytest.raises(FabricValidationError):
+            pipeline_service._load_pipeline_from_file(str(file_path))
+
+    def test_load_pipeline_from_file_empty(self, pipeline_service, tmp_path):
+        file_path = tmp_path / "empty.json"
+        file_path.write_text("{}")
+        with pytest.raises(FabricValidationError):
+            pipeline_service._load_pipeline_from_file(str(file_path))
+
     def test_set_activity_dependency_add(self, pipeline_service, mock_item_service):
         """Add dependency to activity."""
         pipeline_item = FabricItem(
