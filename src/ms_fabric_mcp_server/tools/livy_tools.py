@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from fastmcp import FastMCP
 
-from ..client.exceptions import FabricLivyError, FabricLivyTimeoutError
+from ..client.exceptions import FabricLivyError
 from ..services import FabricLivyService
 from .base import handle_tool_errors, log_tool_invocation
 
@@ -304,21 +304,20 @@ def register_livy_tools(mcp: "FastMCP", livy_service: FabricLivyService):
         session_id: str,
         code: str,
         kind: str = "pyspark",
-        with_wait: bool = True,
-        timeout_seconds: Optional[int] = None,
     ) -> dict:
         """Execute code in a Livy session.
 
-                Executes PySpark, Scala, or SparkR code in an existing Livy session. The session
-                must be in 'idle' state to accept new statements.
+                Executes PySpark, Scala, or SparkR code in an existing Livy session. The
+                session must be in 'idle' state to accept new statements.
 
                 **Important Notes**:
+                - Returns immediately with the statement ID; poll `livy_get_statement_status`
+                  for completion and output
                 - Use df.show() or df.printSchema() to inspect DataFrames before accessing columns
                 - SHOW TABLES returns 'namespace' column, not 'database' in Fabric
                 - Avoid direct Row attribute access without schema verification
                 - Provide real newline characters in `code` for multiline statements;
                   literal `\\n` text is sent as-is and can cause syntax errors
-                - When with_wait=False, returns immediately with statement ID - check status separately
 
                 Parameters:
                     workspace_id: Fabric workspace ID.
@@ -326,15 +325,13 @@ def register_livy_tools(mcp: "FastMCP", livy_service: FabricLivyService):
                     session_id: Livy session ID (must be in 'idle' state).
                     code: Code to execute (PySpark, Scala, or SparkR).
                     kind: Statement kind - 'pyspark' (default), 'scala', or 'sparkr'.
-                    with_wait: If True (default), wait for statement completion before returning.
-                    timeout_seconds: Maximum time to wait for statement completion (default: from config).
 
-                Returns:
-                    Dictionary with statement details including id, state, output, and execution details.
+        Returns:
+            Dictionary with statement submission details including id, state, and
+            other Livy metadata needed for follow-up polling.
 
                 Example:
                     ```python
-                    # Execute PySpark code
                     result = livy_run_statement(
                         workspace_id="12345678-1234-1234-1234-123456789abc",
                         lakehouse_id="87654321-4321-4321-4321-210987654321",
@@ -342,13 +339,15 @@ def register_livy_tools(mcp: "FastMCP", livy_service: FabricLivyService):
                         code='''df = spark.range(10)
         df.count()''',
                         kind="pyspark",
-                        with_wait=True
                     )
 
-                    if result.get("state") == "available":
-                        output = result.get("output", {})
-                        if output.get("status") == "ok":
-                            print(f"Result: {output.get('data', {}).get('text/plain')}")
+                    statement_id = str(result["id"])
+                    status = livy_get_statement_status(
+                        workspace_id="12345678-1234-1234-1234-123456789abc",
+                        lakehouse_id="87654321-4321-4321-4321-210987654321",
+                        session_id="0",
+                        statement_id=statement_id,
+                    )
                     ```
         """
         log_tool_invocation(
@@ -358,7 +357,6 @@ def register_livy_tools(mcp: "FastMCP", livy_service: FabricLivyService):
             session_id=session_id,
             code=code[:100],
             kind=kind,
-            with_wait=with_wait,
         )
         logger.info(f"Running statement in Livy session {session_id}")
 
@@ -369,34 +367,12 @@ def register_livy_tools(mcp: "FastMCP", livy_service: FabricLivyService):
                 session_id=session_id,
                 code=code,
                 kind=kind,
-                with_wait=with_wait,
-                timeout_seconds=timeout_seconds,
+                with_wait=False,
             )
 
             logger.info(f"Successfully submitted statement: {result.get('id')}")
-
-            # Surface Spark execution errors at the top level for easier detection
-            output = result.get("output", {})
-            if isinstance(output, dict) and output.get("status") == "error":
-                ename = output.get("ename", "")
-                evalue = output.get("evalue", "")
-                result["status"] = "error"
-                result["error_summary"] = f"{ename}: {evalue}" if ename else str(evalue)
-
             return result
 
-        except FabricLivyTimeoutError as exc:
-            logger.error(f"Livy statement timed out in session {session_id}: {exc}")
-            return {
-                "status": "error",
-                "error_code": "LIVY_TIMEOUT",
-                "message": (
-                    f"Statement timed out after {timeout_seconds or 'default'}s. "
-                    f"The statement may still be running in the Spark session. "
-                    f"Use livy_get_statement_status to check, or "
-                    f"livy_cancel_statement to cancel it. Details: {exc}"
-                ),
-            }
         except FabricLivyError as exc:
             logger.error(f"Livy error running statement: {exc}")
             return {"status": "error", "message": str(exc)}

@@ -272,9 +272,9 @@ Observed in this environment: session creation often falls back to on-demand clu
 minutes of startup latency and can exceed MCP tool-call timeouts (~60s).
 
 **Happy Path:**
-1. `livy_create_session` with `with_wait=false` to get a session id quickly.
+1. `livy_create_session` to get a session id quickly.
 2. Poll `livy_get_session_status` until `state == "idle"`.
-3. `livy_run_statement` with `with_wait=false`.
+3. `livy_run_statement`.
 4. Poll `livy_get_statement_status` until `state == "available"`.
 5. (Optional) `livy_get_session_log` for driver logs (may 404 until the session starts).
 6. `livy_close_session` for cleanup.
@@ -311,9 +311,9 @@ Notebook:
 - Use backoff polling and cap total wait time (10-20 minutes).
 
 Livy:
-- Use `livy_create_session(with_wait=False)` and poll `livy_get_session_status` until `idle`.
+- Use `livy_create_session` and poll `livy_get_session_status` until `idle`.
 - If startup is slow, call `livy_list_sessions` to capture `FallbackReasons`.
-- Run statements with `with_wait=False`, then poll `livy_get_statement_status` until `available`.
+- Run statements, then poll `livy_get_statement_status` until `available`.
 
 Pipeline:
 - Poll `get_job_status_by_url` for pipeline execution status

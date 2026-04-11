@@ -5,7 +5,9 @@ import pytest
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_livy_session_lifecycle(call_tool, lakehouse_id, workspace_id, poll_until):
+async def test_livy_session_lifecycle(
+    call_tool, lakehouse_id, workspace_id, poll_until
+):
     session_id = None
 
     try:
@@ -59,18 +61,30 @@ async def test_livy_session_lifecycle(call_tool, lakehouse_id, workspace_id, pol
             session_id=session_id,
             code="x = 1\nx + 1",
         )
-        assert statement_result.get("state") == "available"
-        assert statement_result.get("output", {}).get("status") == "ok"
+        assert statement_result.get("status") != "error"
         statement_id = str(statement_result.get("id"))
+        assert statement_id is not None
 
-        statement_status = await call_tool(
-            "livy_get_statement_status",
-            workspace_id=workspace_id,
-            lakehouse_id=lakehouse_id,
-            session_id=session_id,
-            statement_id=statement_id,
+        async def _statement_done():
+            status = await call_tool(
+                "livy_get_statement_status",
+                workspace_id=workspace_id,
+                lakehouse_id=lakehouse_id,
+                session_id=session_id,
+                statement_id=statement_id,
+            )
+            state = status.get("state")
+            if state == "available":
+                return status
+            if state in ("error", "cancelled"):
+                pytest.fail(f"Statement entered terminal state: {status}")
+            return None
+
+        statement_status = await poll_until(
+            _statement_done, timeout_seconds=120, interval_seconds=5
         )
         assert statement_status.get("state") == "available"
+        assert statement_status.get("output", {}).get("status") == "ok"
 
     finally:
         if session_id:
@@ -121,7 +135,6 @@ async def test_livy_cancel_statement(call_tool, lakehouse_id, workspace_id, poll
             lakehouse_id=lakehouse_id,
             session_id=session_id,
             code="import time\ntime.sleep(120)",
-            with_wait=False,
         )
         assert statement_result.get("status") != "error"
         statement_id = str(statement_result.get("id"))
