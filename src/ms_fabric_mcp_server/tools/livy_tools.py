@@ -57,14 +57,14 @@ def register_livy_tools(mcp: "FastMCP", livy_service: FabricLivyService):
         environment_id: Optional[str] = None,
         kind: str = "pyspark",
         conf: Optional[dict] = None,
-        with_wait: bool = True,
-        timeout_seconds: Optional[int] = None,
     ) -> dict:
         """Create a new Livy session for Spark code execution.
 
         Creates a Spark session for executing PySpark, Scala, or SparkR code. Session
-        creation can take 6+ minutes on first startup as Spark initializes. It's recommended
-        to keep with_wait=True to ensure the session is ready before use.
+        creation can take 6+ minutes on first startup as Spark initializes.
+
+        Returns immediately after submitting the session creation request.
+        Use livy_get_session_status to poll until the session state becomes 'idle'.
 
         Parameters:
             workspace_id: Fabric workspace ID (use list_workspaces tool to find by name).
@@ -72,27 +72,33 @@ def register_livy_tools(mcp: "FastMCP", livy_service: FabricLivyService):
             environment_id: Optional Fabric environment ID for pre-installed libraries.
             kind: Session kind - 'pyspark' (default), 'scala', or 'sparkr'.
             conf: Optional Spark configuration as key-value pairs (e.g., {"spark.executor.memory": "4g"}).
-            with_wait: If True (default), wait for session to become available before returning.
-            timeout_seconds: Maximum time to wait for session availability (default: from config).
 
         Returns:
             Dictionary with session details including id, state, kind, appId, appInfo, and log.
+            The session state will typically be 'starting' — poll with
+            livy_get_session_status until it becomes 'idle' before running statements.
             When Fabric falls back to a slower startup path, response may include
             fallback_reasons and fallback_messages from session tags.
 
         Example:
             ```python
-            # Create a PySpark session
+            # Create a PySpark session (returns immediately)
             result = livy_create_session(
                 workspace_id="12345678-1234-1234-1234-123456789abc",
                 lakehouse_id="87654321-4321-4321-4321-210987654321",
                 kind="pyspark",
-                with_wait=True
             )
 
-            if result.get("state") == "idle":
-                session_id = result["id"]
+            session_id = result["id"]
+            # Poll for readiness
+            status = livy_get_session_status(
+                workspace_id="12345678-1234-1234-1234-123456789abc",
+                lakehouse_id="87654321-4321-4321-4321-210987654321",
+                session_id=str(session_id),
+            )
+            if status.get("state") == "idle":
                 # Session is ready to execute code
+                pass
             ```
         """
         log_tool_invocation(
@@ -101,7 +107,6 @@ def register_livy_tools(mcp: "FastMCP", livy_service: FabricLivyService):
             lakehouse_id=lakehouse_id,
             environment_id=environment_id,
             kind=kind,
-            with_wait=with_wait,
         )
         logger.info(
             f"Creating Livy session for workspace {workspace_id}, lakehouse {lakehouse_id}"
@@ -114,23 +119,14 @@ def register_livy_tools(mcp: "FastMCP", livy_service: FabricLivyService):
                 environment_id=environment_id,
                 kind=kind,
                 conf=conf,
-                with_wait=with_wait,
-                timeout_seconds=timeout_seconds,
+                with_wait=False,
             )
 
-            if result.get("state") == "idle":
-                logger.info(
-                    f"Successfully created and started Livy session: {result.get('id')}"
-                )
-            else:
-                logger.info(
-                    f"Successfully created Livy session: {result.get('id')} (state: {result.get('state', 'unknown')})"
-                )
+            logger.info(
+                f"Successfully created Livy session: {result.get('id')} (state: {result.get('state', 'unknown')})"
+            )
             return result
 
-        except FabricLivyTimeoutError as exc:
-            logger.error(f"Livy session creation timed out: {exc}")
-            return {"status": "error", "message": f"Session creation timed out: {exc}"}
         except FabricLivyError as exc:
             logger.error(f"Livy error creating session: {exc}")
             return {"status": "error", "message": str(exc)}

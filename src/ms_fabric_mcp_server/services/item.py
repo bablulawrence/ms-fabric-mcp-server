@@ -59,6 +59,7 @@ class FabricItemService:
         "Report",
         "SemanticModel",
         "Dashboard",
+        "DataAgent",
         "Dataflow",
         "Dataset",
         "Datamart",

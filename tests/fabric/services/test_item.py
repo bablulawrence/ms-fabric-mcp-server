@@ -28,6 +28,10 @@ class TestFabricItemService:
         """Known item types are accepted."""
         item_service._validate_item_type("Notebook")
 
+    def test_validate_item_type_data_agent(self, item_service):
+        """DataAgent is a valid item type."""
+        item_service._validate_item_type("DataAgent")
+
     def test_validate_item_type_invalid(self, item_service):
         """Unknown item types raise validation error."""
         with pytest.raises(FabricValidationError):
