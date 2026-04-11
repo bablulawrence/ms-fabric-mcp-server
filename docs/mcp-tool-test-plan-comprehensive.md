@@ -457,7 +457,7 @@ Expected: SQL endpoint retrieved; queries execute successfully.
 ### 7) Livy Flow (Session Lifecycle)
 
 **Happy Path:**
-1. `livy_create_session` (with_wait=false)
+1. `livy_create_session`
 2. `livy_list_sessions` - verify session appears
 3. Poll `livy_get_session_status` until `state == "idle"`
 4. `livy_get_session_log` (start=0, size=100)

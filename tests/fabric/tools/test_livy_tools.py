@@ -4,8 +4,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from ms_fabric_mcp_server.client.exceptions import (FabricLivyError,
-                                                    FabricLivyTimeoutError)
+from ms_fabric_mcp_server.client.exceptions import FabricLivyError
 from ms_fabric_mcp_server.tools.livy_tools import register_livy_tools
 from tests.fabric.tools.utils import capture_tools
 
@@ -19,7 +18,7 @@ class TestLivyTools:
         livy_service.list_sessions.return_value = {"sessions": [{"id": "1"}]}
         livy_service.get_session_status.return_value = {"id": "1", "state": "idle"}
         livy_service.close_session.return_value = {"msg": "closed"}
-        livy_service.run_statement.return_value = {"id": "1", "state": "available"}
+        livy_service.run_statement.return_value = {"id": "1", "state": "running"}
         livy_service.get_statement_status.return_value = {
             "id": "1",
             "state": "available",
@@ -55,7 +54,7 @@ class TestLivyTools:
             tools["livy_run_statement"](
                 workspace_id="ws-1", lakehouse_id="lh-1", session_id="1", code="1+1"
             )["state"]
-            == "available"
+            == "running"
         )
         assert (
             tools["livy_get_statement_status"](
@@ -82,7 +81,7 @@ class TestLivyTools:
     def test_livy_run_statement_passes_code_verbatim(self):
         tools, mcp = capture_tools()
         livy_service = Mock()
-        livy_service.run_statement.return_value = {"id": "1", "state": "available"}
+        livy_service.run_statement.return_value = {"id": "1", "state": "running"}
         register_livy_tools(mcp, livy_service)
 
         code = "x = 1\\nx + 1"
@@ -94,6 +93,8 @@ class TestLivyTools:
         )
 
         assert livy_service.run_statement.call_args.kwargs["code"] == code
+        assert livy_service.run_statement.call_args.kwargs["with_wait"] is False
+        assert "timeout_seconds" not in livy_service.run_statement.call_args.kwargs
 
     def test_create_session_always_no_wait(self):
         """livy_create_session always calls service with with_wait=False."""
@@ -102,29 +103,10 @@ class TestLivyTools:
         livy_service.create_session.return_value = {"id": "1", "state": "starting"}
         register_livy_tools(mcp, livy_service)
 
-        result = tools["livy_create_session"](
-            workspace_id="ws-1", lakehouse_id="lh-1"
-        )
+        result = tools["livy_create_session"](workspace_id="ws-1", lakehouse_id="lh-1")
 
         assert livy_service.create_session.call_args.kwargs["with_wait"] is False
         assert result["state"] == "starting"
-
-    def test_run_statement_timeout_returns_error(self):
-        """livy_run_statement returns structured error on timeout, not empty dict."""
-        tools, mcp = capture_tools()
-        livy_service = Mock()
-        livy_service.run_statement.side_effect = FabricLivyTimeoutError(
-            "statement execution", 600
-        )
-        register_livy_tools(mcp, livy_service)
-
-        result = tools["livy_run_statement"](
-            workspace_id="ws-1", lakehouse_id="lh-1", session_id="1", code="long_code()"
-        )
-
-        assert result["status"] == "error"
-        assert result["error_code"] == "LIVY_TIMEOUT"
-        assert "timed out" in result["message"].lower()
 
     def test_run_statement_unexpected_error_returns_error(self):
         """livy_run_statement returns structured error on unexpected exceptions."""
@@ -139,31 +121,6 @@ class TestLivyTools:
 
         assert result["status"] == "error"
         assert "pipe broken" in result["message"]
-
-    def test_run_statement_spark_error_enriched(self):
-        """livy_run_statement surfaces output.status=error at top level."""
-        tools, mcp = capture_tools()
-        livy_service = Mock()
-        livy_service.run_statement.return_value = {
-            "id": "5",
-            "state": "available",
-            "output": {
-                "status": "error",
-                "ename": "KeyError",
-                "evalue": "'column_x' not in index",
-            },
-        }
-        register_livy_tools(mcp, livy_service)
-
-        result = tools["livy_run_statement"](
-            workspace_id="ws-1", lakehouse_id="lh-1", session_id="1", code="df['x']"
-        )
-
-        assert result["status"] == "error"
-        assert result["error_summary"] == "KeyError: 'column_x' not in index"
-        # Original fields still present
-        assert result["state"] == "available"
-        assert result["output"]["ename"] == "KeyError"
 
     def test_get_statement_status_spark_error_enriched(self):
         """livy_get_statement_status surfaces output.status=error at top level."""
