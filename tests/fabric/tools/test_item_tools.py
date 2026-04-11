@@ -412,3 +412,29 @@ class TestItemTools:
 
         assert result["status"] == "success"
         item_service.delete_item.assert_called_once_with("ws-1", "item-1")
+
+    def test_delete_data_agent_success(self):
+        """Delete a DataAgent item."""
+        tools, tool_decorator = _capture_tools()
+        mcp = SimpleNamespace(tool=tool_decorator)
+
+        item_service = Mock()
+        workspace_service = Mock()
+        workspace_service.resolve_workspace_id.return_value = "ws-1"
+        item_service.get_item_by_name.return_value = FabricItem(
+            id="agent-1",
+            display_name="test-data-agent-1",
+            type="DataAgent",
+            workspace_id="ws-1",
+        )
+
+        register_item_tools(mcp, item_service, workspace_service)
+
+        result = tools["delete_item"](
+            workspace_name="data-agent-ws1",
+            item_name="test-data-agent-1",
+            item_type="DataAgent",
+        )
+
+        assert result["status"] == "success"
+        item_service.delete_item.assert_called_once_with("ws-1", "agent-1")

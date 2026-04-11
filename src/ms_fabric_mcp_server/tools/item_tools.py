@@ -519,7 +519,8 @@ def register_item_tools(
             item_name: Name of the item to delete.
             item_type: Type of the item to delete (e.g., "Notebook", "Lakehouse").
                       Supported types: Notebook, Lakehouse, Warehouse, Pipeline,
-                      DataPipeline, Report, SemanticModel, Dashboard, Dataflow, Dataset.
+                      DataPipeline, Report, SemanticModel, Dashboard, DataAgent,
+                      Dataflow, Dataset.
 
         Returns:
             Dictionary with status and success/error message.
