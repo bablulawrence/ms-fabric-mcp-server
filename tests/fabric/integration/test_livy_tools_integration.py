@@ -5,7 +5,7 @@ import pytest
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_livy_session_lifecycle(call_tool, lakehouse_id, workspace_id):
+async def test_livy_session_lifecycle(call_tool, lakehouse_id, workspace_id, poll_until):
     session_id = None
 
     try:
@@ -13,11 +13,27 @@ async def test_livy_session_lifecycle(call_tool, lakehouse_id, workspace_id):
             "livy_create_session",
             workspace_id=workspace_id,
             lakehouse_id=lakehouse_id,
-            with_wait=True,
         )
         assert create_result.get("status") != "error"
         session_id = str(create_result.get("id"))
         assert session_id is not None
+
+        # Poll until session is ready
+        async def _session_ready():
+            status = await call_tool(
+                "livy_get_session_status",
+                workspace_id=workspace_id,
+                lakehouse_id=lakehouse_id,
+                session_id=session_id,
+            )
+            state = status.get("state")
+            if state == "idle":
+                return status
+            if state in ("error", "dead", "killed"):
+                pytest.fail(f"Session entered terminal state: {state}")
+            return None
+
+        await poll_until(_session_ready, timeout_seconds=600, interval_seconds=10)
 
         list_result = await call_tool(
             "livy_list_sessions",
@@ -77,11 +93,27 @@ async def test_livy_cancel_statement(call_tool, lakehouse_id, workspace_id, poll
             "livy_create_session",
             workspace_id=workspace_id,
             lakehouse_id=lakehouse_id,
-            with_wait=True,
         )
         assert create_result.get("status") != "error"
         session_id = str(create_result.get("id"))
         assert session_id is not None
+
+        # Poll until session is ready
+        async def _session_ready():
+            status = await call_tool(
+                "livy_get_session_status",
+                workspace_id=workspace_id,
+                lakehouse_id=lakehouse_id,
+                session_id=session_id,
+            )
+            state = status.get("state")
+            if state == "idle":
+                return status
+            if state in ("error", "dead", "killed"):
+                pytest.fail(f"Session entered terminal state: {state}")
+            return None
+
+        await poll_until(_session_ready, timeout_seconds=600, interval_seconds=10)
 
         statement_result = await call_tool(
             "livy_run_statement",
