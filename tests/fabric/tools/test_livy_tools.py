@@ -15,7 +15,7 @@ class TestLivyTools:
     def test_livy_tools_smoke(self):
         tools, mcp = capture_tools()
         livy_service = Mock()
-        livy_service.create_session.return_value = {"id": "1", "state": "idle"}
+        livy_service.create_session.return_value = {"id": "1", "state": "starting"}
         livy_service.list_sessions.return_value = {"sessions": [{"id": "1"}]}
         livy_service.get_session_status.return_value = {"id": "1", "state": "idle"}
         livy_service.close_session.return_value = {"msg": "closed"}
@@ -94,6 +94,20 @@ class TestLivyTools:
         )
 
         assert livy_service.run_statement.call_args.kwargs["code"] == code
+
+    def test_create_session_always_no_wait(self):
+        """livy_create_session always calls service with with_wait=False."""
+        tools, mcp = capture_tools()
+        livy_service = Mock()
+        livy_service.create_session.return_value = {"id": "1", "state": "starting"}
+        register_livy_tools(mcp, livy_service)
+
+        result = tools["livy_create_session"](
+            workspace_id="ws-1", lakehouse_id="lh-1"
+        )
+
+        assert livy_service.create_session.call_args.kwargs["with_wait"] is False
+        assert result["state"] == "starting"
 
     def test_run_statement_timeout_returns_error(self):
         """livy_run_statement returns structured error on timeout, not empty dict."""
