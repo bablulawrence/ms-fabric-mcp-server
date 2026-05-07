@@ -211,7 +211,7 @@ The server provides **57 core tools**, with **3 additional SQL tools** when inst
 
 ### SQL Tools (Optional)
 
-SQL tools require `pyodbc` and the Microsoft ODBC Driver for SQL Server:
+SQL tools require `pyodbc` and the Microsoft ODBC Driver for SQL Server (Driver 18 or 17 — the service auto-detects which is installed and prefers Driver 18; set `FABRIC_ODBC_DRIVER` to override):
 
 ```bash
 # Install with SQL support
@@ -221,7 +221,7 @@ pip install ms-fabric-mcp-server[sql]
 curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
 curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
 sudo apt-get update
-sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
+sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18  # or msodbcsql17
 ```
 
 If `pyodbc` is not available, the server starts with 57 tools (SQL tools disabled).

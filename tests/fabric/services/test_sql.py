@@ -24,6 +24,7 @@ def sql_service(mock_fabric_client, sql_module, monkeypatch):
     monkeypatch.setattr(sql_module, "PYODBC_AVAILABLE", True)
     monkeypatch.setattr(sql_module, "OTEL_AVAILABLE", False)
     pyodbc_mock = Mock()
+    pyodbc_mock.drivers.return_value = ["ODBC Driver 18 for SQL Server"]
     monkeypatch.setattr(sql_module, "pyodbc", pyodbc_mock)
     azure_cred_mock = Mock()
     monkeypatch.setattr(sql_module, "DefaultAzureCredential", azure_cred_mock)
@@ -492,3 +493,120 @@ class TestFabricSQLService:
         assert "Database=mydb" in args[0]
         # Should NOT mutate self._connection
         assert service._connection is None
+
+
+@pytest.mark.unit
+class TestResolveOdbcDriver:
+    """Tests for _resolve_odbc_driver — auto-detect with FABRIC_ODBC_DRIVER override."""
+
+    def test_prefers_driver_18_when_both_installed(self, sql_module, monkeypatch):
+        monkeypatch.delenv("FABRIC_ODBC_DRIVER", raising=False)
+        monkeypatch.setattr(sql_module, "PYODBC_AVAILABLE", True)
+        pyodbc_mock = Mock()
+        pyodbc_mock.drivers.return_value = [
+            "ODBC Driver 17 for SQL Server",
+            "ODBC Driver 18 for SQL Server",
+        ]
+        monkeypatch.setattr(sql_module, "pyodbc", pyodbc_mock)
+
+        assert sql_module._resolve_odbc_driver() == "ODBC Driver 18 for SQL Server"
+
+    def test_falls_back_to_driver_17(self, sql_module, monkeypatch):
+        monkeypatch.delenv("FABRIC_ODBC_DRIVER", raising=False)
+        monkeypatch.setattr(sql_module, "PYODBC_AVAILABLE", True)
+        pyodbc_mock = Mock()
+        pyodbc_mock.drivers.return_value = ["ODBC Driver 17 for SQL Server"]
+        monkeypatch.setattr(sql_module, "pyodbc", pyodbc_mock)
+
+        assert sql_module._resolve_odbc_driver() == "ODBC Driver 17 for SQL Server"
+
+    def test_env_override_wins_when_installed(self, sql_module, monkeypatch):
+        monkeypatch.setenv("FABRIC_ODBC_DRIVER", "ODBC Driver 17 for SQL Server")
+        monkeypatch.setattr(sql_module, "PYODBC_AVAILABLE", True)
+        pyodbc_mock = Mock()
+        pyodbc_mock.drivers.return_value = [
+            "ODBC Driver 17 for SQL Server",
+            "ODBC Driver 18 for SQL Server",
+        ]
+        monkeypatch.setattr(sql_module, "pyodbc", pyodbc_mock)
+
+        assert sql_module._resolve_odbc_driver() == "ODBC Driver 17 for SQL Server"
+
+    def test_env_override_missing_raises(self, sql_module, monkeypatch):
+        monkeypatch.setenv("FABRIC_ODBC_DRIVER", "ODBC Driver 99 for SQL Server")
+        monkeypatch.setattr(sql_module, "PYODBC_AVAILABLE", True)
+        pyodbc_mock = Mock()
+        pyodbc_mock.drivers.return_value = ["ODBC Driver 18 for SQL Server"]
+        monkeypatch.setattr(sql_module, "pyodbc", pyodbc_mock)
+
+        with pytest.raises(FabricConnectionError, match="ODBC Driver 99 for SQL Server"):
+            sql_module._resolve_odbc_driver()
+
+    def test_no_compatible_driver_raises(self, sql_module, monkeypatch):
+        monkeypatch.delenv("FABRIC_ODBC_DRIVER", raising=False)
+        monkeypatch.setattr(sql_module, "PYODBC_AVAILABLE", True)
+        pyodbc_mock = Mock()
+        pyodbc_mock.drivers.return_value = ["FreeTDS"]
+        monkeypatch.setattr(sql_module, "pyodbc", pyodbc_mock)
+
+        with pytest.raises(FabricConnectionError, match="No compatible SQL Server ODBC driver"):
+            sql_module._resolve_odbc_driver()
+
+    def test_pyodbc_unavailable_raises(self, sql_module, monkeypatch):
+        monkeypatch.delenv("FABRIC_ODBC_DRIVER", raising=False)
+        monkeypatch.setattr(sql_module, "PYODBC_AVAILABLE", False)
+        with pytest.raises(FabricConnectionError, match="pyodbc is not installed"):
+            sql_module._resolve_odbc_driver()
+
+
+@pytest.mark.unit
+class TestCreateConnectionUsesResolver:
+    """_create_connection threads the resolved driver into the connection string."""
+
+    def test_uses_driver_18_by_default(self, sql_service, monkeypatch):
+        service, _, _, pyodbc_mock, _ = sql_service
+        monkeypatch.delenv("FABRIC_ODBC_DRIVER", raising=False)
+        pyodbc_mock.drivers.return_value = ["ODBC Driver 18 for SQL Server"]
+        service._get_token_bytes = Mock(return_value=b"token")
+        pyodbc_mock.connect.return_value = Mock()
+
+        service._create_connection("server-host", "mydb")
+
+        cnx_str = pyodbc_mock.connect.call_args[0][0]
+        assert "Driver={ODBC Driver 18 for SQL Server}" in cnx_str
+
+    def test_uses_driver_17_fallback(self, sql_service, monkeypatch):
+        service, _, _, pyodbc_mock, _ = sql_service
+        monkeypatch.delenv("FABRIC_ODBC_DRIVER", raising=False)
+        pyodbc_mock.drivers.return_value = ["ODBC Driver 17 for SQL Server"]
+        service._get_token_bytes = Mock(return_value=b"token")
+        pyodbc_mock.connect.return_value = Mock()
+
+        service._create_connection("server-host", "mydb")
+
+        cnx_str = pyodbc_mock.connect.call_args[0][0]
+        assert "Driver={ODBC Driver 17 for SQL Server}" in cnx_str
+
+    def test_env_override_routes_into_connection_string(self, sql_service, monkeypatch):
+        service, _, _, pyodbc_mock, _ = sql_service
+        monkeypatch.setenv("FABRIC_ODBC_DRIVER", "ODBC Driver 17 for SQL Server")
+        pyodbc_mock.drivers.return_value = [
+            "ODBC Driver 17 for SQL Server",
+            "ODBC Driver 18 for SQL Server",
+        ]
+        service._get_token_bytes = Mock(return_value=b"token")
+        pyodbc_mock.connect.return_value = Mock()
+
+        service._create_connection("server-host", "mydb")
+
+        cnx_str = pyodbc_mock.connect.call_args[0][0]
+        assert "Driver={ODBC Driver 17 for SQL Server}" in cnx_str
+
+    def test_no_driver_installed_surfaces_clear_error(self, sql_service, monkeypatch):
+        service, _, _, pyodbc_mock, _ = sql_service
+        monkeypatch.delenv("FABRIC_ODBC_DRIVER", raising=False)
+        pyodbc_mock.drivers.return_value = []
+        service._get_token_bytes = Mock(return_value=b"token")
+
+        with pytest.raises(FabricConnectionError, match="No compatible SQL Server ODBC driver"):
+            service._create_connection("server-host", "mydb")
