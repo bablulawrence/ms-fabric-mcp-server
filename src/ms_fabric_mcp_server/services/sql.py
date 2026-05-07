@@ -3,6 +3,7 @@
 """Fabric SQL Warehouse Service for connecting and executing queries."""
 
 import logging
+import os
 import random
 import struct
 import time
@@ -34,6 +35,50 @@ except ImportError:
     OTEL_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+ODBC_DRIVER_PREFERENCE = (
+    "ODBC Driver 18 for SQL Server",
+    "ODBC Driver 17 for SQL Server",
+)
+
+
+def _resolve_odbc_driver() -> str:
+    """Pick an installed SQL Server ODBC driver.
+
+    Honours the ``FABRIC_ODBC_DRIVER`` environment variable as an explicit
+    override. Otherwise prefers Driver 18, falling back to Driver 17. Both
+    drivers are wire-compatible with the connection strings used by this
+    service because ``Encrypt`` and ``TrustServerCertificate`` are set
+    explicitly (Driver 18 only differs from 17 in the *default* for those
+    settings).
+
+    Raises:
+        FabricConnectionError: when no compatible driver is installed, or
+            when ``FABRIC_ODBC_DRIVER`` is set to a driver that is not
+            present.
+    """
+    if not PYODBC_AVAILABLE:
+        raise FabricConnectionError(
+            "pyodbc is not installed. Install with `pip install ms-fabric-mcp-server[sql]`."
+        )
+    available = pyodbc.drivers()
+    override = os.environ.get("FABRIC_ODBC_DRIVER")
+    if override:
+        if override in available:
+            return override
+        raise FabricConnectionError(
+            f"FABRIC_ODBC_DRIVER='{override}' is not installed. "
+            f"Detected drivers: {available}"
+        )
+    for preferred in ODBC_DRIVER_PREFERENCE:
+        if preferred in available:
+            return preferred
+    raise FabricConnectionError(
+        "No compatible SQL Server ODBC driver found. Install "
+        f"{ODBC_DRIVER_PREFERENCE[0]!r} (preferred) or "
+        f"{ODBC_DRIVER_PREFERENCE[1]!r}. "
+        f"Detected drivers: {available}"
+    )
 
 
 class FabricSQLService:
@@ -298,15 +343,17 @@ class FabricSQLService:
             if "," not in sql_endpoint and ":" not in sql_endpoint:
                 sql_endpoint = f"{sql_endpoint},1433"
 
+            driver = _resolve_odbc_driver()
             cnx_str = (
-                "Driver={ODBC Driver 18 for SQL Server};"
+                f"Driver={{{driver}}};"
                 f"Server={sql_endpoint};"
                 f"Database={database};"
                 "Encrypt=yes;TrustServerCertificate=no"
             )
 
             logger.info(
-                f"Creating connection to SQL endpoint: {sql_endpoint}, database: {database}"
+                f"Creating connection to SQL endpoint: {sql_endpoint}, "
+                f"database: {database}, driver: {driver!r}"
             )
             connection = pyodbc.connect(cnx_str, attrs_before=attrs, autocommit=True)
             return connection
