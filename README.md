@@ -336,8 +336,6 @@ The tests assume the following Fabric / Azure infrastructure is already in place
 
 7. **GitHub Actions** (if running the bundled workflows): create an environment named `Integration` in your fork's repository settings and add every `FABRIC_TEST_*` and `AZURE_*` variable above as an environment secret with the same name. `.github/workflows/integration-tests.yml` lists the canonical secret-name set.
 
-> **Internal note for ASA-affiliated developers:** the `ai-solution-accelerator` repo's `docs/eval-infra/` directory (especially `fabric-connections.md`, `gateway-setup.md`, `cloud-engines.md`, and `vm-topology.md`) is the operational runbook for the lab tenant that this MCP server is integration-tested against. External contributors should treat this section's prerequisites as a high-level checklist rather than a step-by-step guide.
-
 ## License
 
 MIT
