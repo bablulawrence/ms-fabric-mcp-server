@@ -424,7 +424,7 @@ def lakehouse_name():
 @pytest.fixture
 def sql_database():
     """Configured SQL database name."""
-    return get_env_or_skip("FABRIC_TEST_SQL_DATABASE")
+    return get_env_or_skip("FABRIC_TEST_LAKEHOUSE_SQL_DATABASE")
 
 
 @pytest.fixture
@@ -466,14 +466,23 @@ async def lakehouse_id(call_tool, workspace_name, lakehouse_name):
 
 
 @pytest.fixture
-def pipeline_copy_inputs():
-    """Optional pipeline copy inputs from env vars."""
-    source_connection_id = get_env_optional("FABRIC_TEST_SOURCE_CONNECTION_ID")
-    source_type = get_env_optional("FABRIC_TEST_SOURCE_TYPE")
-    source_schema = get_env_optional("FABRIC_TEST_SOURCE_SCHEMA")
-    source_table = get_env_optional("FABRIC_TEST_SOURCE_TABLE")
+def pipeline_copy_postgres_inputs():
+    """Optional pipeline copy inputs for a PostgreSQL source.
+
+    Configure via env to point at any reachable PostgreSQL — Fabric will use
+    the connection's underlying network path (VPN, private endpoint, etc.).
+    Returns ``None`` when any required value is missing so the test skips.
+    """
+    source_connection_id = get_env_optional("FABRIC_TEST_POSTGRES_CONNECTION_ID")
+    source_type = (
+        get_env_optional("FABRIC_TEST_POSTGRES_SOURCE_TYPE") or "PostgreSqlSource"
+    )
+    source_schema = get_env_optional("FABRIC_TEST_POSTGRES_SCHEMA")
+    source_table = get_env_optional("FABRIC_TEST_POSTGRES_TABLE")
     dest_connection_id = get_env_optional("FABRIC_TEST_DEST_CONNECTION_ID")
-    dest_table = get_env_optional("FABRIC_TEST_DEST_TABLE_NAME") or source_table
+    dest_table = (
+        get_env_optional("FABRIC_TEST_POSTGRES_DEST_TABLE_NAME") or source_table
+    )
 
     if not all(
         [
@@ -498,18 +507,28 @@ def pipeline_copy_inputs():
 
 
 @pytest.fixture
-def pipeline_copy_sql_inputs():
-    """Optional pipeline copy inputs for SQL fallback mode."""
-    source_connection_id = get_env_optional("FABRIC_TEST_SOURCE_SQL_CONNECTION_ID")
-    source_schema = get_env_optional("FABRIC_TEST_SOURCE_SCHEMA")
-    source_table = get_env_optional("FABRIC_TEST_SOURCE_TABLE")
+def pipeline_copy_sqlserver_inputs():
+    """Optional pipeline copy inputs for a SQL Server source.
+
+    Configure via env to point at any reachable SQL Server — Azure SQL DB,
+    a VM-hosted instance reached over VPN, etc. Returns ``None`` when any
+    required value is missing so the test skips.
+    """
+    source_connection_id = get_env_optional("FABRIC_TEST_SQLSERVER_CONNECTION_ID")
+    source_type = (
+        get_env_optional("FABRIC_TEST_SQLSERVER_SOURCE_TYPE") or "SqlServerSource"
+    )
+    source_schema = get_env_optional("FABRIC_TEST_SQLSERVER_SCHEMA")
+    source_table = get_env_optional("FABRIC_TEST_SQLSERVER_TABLE")
     dest_connection_id = get_env_optional("FABRIC_TEST_DEST_CONNECTION_ID")
-    dest_table = get_env_optional("FABRIC_TEST_DEST_TABLE_NAME") or source_table
-    source_sql_query = get_env_optional("FABRIC_TEST_SOURCE_SQL_QUERY")
+    dest_table = (
+        get_env_optional("FABRIC_TEST_SQLSERVER_DEST_TABLE_NAME") or source_table
+    )
 
     if not all(
         [
             source_connection_id,
+            source_type,
             source_schema,
             source_table,
             dest_connection_id,
@@ -520,11 +539,11 @@ def pipeline_copy_sql_inputs():
 
     return {
         "source_connection_id": source_connection_id,
+        "source_type": source_type,
         "source_schema": source_schema,
         "source_table": source_table,
         "destination_connection_id": dest_connection_id,
         "destination_table": dest_table,
-        "source_sql_query": source_sql_query,
     }
 
 
