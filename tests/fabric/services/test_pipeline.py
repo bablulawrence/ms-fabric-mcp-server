@@ -229,6 +229,54 @@ class TestFabricPipelineService:
         sink_dataset = activity["typeProperties"]["sink"]["datasetSettings"]
         assert sink_dataset["type"] == "LakehouseTable"
         assert sink_dataset["typeProperties"]["table"] == "movie"
+        # Issue #18 regression: default destination schema must be "dbo".
+        assert sink_dataset["typeProperties"]["schema"] == "dbo"
+
+    def test_build_copy_activity_definition_respects_destination_table_schema(
+        self, pipeline_service
+    ):
+        """Issue #18: caller-provided destination_table_schema must reach the
+        sink. Without this, schema-enabled Lakehouses targeting non-dbo
+        layers (e.g. medallion bronze) silently land under dbo."""
+        definition = pipeline_service._build_copy_activity_definition(
+            workspace_id="workspace-123",
+            source_type="AzurePostgreSqlSource",
+            source_connection_id="conn-123",
+            source_schema="public",
+            source_table="movie",
+            destination_lakehouse_id="lakehouse-456",
+            destination_connection_id="dest-conn-789",
+            destination_table="movie",
+            table_action_option="Append",
+            apply_v_order=True,
+            timeout="01:00:00",
+            retry=0,
+            retry_interval_seconds=30,
+            destination_table_schema="bronze",
+        )
+
+        activity = definition["properties"]["activities"][0]
+        sink_dataset = activity["typeProperties"]["sink"]["datasetSettings"]
+        assert sink_dataset["typeProperties"]["schema"] == "bronze"
+        assert sink_dataset["typeProperties"]["table"] == "movie"
+
+    def test_validate_pipeline_inputs_empty_destination_table_schema(
+        self, pipeline_service
+    ):
+        """Empty destination_table_schema must be rejected (issue #18)."""
+        with pytest.raises(FabricValidationError) as exc_info:
+            pipeline_service._validate_pipeline_inputs(
+                pipeline_name="Test_Pipeline",
+                source_type="AzurePostgreSqlSource",
+                source_connection_id="conn-123",
+                source_schema="public",
+                source_table="movie",
+                destination_lakehouse_id="lakehouse-456",
+                destination_connection_id="dest-conn-789",
+                destination_table="movie",
+                destination_table_schema="",
+            )
+        assert "destination_table_schema" in str(exc_info.value)
 
     def test_build_copy_activity_definition_lakehouse_omits_schema(
         self, pipeline_service
@@ -818,6 +866,53 @@ class TestFabricPipelineService:
         payload = update_payload["definition"]["parts"][0]["payload"]
         updated = _decode_payload(payload)
         assert updated["properties"]["activities"][-1]["name"] == "CopyMovieData"
+        # Issue #18 regression: default destination schema stays "dbo".
+        sink_dataset = updated["properties"]["activities"][-1]["typeProperties"][
+            "sink"
+        ]["datasetSettings"]
+        assert sink_dataset["typeProperties"]["schema"] == "dbo"
+
+    def test_add_copy_activity_to_pipeline_threads_destination_table_schema(
+        self, pipeline_service, mock_item_service, mock_client
+    ):
+        """Issue #18: destination_table_schema flows through the public service
+        method to the produced sink. Confirms the medallion-bronze case end
+        to end at the service layer."""
+        mock_item_service.get_item_by_name.return_value = FabricItem(
+            id="pipe-1",
+            display_name="Pipe",
+            type="DataPipeline",
+            workspace_id="ws-1",
+        )
+        base_definition = {"properties": {"activities": []}}
+        encoded = pipeline_service._encode_definition(base_definition)
+        mock_item_service.get_item_definition.return_value = {
+            "definition": {
+                "parts": [{"path": "pipeline-content.json", "payload": encoded}]
+            }
+        }
+
+        pipeline_service.add_copy_activity_to_pipeline(
+            workspace_id="ws-1",
+            pipeline_name="pl_chinook_bronze",
+            source_type="AzureMySqlSource",
+            source_connection_id="conn-123",
+            source_schema="Chinook",
+            source_table="customer",
+            destination_lakehouse_id="lh-1",
+            destination_connection_id="dest-conn",
+            destination_table="customer",
+            destination_table_schema="bronze",
+        )
+
+        _, kwargs = mock_client.make_api_request.call_args
+        payload = kwargs["payload"]["definition"]["parts"][0]["payload"]
+        updated = _decode_payload(payload)
+        sink_dataset = updated["properties"]["activities"][-1]["typeProperties"][
+            "sink"
+        ]["datasetSettings"]
+        assert sink_dataset["typeProperties"]["schema"] == "bronze"
+        assert sink_dataset["typeProperties"]["table"] == "customer"
 
     def test_add_copy_activity_to_pipeline_missing_part(
         self, pipeline_service, mock_item_service

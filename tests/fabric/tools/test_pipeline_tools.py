@@ -172,6 +172,53 @@ class TestPipelineTools:
             == "success"
         )
 
+    def test_add_copy_activity_tool_forwards_destination_table_schema(self):
+        """Issue #18: the MCP tool must forward destination_table_schema to the
+        service so non-dbo Lakehouse schemas (e.g. medallion bronze) reach the
+        produced Copy Activity sink."""
+        tools, mcp = capture_tools()
+        pipeline_service = Mock()
+        workspace_service = Mock()
+        item_service = Mock()
+        workspace_service.resolve_workspace_id.return_value = "ws-1"
+        workspace_service.get_workspace_by_id.return_value = SimpleNamespace(
+            display_name="Workspace"
+        )
+        pipeline_service.add_copy_activity_to_pipeline.return_value = "pipe-1"
+
+        register_pipeline_tools(mcp, pipeline_service, workspace_service, item_service)
+
+        # Default: no destination_table_schema → service receives "dbo".
+        tools["add_copy_activity_to_pipeline"](
+            workspace_name="Workspace",
+            pipeline_name="Pipe",
+            source_type="AzureSqlSource",
+            source_connection_id="conn-1",
+            source_table_schema="dbo",
+            source_table_name="table",
+            destination_lakehouse_id="lh-1",
+            destination_connection_id="lh-conn",
+            destination_table_name="table",
+        )
+        _, default_kwargs = pipeline_service.add_copy_activity_to_pipeline.call_args
+        assert default_kwargs["destination_table_schema"] == "dbo"
+
+        # Caller-supplied medallion bronze schema must reach the service.
+        tools["add_copy_activity_to_pipeline"](
+            workspace_name="Workspace",
+            pipeline_name="pl_chinook_bronze",
+            source_type="AzureMySqlSource",
+            source_connection_id="conn-1",
+            source_table_schema="Chinook",
+            source_table_name="customer",
+            destination_lakehouse_id="lh-1",
+            destination_connection_id="lh-conn",
+            destination_table_name="customer",
+            destination_table_schema="bronze",
+        )
+        _, bronze_kwargs = pipeline_service.add_copy_activity_to_pipeline.call_args
+        assert bronze_kwargs["destination_table_schema"] == "bronze"
+
     def test_get_pipeline_definition_save_to_path(self):
         tools, mcp = capture_tools()
         pipeline_service = Mock()

@@ -174,6 +174,7 @@ def register_pipeline_tools(
         timeout: str = "0.12:00:00",
         retry: int = 0,
         retry_interval_seconds: int = 30,
+        destination_table_schema: str = "dbo",
     ) -> dict:
         """Add a Copy Activity to an existing Fabric pipeline.
 
@@ -206,6 +207,13 @@ def register_pipeline_tools(
             timeout: Activity timeout (default: "0.12:00:00").
             retry: Number of retry attempts (default: 0).
             retry_interval_seconds: Retry interval in seconds (default: 30).
+            destination_table_schema: Schema for the destination Lakehouse table
+                (default: "dbo"). For schema-enabled Lakehouses targeting a
+                medallion layer (e.g. bronze/silver/gold), pass the layer name
+                explicitly. The schema must already exist in the destination
+                Lakehouse — Fabric does not auto-create Lakehouse schemas, and
+                an unknown schema causes the Copy Activity to fall back to dbo
+                with a dotted table name at runtime.
 
         Returns:
             Dictionary with status, pipeline_id, pipeline_name, activity_name, workspace_name, and message.
@@ -261,6 +269,20 @@ def register_pipeline_tools(
                 source_access_mode="sql",
                 source_sql_query="SELECT * FROM dbo.fact_sale"  # optional
             )
+
+            # Medallion bronze landing on a schema-enabled Lakehouse:
+            result = add_copy_activity_to_pipeline(
+                workspace_name="Analytics Workspace",
+                pipeline_name="pl_chinook_bronze",
+                source_type="AzureMySqlSource",
+                source_connection_id="12345678-1234-1234-1234-123456789abc",
+                source_table_schema="Chinook",
+                source_table_name="customer",
+                destination_lakehouse_id=lakehouse_id,
+                destination_connection_id=lakehouse_conn_id,
+                destination_table_name="customer",
+                destination_table_schema="bronze",
+            )
             ```
         """
         log_tool_invocation(
@@ -269,7 +291,7 @@ def register_pipeline_tools(
             pipeline_name=pipeline_name,
             source_type=source_type,
             source_table=f"{source_table_schema}.{source_table_name}",
-            destination_table=destination_table_name,
+            destination_table=f"{destination_table_schema}.{destination_table_name}",
             activity_name=activity_name
             or f"CopyDataToLakehouse_{destination_table_name}",
             source_access_mode=source_access_mode,
@@ -277,7 +299,8 @@ def register_pipeline_tools(
 
         logger.info(
             f"Adding Copy Activity to pipeline '{pipeline_name}' in workspace '{workspace_name}' "
-            f"to copy {source_table_schema}.{source_table_name} ({source_type}) to {destination_table_name}"
+            f"to copy {source_table_schema}.{source_table_name} ({source_type}) "
+            f"to {destination_table_schema}.{destination_table_name}"
         )
 
         # Resolve workspace ID
@@ -303,6 +326,7 @@ def register_pipeline_tools(
             timeout=timeout,
             retry=retry,
             retry_interval_seconds=retry_interval_seconds,
+            destination_table_schema=destination_table_schema,
         )
 
         final_activity_name = (
