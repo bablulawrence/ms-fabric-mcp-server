@@ -127,6 +127,7 @@ class FabricPipelineService:
         timeout: str = "0.12:00:00",
         retry: int = 0,
         retry_interval_seconds: int = 30,
+        destination_table_schema: str = "dbo",
     ) -> str:
         """Create a Fabric pipeline with a Copy Activity.
 
@@ -152,6 +153,10 @@ class FabricPipelineService:
             timeout: Activity timeout (default: "0.12:00:00")
             retry: Number of retry attempts (default: 0)
             retry_interval_seconds: Retry interval in seconds (default: 30)
+            destination_table_schema: Schema for the destination Lakehouse table
+                (default "dbo"). For schema-enabled Lakehouses targeting a
+                medallion layer, pass e.g. "bronze". The schema must already
+                exist in the Lakehouse.
 
         Returns:
             Pipeline ID (GUID) of the created pipeline
@@ -191,6 +196,7 @@ class FabricPipelineService:
             destination_lakehouse_id,
             destination_connection_id,
             destination_table,
+            destination_table_schema=destination_table_schema,
         )
         source_access_mode = (
             source_access_mode.lower().strip() if source_access_mode else ""
@@ -215,6 +221,7 @@ class FabricPipelineService:
                 retry_interval_seconds,
                 source_access_mode=source_access_mode,
                 source_sql_query=source_sql_query,
+                destination_table_schema=destination_table_schema,
             )
 
             # Encode definition to Base64
@@ -262,6 +269,7 @@ class FabricPipelineService:
         destination_lakehouse_id: str,
         destination_connection_id: str,
         destination_table: str,
+        destination_table_schema: str = "dbo",
     ) -> None:
         """Validate pipeline creation inputs.
 
@@ -274,6 +282,8 @@ class FabricPipelineService:
             destination_lakehouse_id: Destination lakehouse ID
             destination_connection_id: Destination connection ID
             destination_table: Destination table name
+            destination_table_schema: Destination Lakehouse schema name
+                (default "dbo"; must be non-empty).
 
         Raises:
             FabricValidationError: If any input is invalid
@@ -322,6 +332,13 @@ class FabricPipelineService:
                 "destination_table", "empty", "Destination table cannot be empty"
             )
 
+        if not destination_table_schema or not destination_table_schema.strip():
+            raise FabricValidationError(
+                "destination_table_schema",
+                "empty",
+                "Destination table schema cannot be empty",
+            )
+
     def _build_copy_activity_definition(
         self,
         workspace_id: str,
@@ -339,6 +356,7 @@ class FabricPipelineService:
         retry_interval_seconds: int,
         source_access_mode: str = "direct",
         source_sql_query: Optional[str] = None,
+        destination_table_schema: str = "dbo",
     ) -> Dict[str, Any]:
         """Build the pipeline JSON structure with Copy Activity.
 
@@ -361,6 +379,10 @@ class FabricPipelineService:
             retry_interval_seconds: Retry interval in seconds
             source_access_mode: Source access mode ("direct" or "sql")
             source_sql_query: Optional SQL query for sql access mode
+            destination_table_schema: Schema for the destination Lakehouse table
+                (default "dbo"). For schema-enabled Lakehouses targeting a
+                medallion layer, pass e.g. "bronze". The schema must already
+                exist in the Lakehouse.
 
         Returns:
             Pipeline definition dictionary ready for encoding
@@ -383,6 +405,7 @@ class FabricPipelineService:
             retry_interval_seconds=retry_interval_seconds,
             source_access_mode=source_access_mode,
             source_sql_query=source_sql_query,
+            destination_table_schema=destination_table_schema,
         )
 
         definition = {"properties": {"activities": [copy_activity], "annotations": []}}
@@ -468,6 +491,7 @@ class FabricPipelineService:
         retry_interval_seconds: int,
         source_access_mode: str = "direct",
         source_sql_query: Optional[str] = None,
+        destination_table_schema: str = "dbo",
     ) -> Dict[str, Any]:
         effective_source_type = self._resolve_source_type(
             source_type, source_access_mode
@@ -533,7 +557,10 @@ class FabricPipelineService:
                         },
                         "type": "LakehouseTable",
                         "schema": [],
-                        "typeProperties": {"schema": "dbo", "table": destination_table},
+                        "typeProperties": {
+                            "schema": destination_table_schema,
+                            "table": destination_table,
+                        },
                     },
                 },
                 "enableStaging": False,
@@ -1218,6 +1245,7 @@ class FabricPipelineService:
         timeout: str = "0.12:00:00",
         retry: int = 0,
         retry_interval_seconds: int = 30,
+        destination_table_schema: str = "dbo",
     ) -> str:
         """Add a Copy Activity to an existing pipeline.
 
@@ -1243,6 +1271,10 @@ class FabricPipelineService:
             timeout: Activity timeout (default: "0.12:00:00")
             retry: Number of retry attempts (default: 0)
             retry_interval_seconds: Retry interval in seconds (default: 30)
+            destination_table_schema: Schema for the destination Lakehouse table
+                (default "dbo"). For schema-enabled Lakehouses targeting a
+                medallion layer, pass e.g. "bronze". The schema must already
+                exist in the Lakehouse.
 
         Returns:
             Pipeline ID (GUID) of the updated pipeline
@@ -1265,7 +1297,8 @@ class FabricPipelineService:
                 destination_lakehouse_id="lakehouse-456",
                 destination_connection_id="dest-conn-123",
                 destination_table="movie",
-                activity_name="CopyMovieData"
+                activity_name="CopyMovieData",
+                destination_table_schema="bronze",
             )
             ```
         """
@@ -1283,6 +1316,7 @@ class FabricPipelineService:
             destination_lakehouse_id,
             destination_connection_id,
             destination_table,
+            destination_table_schema=destination_table_schema,
         )
         source_access_mode = (
             source_access_mode.lower().strip() if source_access_mode else ""
@@ -1337,6 +1371,7 @@ class FabricPipelineService:
                 retry_interval_seconds=retry_interval_seconds,
                 source_access_mode=source_access_mode,
                 source_sql_query=source_sql_query,
+                destination_table_schema=destination_table_schema,
             )
             copy_activity["name"] = activity_name
 
