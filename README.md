@@ -250,37 +250,93 @@ mypy src
 
 ### Integration tests
 
-Integration tests run against live Fabric resources and are opt-in.
+Integration tests run against live Fabric resources and are opt-in. They require a pre-provisioned Fabric workspace, Lakehouse, Warehouse, and (for Copy Activity tests) at least one external-source connection. See **[Setup prerequisites](#setup-prerequisites-for-integration-tests)** below before your first run.
 
 To get started locally, copy the example env file:
 ```bash
 cp .env.integration.example .env.integration
 ```
 
-Required environment variables:
-- `FABRIC_INTEGRATION_TESTS=1`
-- `FABRIC_TEST_WORKSPACE_NAME`
-- `FABRIC_TEST_LAKEHOUSE_NAME`
-- `FABRIC_TEST_SQL_DATABASE`
+Then fill in values matching your provisioned resources. The full set of variables (with inline comments grouping by purpose) lives in `.env.integration.example`; this list is for orientation:
 
-Optional pipeline copy inputs:
-- `FABRIC_TEST_SOURCE_CONNECTION_ID`
-- `FABRIC_TEST_SOURCE_TYPE`
-- `FABRIC_TEST_SOURCE_SCHEMA`
-- `FABRIC_TEST_SOURCE_TABLE`
-- `FABRIC_TEST_DEST_CONNECTION_ID`
-- `FABRIC_TEST_DEST_TABLE_NAME` (optional override; defaults to source table name)
+**Required for all integration tests:**
+- `FABRIC_INTEGRATION_TESTS=1`
+- `FABRIC_TEST_WORKSPACE_NAME` — display name of the test workspace
+- `FABRIC_TEST_LAKEHOUSE_NAME` — Lakehouse item in the workspace (used as the destination for Copy Activities)
+- `FABRIC_TEST_LAKEHOUSE_SQL_DATABASE` — the Lakehouse's SQL endpoint database name (typically same as the Lakehouse name)
+- `FABRIC_TEST_WAREHOUSE_NAME` — Warehouse item in the workspace (used by SQL DML tests)
+
+**Required for Copy Activity tests (Pipeline Flow):**
+- `FABRIC_TEST_DEST_CONNECTION_ID` — Fabric connection ID for the destination Lakehouse (used by all Copy Activity tests)
+
+**Per-engine source inputs** — set all 5 vars of a block to enable that block's Copy Activity test; the test skips with a logged reason if any value is missing.
+
+PostgreSQL source (e.g., VM-hosted Postgres reachable via a gateway):
+- `FABRIC_TEST_POSTGRES_CONNECTION_ID`
+- `FABRIC_TEST_POSTGRES_SOURCE_TYPE` (default `PostgreSqlSource`)
+- `FABRIC_TEST_POSTGRES_SCHEMA`
+- `FABRIC_TEST_POSTGRES_TABLE`
+- `FABRIC_TEST_POSTGRES_DEST_TABLE_NAME`
+
+SQL Server source (e.g., VM-hosted SQL Server, Azure SQL DB):
+- `FABRIC_TEST_SQLSERVER_CONNECTION_ID`
+- `FABRIC_TEST_SQLSERVER_SOURCE_TYPE` (default `SqlServerSource`)
+- `FABRIC_TEST_SQLSERVER_SCHEMA`
+- `FABRIC_TEST_SQLSERVER_TABLE`
+- `FABRIC_TEST_SQLSERVER_DEST_TABLE_NAME`
+
+**Optional inputs** (other flows skip cleanly when absent):
+- Semantic Model: `FABRIC_TEST_SEMANTIC_MODEL_TABLE`, `FABRIC_TEST_SEMANTIC_MODEL_COLUMNS`, `FABRIC_TEST_SEMANTIC_MODEL_TABLE_2`, `FABRIC_TEST_SEMANTIC_MODEL_COLUMNS_2`, `FABRIC_TEST_SEMANTIC_MODEL_SCHEMA`
+- Dataflow: `FABRIC_TEST_DATAFLOW_NAME`
+- Azure SPN auth (when not using `az login`): `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`
+- Power BI tuning: `POWERBI_BASE_URL`, `POWERBI_SCOPES`, `POWERBI_API_CALL_TIMEOUT`, `POWERBI_REFRESH_POLL_INTERVAL`, `POWERBI_REFRESH_WAIT_TIMEOUT`
 
 Run integration tests:
 
 ```bash
-FABRIC_INTEGRATION_TESTS=1 pytest
+FABRIC_INTEGRATION_TESTS=1 pytest -m integration
+```
+
+Or filter to a specific test:
+```bash
+FABRIC_INTEGRATION_TESTS=1 pytest -m integration -k "copy_activity"
 ```
 
 Notes:
-- SQL tests require `pyodbc` and a SQL Server ODBC driver.
-- Tests may skip when optional dependencies or environment variables are missing.
-- These tests use live Fabric resources and may incur costs or side effects.
+- SQL tests require `pyodbc` and a SQL Server ODBC driver (Microsoft `msodbcsql18` recommended). The CI workflow installs it via `apt-get install msodbcsql18`.
+- Tests may skip when optional dependencies or environment variables are missing — this is intentional, not a failure.
+- These tests use live Fabric resources and may incur capacity-usage and storage costs. Run against a non-production workspace.
+
+#### Setup prerequisites for integration tests
+
+The tests assume the following Fabric / Azure infrastructure is already in place. This setup is one-time per environment and is not part of the test run itself:
+
+1. **A dedicated Fabric workspace** on an active capacity. Do **not** use a production workspace — the tests create, modify, and delete items.
+
+2. **A Lakehouse and a Warehouse** in that workspace, with display names matching `FABRIC_TEST_LAKEHOUSE_NAME` and `FABRIC_TEST_WAREHOUSE_NAME`. The Lakehouse's SQL endpoint database name (which usually matches the Lakehouse name) goes in `FABRIC_TEST_LAKEHOUSE_SQL_DATABASE`.
+
+3. **Source databases reachable from Fabric** (for Copy Activity tests). Options:
+   - **Azure-managed services** (Azure SQL DB, Azure Database for PostgreSQL): create directly; Fabric reaches them over the public Azure backbone.
+   - **VM-hosted or on-premises databases**: require an [on-premises data gateway](https://learn.microsoft.com/data-integration/gateway/service-gateway-onprem) installed on a Windows host that can reach both the source database (on the source network) and Fabric (over the public internet).
+
+4. **Fabric connections** to those source databases (one per source-engine you want to test). Create via Fabric portal → Settings → *Manage connections and gateways* → New connection. Use the [Fabric REST API](https://learn.microsoft.com/rest/api/fabric/core/connections/list-connections) to read back the GUID for `FABRIC_TEST_*_CONNECTION_ID`:
+   ```bash
+   TOKEN=$(az account get-access-token --resource https://api.fabric.microsoft.com --query accessToken -o tsv)
+   curl -sS -H "Authorization: Bearer $TOKEN" https://api.fabric.microsoft.com/v1/connections \
+     | python3 -c "import json,sys
+   for c in json.load(sys.stdin).get('value',[]):
+       print(f\"{c['displayName']:40s} {c['id']}\")"
+   ```
+
+5. **A Lakehouse-destination Fabric connection** (Cloud > Lakehouse). Used for `FABRIC_TEST_DEST_CONNECTION_ID`. Pipeline Copy Activities target this connection when writing to the destination Lakehouse.
+
+6. **Auth**:
+   - **Local development**: `az login` as a Fabric workspace member is sufficient (the server uses `DefaultAzureCredential`).
+   - **CI / unattended**: create an Azure service principal, add it to the test workspace as **Member** (Fabric portal → workspace → Manage access), grant it **"Can use"** on each Fabric connection (Settings → Manage connections → select connection → Share → add SP), and provide its credentials via `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET`. Both ACL grants (workspace member + per-connection "Can use") are required — connection access does not inherit from workspace membership.
+
+7. **GitHub Actions** (if running the bundled workflows): create an environment named `Integration` in your fork's repository settings and add every `FABRIC_TEST_*` and `AZURE_*` variable above as an environment secret with the same name. `.github/workflows/integration-tests.yml` lists the canonical secret-name set.
+
+> **Internal note for ASA-affiliated developers:** the `ai-solution-accelerator` repo's `docs/eval-infra/` directory (especially `fabric-connections.md`, `gateway-setup.md`, `cloud-engines.md`, and `vm-topology.md`) is the operational runbook for the lab tenant that this MCP server is integration-tested against. External contributors should treat this section's prerequisites as a high-level checklist rather than a step-by-step guide.
 
 ## License
 
