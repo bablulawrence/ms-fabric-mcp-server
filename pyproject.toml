@@ -1,7 +1,7 @@
 [project]
 name = "ms-fabric-mcp-server"
 
-version = "0.8.6"
+version = "0.8.7"
 
 description = "Model Context Protocol (MCP) server for Microsoft Fabric - exposes Fabric operations as MCP tools for AI agents"
 readme = "README.md"
@@ -22,7 +22,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "fastmcp>=2.10.0",
+    "fastmcp>=2.10.0,<4",
     "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",
     "azure-identity>=1.23.0",
