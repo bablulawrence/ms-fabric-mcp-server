@@ -14,8 +14,23 @@ on:
         default: false
 
 jobs:
+  resolve-ref:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - name: Check out requested ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Resolve commit
+        id: resolve
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   tests:
     runs-on: ubuntu-latest
+    needs: resolve-ref
     strategy:
       fail-fast: false
       matrix:
@@ -24,7 +39,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.resolve-ref.outputs.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -45,7 +60,7 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
-    needs: tests
+    needs: [resolve-ref, tests]
     if: ${{ inputs.run_integration_tests }}
     timeout-minutes: 60
     environment: Integration
@@ -79,7 +94,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.resolve-ref.outputs.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -104,12 +119,53 @@ jobs:
         run: |
           uv run pytest -m integration
 
+  packaged-protocol:
+    runs-on: ubuntu-latest
+    needs: [resolve-ref, tests]
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-ref.outputs.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "**/uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Build wheel
+        run: |
+          uv build --wheel --out-dir dist
+          echo "FABRIC_PACKAGED_WHEEL=$(find "$GITHUB_WORKSPACE/dist" -name '*.whl' -print -quit)" >> "$GITHUB_ENV"
+
+      - name: Test packaged MCP protocol
+        run: |
+          uv run pytest tests/fabric/integration/test_packaged_stdio_integration.py
+
+      - name: Upload tested wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: distribution
+          path: dist/*.whl
+          if-no-files-found: error
+
   publish:
-    needs: [tests, integration]
+    needs: [resolve-ref, tests, integration, packaged-protocol]
     if: >-
       ${{
         always() &&
         needs.tests.result == 'success' &&
+        needs.packaged-protocol.result == 'success' &&
         (needs.integration.result == 'success' || needs.integration.result == 'skipped')
       }}
     runs-on: ubuntu-latest
@@ -119,24 +175,18 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ needs.resolve-ref.outputs.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v3
+      - name: Download tested wheel
+        uses: actions/download-artifact@v4
         with:
-          enable-cache: true
-          cache-dependency-glob: "**/uv.lock"
-
-      - name: Build package
-        run: |
-          uv venv
-          uv pip install --upgrade build
-          uv run python -m build
+          name: distribution
+          path: dist
 
       - name: Publish to TestPyPI
         uses: pypa/gh-action-pypi-publish@release/v1

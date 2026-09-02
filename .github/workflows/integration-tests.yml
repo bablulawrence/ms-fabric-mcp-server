@@ -10,6 +10,7 @@ jobs:
     environment: Integration
     env:
       FABRIC_INTEGRATION_TESTS: "1"
+      FABRIC_PACKAGED_PROTOCOL_REQUIRE_LIVE: "1"
       FABRIC_TEST_WORKSPACE_NAME: ${{ secrets.FABRIC_TEST_WORKSPACE_NAME }}
       FABRIC_TEST_LAKEHOUSE_NAME: ${{ secrets.FABRIC_TEST_LAKEHOUSE_NAME }}
       FABRIC_TEST_LAKEHOUSE_SQL_DATABASE: ${{ secrets.FABRIC_TEST_LAKEHOUSE_SQL_DATABASE }}
@@ -60,3 +61,4 @@ jobs:
       - name: Run integration tests
         run: |
           uv run pytest -m integration -rs
+          uv run pytest tests/fabric/integration/test_packaged_stdio_integration.py
